@@ -1,0 +1,37 @@
+name: Branch name
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  branch-name:
+    if: github.repository == 'samlevin/prismatic'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Check the branch name
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: node scripts/branch-name.mjs --check "$HEAD_REF"
+      - name: Confirm the issue exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          case "$HEAD_REF" in release-please--*|dependabot/*) exit 0 ;; esac
+          number="${HEAD_REF#*/}"
+          number="${number%%-*}"
+          gh issue view "$number" --repo "$REPO" --json number
