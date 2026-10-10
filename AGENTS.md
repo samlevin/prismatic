@@ -1,6 +1,6 @@
 # Agent rules
 
-Prismatic holds only its issue workflow so far: issue forms, labels, and the Node scripts in `scripts/` that keep the project board in sync. There is no product code or package manifest yet. Do not read CONTRIBUTING.md unless the task changes it or you need its triage tables.
+Prismatic holds only its issue workflow so far: issue forms, labels, and the Node scripts in `scripts/` that keep the project board in sync. There is no product code or package manifest yet. Do not read CONTRIBUTING.md unless the task changes it.
 
 ## Checks
 

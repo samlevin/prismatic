@@ -1,6 +1,6 @@
 # Prismatic issue creation
 
-Use the repo's issue forms and [labels](../.github/labels.json). Read the [triage section of CONTRIBUTING.md](../CONTRIBUTING.md#triage) only for a classification question.
+Use the repo's issue forms and [labels](../.github/labels.json).
 
 - Plain titles, with no `[Type]:` prefix.
 - Set Priority (default P2), Size, one severity, and `area:` labels. Use `bug`, `enhancement`, or `documentation`. Use `epic` only when explicitly requested, and then as the sole work-category label.
