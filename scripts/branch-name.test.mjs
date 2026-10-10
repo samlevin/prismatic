@@ -32,7 +32,7 @@ test('slugify is stable for numbers and Unicode', () => {
 
 test('canonical names accept layers and reject other shapes', () => {
   for (const name of [
-    'agent/17-generate',
+    'agent/48-generate',
     'samlevin/7-a-b-part-2',
     'agent/1-x-part-12',
   ])
@@ -59,16 +59,16 @@ test('automation branches are exempt', () => {
 
 test('branchName applies actor and layer', () => {
   assert.equal(
-    branchName({ issue: '17', title: 'Do a Thing' }),
-    'agent/17-do-a-thing',
+    branchName({ issue: '48', title: 'Do a Thing' }),
+    'agent/48-do-a-thing',
   );
   assert.equal(
-    branchName({ issue: 17, title: 'Do a Thing', actor: 'SamLevin', layer: 3 }),
-    'samlevin/17-do-a-thing-part-3',
+    branchName({ issue: 48, title: 'Do a Thing', actor: 'SamLevin', layer: 3 }),
+    'samlevin/48-do-a-thing-part-3',
   );
   assert.equal(
-    branchName({ issue: 17, title: 'Do a Thing', layer: 1 }),
-    'agent/17-do-a-thing',
+    branchName({ issue: 48, title: 'Do a Thing', layer: 1 }),
+    'agent/48-do-a-thing',
   );
   assert.throws(() => branchName({ issue: 'x', title: 'a' }));
   assert.throws(() => branchName({ issue: 1, title: '日本語' }));
@@ -77,10 +77,10 @@ test('branchName applies actor and layer', () => {
 });
 
 test('run generates and checks without calling GitHub', () => {
-  const title = () => 'Do a Thing';
-  assert.equal(run(['5'], { title }), 'agent/5-do-a-thing');
+  const issue = () => ({ title: 'Do a Thing' });
+  assert.equal(run(['5'], { issue }), 'agent/5-do-a-thing');
   assert.equal(
-    run(['5', '--actor', 'sam', '--layer', '2'], { title }),
+    run(['5', '--actor', 'sam', '--layer', '2'], { issue }),
     'sam/5-do-a-thing-part-2',
   );
   assert.match(run(['--check', 'agent/5-x']), /valid/);
@@ -93,43 +93,43 @@ test('run generates and checks without calling GitHub', () => {
 });
 
 test('run rejects non-numeric issues before calling GitHub', () => {
-  const title = () => assert.fail('GitHub must not be called');
+  const issue = () => assert.fail('GitHub must not be called');
   for (const value of ['-w', '--foo', 'abc', '0', '1x'])
-    assert.throws(() => run([value], { title }), /Issue must be|Unknown/);
-  assert.throws(() => run(['-w'], { title }), /Issue must be a positive/);
+    assert.throws(() => run([value], { issue }), /Issue must be|Unknown/);
+  assert.throws(() => run(['-w'], { issue }), /Issue must be a positive/);
 });
 
 test('options that need a value reject a missing one', () => {
-  const title = () => 'x';
-  assert.throws(() => run(['5', '--actor'], { title }), /requires a value/);
-  assert.throws(() => run(['5', '--layer'], { title }), /requires a value/);
+  const issue = () => ({ title: 'x' });
+  assert.throws(() => run(['5', '--actor'], { issue }), /requires a value/);
+  assert.throws(() => run(['5', '--layer'], { issue }), /requires a value/);
   assert.throws(
-    () => run(['5', '--actor', '--layer', '2'], { title }),
+    () => run(['5', '--actor', '--layer', '2'], { issue }),
     /requires a value/,
   );
   assert.throws(
-    () => run(['5', '--layer', '--check'], { title }),
+    () => run(['5', '--layer', '--check'], { issue }),
     /requires a value/,
   );
 });
 
 test('--require-issue accepts an existing issue', () => {
   const seen = [];
-  const message = run(['--check', 'agent/17-foo', '--require-issue'], {
+  const message = run(['--check', 'agent/48-foo', '--require-issue'], {
     issue: (number) => {
       seen.push(number);
-      return { number: 17 };
+      return { number: 48 };
     },
   });
-  assert.equal(message, 'Branch agent/17-foo is valid');
-  assert.deepEqual(seen, ['17']);
+  assert.equal(message, 'Branch agent/48-foo is valid');
+  assert.deepEqual(seen, ['48']);
 });
 
 test('--require-issue rejects a pull request number', () => {
   assert.throws(
     () =>
-      run(['--check', 'agent/18-foo', '--require-issue'], {
-        issue: () => ({ number: 18, pull_request: {} }),
+      run(['--check', 'agent/52-foo', '--require-issue'], {
+        issue: () => ({ number: 52, pull_request: {} }),
       }),
     /pull request, not an issue/,
   );
@@ -137,7 +137,10 @@ test('--require-issue rejects a pull request number', () => {
 
 test('--require-issue rejects a missing issue', () => {
   const missing = () => {
-    throw new Error('404');
+    throw Object.assign(new Error('failed'), {
+      status: 1,
+      stderr: 'gh: Not Found (HTTP 404)',
+    });
   };
   assert.throws(
     () =>
@@ -151,11 +154,41 @@ test('--require-issue rejects a missing issue', () => {
   );
 });
 
+test('--require-issue reports other GitHub failures without stderr', () => {
+  const unavailable = () => {
+    throw Object.assign(new Error('failed'), {
+      status: 1,
+      stderr: 'gh: Service Unavailable (HTTP 503) token=secret',
+    });
+  };
+  assert.throws(
+    () =>
+      run(['--check', 'agent/9-foo', '--require-issue'], {
+        issue: unavailable,
+      }),
+    (error) =>
+      error.message === 'GitHub request failed' &&
+      !error.message.includes('secret'),
+  );
+});
+
+test('generation rejects a pull request number', () => {
+  assert.throws(
+    () => run(['52'], { issue: () => ({ title: 'x', pull_request: {} }) }),
+    /Issue #52 is a pull request/,
+  );
+});
+
+test('generation rejects a missing or blank title', () => {
+  for (const found of [{}, { title: '   ' }, { title: 5 }, null])
+    assert.throws(() => run(['7'], { issue: () => found }), /has no title/);
+});
+
 test('--require-issue skips exempt branches and needs --check', () => {
   const never = () => assert.fail('must not fetch');
   assert.match(
     run(['--check', 'dependabot/npm/x', '--require-issue'], { issue: never }),
     /Skipping/,
   );
-  assert.throws(() => run(['17', '--require-issue']), /needs --check/);
+  assert.throws(() => run(['48', '--require-issue']), /needs --check/);
 });

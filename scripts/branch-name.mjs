@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { REPOSITORY } from './issue-triage.mjs';
 
-export const REPOSITORY = 'samlevin/prismatic';
 const MAX_SLUG = 40;
 const CANONICAL =
   /^[a-z0-9-]+\/[1-9][0-9]*-[a-z0-9]+(-[a-z0-9]+)*(-part-[2-9][0-9]*)?$/;
@@ -85,15 +85,6 @@ function currentBranch() {
   }).trim();
 }
 
-function issueTitle(issue) {
-  const output = execFileSync(
-    'gh',
-    ['issue', 'view', issue, '--repo', REPOSITORY, '--json', 'title'],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-  return JSON.parse(output).title;
-}
-
 function fetchIssue(number) {
   const output = execFileSync(
     'gh',
@@ -109,7 +100,7 @@ export function issueNumber(name) {
 
 export function run(
   argv,
-  { title = issueTitle, current = currentBranch, issue = fetchIssue } = {},
+  { current = currentBranch, issue = fetchIssue } = {},
 ) {
   const options = parseArguments(argv);
   if (options.check) {
@@ -125,8 +116,14 @@ export function run(
       let found;
       try {
         found = issue(number);
-      } catch {
-        throw new Error(`Issue #${number} was not found`);
+      } catch (error) {
+        // Never print stderr: it can contain authentication details.
+        throw new Error(
+          String(error?.stderr ?? '').includes('HTTP 404')
+            ? `Issue #${number} was not found`
+            : 'GitHub request failed',
+          { cause: error },
+        );
       }
       if (!found || typeof found !== 'object')
         throw new Error(`Issue #${number} was not found`);
@@ -139,9 +136,15 @@ export function run(
     throw new Error('Usage: branch-name.mjs <issue> | --check [name]');
   if (!/^[1-9][0-9]*$/.test(options.value))
     throw new Error('Issue must be a positive number');
+  const found = issue(options.value);
+  if (found?.pull_request)
+    throw new Error(`Issue #${options.value} is a pull request`);
+  const title = found?.title;
+  if (typeof title !== 'string' || !title.trim())
+    throw new Error(`Issue #${options.value} has no title`);
   return branchName({
     issue: options.value,
-    title: title(options.value),
+    title,
     actor: options.actor,
     layer: options.layer,
   });
