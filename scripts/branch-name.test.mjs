@@ -32,7 +32,7 @@ test('slugify is stable for numbers and Unicode', () => {
 
 test('canonical names accept layers and reject other shapes', () => {
   for (const name of [
-    'agent/48-generate',
+    'agent/17-generate',
     'samlevin/7-a-b-part-2',
     'agent/1-x-part-12',
   ])
@@ -59,16 +59,16 @@ test('automation branches are exempt', () => {
 
 test('branchName applies actor and layer', () => {
   assert.equal(
-    branchName({ issue: '48', title: 'Do a Thing' }),
-    'agent/48-do-a-thing',
+    branchName({ issue: '17', title: 'Do a Thing' }),
+    'agent/17-do-a-thing',
   );
   assert.equal(
-    branchName({ issue: 48, title: 'Do a Thing', actor: 'SamLevin', layer: 3 }),
-    'samlevin/48-do-a-thing-part-3',
+    branchName({ issue: 17, title: 'Do a Thing', actor: 'SamLevin', layer: 3 }),
+    'samlevin/17-do-a-thing-part-3',
   );
   assert.equal(
-    branchName({ issue: 48, title: 'Do a Thing', layer: 1 }),
-    'agent/48-do-a-thing',
+    branchName({ issue: 17, title: 'Do a Thing', layer: 1 }),
+    'agent/17-do-a-thing',
   );
   assert.throws(() => branchName({ issue: 'x', title: 'a' }));
   assert.throws(() => branchName({ issue: 1, title: '日本語' }));
@@ -115,21 +115,21 @@ test('options that need a value reject a missing one', () => {
 
 test('--require-issue accepts an existing issue', () => {
   const seen = [];
-  const message = run(['--check', 'agent/48-foo', '--require-issue'], {
+  const message = run(['--check', 'agent/17-foo', '--require-issue'], {
     issue: (number) => {
       seen.push(number);
-      return { number: 48 };
+      return { number: 17 };
     },
   });
-  assert.equal(message, 'Branch agent/48-foo is valid');
-  assert.deepEqual(seen, ['48']);
+  assert.equal(message, 'Branch agent/17-foo is valid');
+  assert.deepEqual(seen, ['17']);
 });
 
 test('--require-issue rejects a pull request number', () => {
   assert.throws(
     () =>
-      run(['--check', 'agent/52-foo', '--require-issue'], {
-        issue: () => ({ number: 52, pull_request: {} }),
+      run(['--check', 'agent/18-foo', '--require-issue'], {
+        issue: () => ({ number: 18, pull_request: {} }),
       }),
     /pull request, not an issue/,
   );
@@ -174,8 +174,8 @@ test('--require-issue reports other GitHub failures without stderr', () => {
 
 test('generation rejects a pull request number', () => {
   assert.throws(
-    () => run(['52'], { issue: () => ({ title: 'x', pull_request: {} }) }),
-    /Issue #52 is a pull request/,
+    () => run(['18'], { issue: () => ({ title: 'x', pull_request: {} }) }),
+    /Issue #18 is a pull request/,
   );
 });
 
@@ -190,7 +190,7 @@ test('--require-issue skips exempt branches and needs --check', () => {
     run(['--check', 'dependabot/npm/x', '--require-issue'], { issue: never }),
     /Skipping/,
   );
-  assert.throws(() => run(['48', '--require-issue']), /needs --check/);
+  assert.throws(() => run(['17', '--require-issue']), /needs --check/);
 });
 
 test('part suffixes only pass for layers 2 and up', () => {
