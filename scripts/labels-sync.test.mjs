@@ -59,16 +59,31 @@ test('renames a label that differs only by name case', () => {
   assert.deepEqual(plan.update, [{ ...bug, current: 'Bug' }]);
 });
 
+const found = (total_count, incomplete_results = false) => ({
+  total_count,
+  incomplete_results,
+});
+
 test('prune skips labels still in use and deletes unused ones', () => {
   const used = { name: 'used' };
   const unused = { name: 'unused' };
-  const counts = new Map([
-    ['used', 3],
-    ['unused', 0],
+  const usages = new Map([
+    ['used', found(3)],
+    ['unused', found(0)],
   ]);
-  assert.deepEqual(partitionPrune([used, unused], counts), {
+  assert.deepEqual(partitionPrune([used, unused], usages), {
     delete: [unused],
     skip: [used],
+  });
+});
+
+test('prune never deletes when the usage search was incomplete or missing', () => {
+  const timedOut = { name: 'timed-out' };
+  const missing = { name: 'missing' };
+  const usages = new Map([['timed-out', found(0, true)]]);
+  assert.deepEqual(partitionPrune([timedOut, missing], usages), {
+    delete: [],
+    skip: [timedOut, missing],
   });
 });
 

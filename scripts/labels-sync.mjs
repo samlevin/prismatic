@@ -33,10 +33,19 @@ export function planLabelSync(desired, actual) {
 }
 
 // Pure: a label still carried by any issue or pull request is never deleted.
-export function partitionPrune(deletes, counts) {
+// An incomplete search can truncate the count to 0, so it also blocks deletion.
+// `usages` maps a label name to { total_count, incomplete_results }.
+export function partitionPrune(deletes, usages) {
   const result = { delete: [], skip: [] };
-  for (const label of deletes)
-    (counts.get(label.name) > 0 ? result.skip : result.delete).push(label);
+  for (const label of deletes) {
+    const found = usages.get(label.name);
+    const safe =
+      found &&
+      found.incomplete_results === false &&
+      Number.isInteger(found.total_count) &&
+      found.total_count === 0;
+    (safe ? result.delete : result.skip).push(label);
+  }
   return result;
 }
 
@@ -55,9 +64,10 @@ function liveLabels() {
 
 function usage(name) {
   const query = `repo:${REPOSITORY} label:"${name}"`;
-  return JSON.parse(
+  const { total_count, incomplete_results } = JSON.parse(
     gh(['-X', 'GET', 'search/issues', '-f', `q=${query}`, '-F', 'per_page=1']),
-  ).total_count;
+  );
+  return { total_count, incomplete_results };
 }
 
 const fields = (label) => [
@@ -70,11 +80,8 @@ const fields = (label) => [
 export function run(argv = process.argv.slice(2)) {
   const apply = argv.includes('--apply');
   const prune = argv.includes('--prune');
-  if (
-    argv.some((arg) => !['--apply', '--prune'].includes(arg)) ||
-    (prune && !apply)
-  )
-    throw new Error('Usage: labels-sync.mjs [--apply [--prune]]');
+  if (argv.some((arg) => !['--apply', '--prune'].includes(arg)))
+    throw new Error('Usage: labels-sync.mjs [--apply] [--prune]');
   const catalog = JSON.parse(readFileSync(CATALOG, 'utf8'));
   if (catalog.repository !== REPOSITORY)
     throw new Error(`labels.json targets ${catalog.repository}`);
@@ -102,15 +109,20 @@ export function run(argv = process.argv.slice(2)) {
     for (const label of plan.delete)
       console.log(`would delete (needs --prune): ${label.name}`);
   else {
-    const counts = new Map(plan.delete.map((l) => [l.name, usage(l.name)]));
-    const { delete: unused, skip } = partitionPrune(plan.delete, counts);
-    for (const label of skip)
+    const usages = new Map(plan.delete.map((l) => [l.name, usage(l.name)]));
+    const { delete: unused, skip } = partitionPrune(plan.delete, usages);
+    for (const label of skip) {
+      const found = usages.get(label.name);
       console.log(
-        `skip delete (${counts.get(label.name)} issues or pull requests): ${label.name}`,
+        found.incomplete_results !== false
+          ? `${verb}skip delete (search incomplete): ${label.name}`
+          : `${verb}skip delete (${found.total_count} issues or pull requests): ${label.name}`,
       );
+    }
     for (const label of unused) {
-      console.log(`delete: ${label.name}`);
-      gh(['-X', 'DELETE', `${base}/${encodeURIComponent(label.name)}`]);
+      console.log(`${verb}delete: ${label.name}`);
+      if (apply)
+        gh(['-X', 'DELETE', `${base}/${encodeURIComponent(label.name)}`]);
     }
   }
   for (const label of plan.unchanged) console.log(`unchanged: ${label.name}`);

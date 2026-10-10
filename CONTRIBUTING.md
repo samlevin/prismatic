@@ -56,4 +56,6 @@ Before you start an issue, assign yourself, leave a short comment saying what yo
 
 A GitHub Action keeps the board tidy. It moves triaged issues from Inbox to Ready, and it closes a container once all its sub-issues are closed. It needs the `PRISMATIC_PROJECT_TOKEN` repository secret. Details are in [.github/workflows/issue-triage.yml](.github/workflows/issue-triage.yml).
 
-The [labels workflow](.github/workflows/labels.yml) previews the label plan on pull requests that change `.github/labels.json`. On `main` it applies the file and deletes labels that are not in it and that no issue or pull request carries. You can also run it by hand; it defaults to a dry run. Its script is tested with `node --test scripts/labels-sync.test.mjs`.
+The [CI workflow](.github/workflows/ci.yml) runs `node --test scripts/*.test.mjs` on pull requests and on pushes to `main`.
+
+The [labels workflow](.github/workflows/labels.yml) previews the label plan, including which labels it would delete or skip, on pull requests that change `.github/labels.json`. On `main` it applies the file and deletes labels that are not in it and that no issue or pull request carries. You can also run it by hand; it defaults to a dry run. Its script is tested with `node --test scripts/labels-sync.test.mjs`.

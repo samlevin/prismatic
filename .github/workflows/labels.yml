@@ -46,5 +46,5 @@ jobs:
           if [ "$APPLY" = "true" ]; then
             node scripts/labels-sync.mjs --apply --prune
           else
-            node scripts/labels-sync.mjs
+            node scripts/labels-sync.mjs --prune
           fi
