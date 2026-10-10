@@ -7,7 +7,6 @@ on:
     types: [opened]
 
 permissions:
-  contents: read
   issues: write
   pull-requests: write
 
@@ -15,24 +14,14 @@ jobs:
   assign:
     # The owner's identity is what the agents use. Nothing is checked out, so
     # pull_request_target never runs pull request code.
-    if: >-
-      github.event.sender.login == github.repository_owner &&
-      (github.event_name == 'issues' ||
-      github.event.pull_request.user.login == github.repository_owner)
+    if: github.event.sender.login == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Assign the owner
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           OWNER: ${{ github.repository_owner }}
-          EVENT_NAME: ${{ github.event_name }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          if [ "$EVENT_NAME" = "issues" ]; then
-            gh issue edit "$ISSUE_NUMBER" --add-assignee "$OWNER"
-          else
-            gh pr edit "$PR_NUMBER" --add-assignee "$OWNER"
-          fi
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: gh api -X POST "repos/$GH_REPO/issues/$NUMBER/assignees" -f "assignees[]=$OWNER"
