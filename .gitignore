@@ -1,0 +1,4 @@
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+CLAUDE.local.md
+node_modules/

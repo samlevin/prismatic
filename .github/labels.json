@@ -1,0 +1,110 @@
+{
+  "repository": "samlevin/prismatic",
+  "labels": [
+    {
+      "name": "area: infrastructure",
+      "color": "d4c5f9",
+      "description": "OpenTofu foundation and persistent shared resources"
+    },
+    {
+      "name": "area: repository",
+      "color": "57606a",
+      "description": "Repository-wide tooling, policy, or documentation"
+    },
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Something isn't working"
+    },
+    {
+      "name": "documentation",
+      "color": "0075ca",
+      "description": "Improvements or additions to documentation"
+    },
+    {
+      "name": "duplicate",
+      "color": "cfd3d7",
+      "description": "This issue or pull request already exists"
+    },
+    {
+      "name": "enhancement",
+      "color": "a2eeef",
+      "description": "New feature or request"
+    },
+    {
+      "name": "good first issue",
+      "color": "7057ff",
+      "description": "Good for newcomers"
+    },
+    {
+      "name": "help wanted",
+      "color": "008672",
+      "description": "Extra attention is needed"
+    },
+    {
+      "name": "invalid",
+      "color": "e4e669",
+      "description": "This doesn't seem right"
+    },
+    {
+      "name": "question",
+      "color": "d876e3",
+      "description": "Further information is requested"
+    },
+    {
+      "name": "risk: data-contract",
+      "color": "b60205",
+      "description": "May change durable evidence or a public data contract"
+    },
+    {
+      "name": "risk: deployment",
+      "color": "e99695",
+      "description": "May affect deployment, rollback, or persistent infrastructure"
+    },
+    {
+      "name": "risk: security",
+      "color": "ee0701",
+      "description": "Needs explicit security or privacy review"
+    },
+    {
+      "name": "severity: critical",
+      "color": "b60205",
+      "description": "Evidenced critical defect or critical risk prevention"
+    },
+    {
+      "name": "severity: high",
+      "color": "d93f0b",
+      "description": "Evidenced important defect or regression"
+    },
+    {
+      "name": "severity: low",
+      "color": "0e8a16",
+      "description": "Evidenced minor or cosmetic defect"
+    },
+    {
+      "name": "severity: medium",
+      "color": "fbca04",
+      "description": "Evidenced defect with bounded impact"
+    },
+    {
+      "name": "severity: none",
+      "color": "cfd3d7",
+      "description": "Planned capability or maintenance with no evidenced defect"
+    },
+    {
+      "name": "epic",
+      "color": "6f42c1",
+      "description": "Explicitly requested notable body of work; exclusive work-category label"
+    },
+    {
+      "name": "wontfix",
+      "color": "ffffff",
+      "description": "This will not be worked on"
+    },
+    {
+      "name": "automation: container-closed",
+      "color": "cfd3d7",
+      "description": "Managed marker: container closed automatically after its children completed"
+    }
+  ]
+}

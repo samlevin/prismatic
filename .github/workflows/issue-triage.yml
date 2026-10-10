@@ -1,0 +1,42 @@
+name: Reconcile issue workflow
+
+on:
+  issues:
+    types: [opened, reopened, closed, edited, labeled, unlabeled]
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview metadata and container completion without writes
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prismatic-issue-triage
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: github.repository == 'samlevin/prismatic' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Reconcile issues
+        env:
+          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: |
+          node scripts/issue-triage.mjs
+          node scripts/issue-containers.mjs

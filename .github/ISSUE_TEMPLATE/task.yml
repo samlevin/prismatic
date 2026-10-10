@@ -1,0 +1,54 @@
+name: Issue
+description: Define one reviewable, independently verifiable unit of work.
+projects:
+  - 'samlevin/2'
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Define one executable logical change with acceptance criteria. For a parent with sub-issues, use the container template; use the epic template only when explicitly requested. Follow [CONTRIBUTING.md](https://github.com/samlevin/prismatic/blob/main/CONTRIBUTING.md#triage) for concise metadata and planning rules.
+  - type: input
+    id: parent
+    attributes:
+      label: Parent issue
+      description: Link the immediate parent, or write "None". The issue creator uses Parent epic when the parent is an epic.
+      placeholder: '#123'
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: State the behavior or durable artifact this task must produce.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use observable, testable conditions.
+      placeholder: |
+        - [ ] Given ..., when ..., then ...
+        - [ ] Existing ... remains unchanged
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Implementation notes
+      description: Name likely boundaries, contracts, risks, and decisions. Leave implementation freedom where it is useful.
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: List the automated and manual checks that prove the acceptance criteria.
+      placeholder: |
+        - `npm test --workspace ...`
+        - Manual check: ...
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Link blocking or blocked issues. Add native GitHub issue dependencies after creation.

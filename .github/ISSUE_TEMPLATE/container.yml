@@ -1,0 +1,40 @@
+name: Container issue
+description: Group native sub-issues without deliverable work of its own.
+projects:
+  - 'samlevin/2'
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Containers have no acceptance criteria, branch, or PR. Only executable leaves use the deliverable issue template. Completion follows native sub-issues. Epics require an explicit request.
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: Describe the work being grouped and its boundaries.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: Explain the reason for this work and link relevant context.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How
+      description: Outline the sub-issues, prerequisite order, and shared decisions. Use native parent and blocking relationships.
+    validations:
+      required: true
+  - type: input
+    id: parent
+    attributes:
+      label: Parent issue
+      description: Optional immediate parent. The creator uses Parent epic when it is an epic, otherwise Parent issue.
+  - type: input
+    id: milestone
+    attributes:
+      label: Milestone
+      description: Link an existing milestone when specified.

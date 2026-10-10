@@ -1,0 +1,69 @@
+name: Bug
+description: Report behavior that differs from an existing contract or expectation.
+labels:
+  - 'bug'
+projects:
+  - 'samlevin/2'
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Define one executable logical change with acceptance criteria. For a parent with sub-issues, use the container template; use the epic template only when explicitly requested. Follow [CONTRIBUTING.md](https://github.com/samlevin/prismatic/blob/main/CONTRIBUTING.md#triage) for concise metadata and planning rules.
+  - type: input
+    id: parent
+    attributes:
+      label: Parent issue
+      description: Link the immediate parent, or write "None". Use Parent epic when the parent is an epic.
+      placeholder: '#123'
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: State what happened. Include sanitized logs, artifact references, or screenshots when useful.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Link the contract, specification, or earlier behavior that establishes the expectation.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Give the smallest repeatable sequence. Do not include secrets, account IDs, domains, or personal data.
+    validations:
+      required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Blocks development or deployment
+        - Breaks supported product behavior
+        - Causes degraded or confusing behavior
+        - Cosmetic or low-impact defect
+        - Impact not yet established (explain the evidence and uncertainty)
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: State how a reviewer can prove the defect is fixed and protected against regression.
+      placeholder: |
+        - [ ] A regression test fails before the fix and passes after it
+        - [ ] The reproduction no longer produces the observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: List the automated and manual checks required for this fix.
+    validations:
+      required: true
