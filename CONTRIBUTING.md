@@ -30,7 +30,7 @@ Each issue gets a priority, a size, and one severity label. Priority defaults to
 | M | One outcome across a few components |
 | L | Too big to start; break it down first |
 
-For the type, use one of `bug`, `enhancement`, or `documentation`, and add `area:` labels for the parts of the repo affected. An epic gets the `epic` label instead of a type label. [.github/labels.json](.github/labels.json) is the source of truth for every label, and it is shared with mcc-stats-suite. Change a label by editing that file and running `node scripts/labels-sync.mjs --apply` (run it without `--apply` first to preview the plan). Never create labels with `gh label create`.
+For the type, use one of `bug`, `enhancement`, or `documentation`, and add `area:` labels for the parts of the repo affected. An epic gets the `epic` label instead of a type label. [.github/labels.json](.github/labels.json) is the source of truth for every label, and it is shared with mcc-stats-suite. Change a label by editing that file, preview the plan with `node scripts/labels-sync.mjs --prune`, and let the push to `main` apply and prune. Never create labels with `gh label create`.
 
 ## Status
 

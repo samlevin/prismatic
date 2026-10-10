@@ -62,12 +62,30 @@ function liveLabels() {
   ).flat();
 }
 
-function usage(name) {
-  const query = `repo:${REPOSITORY} label:"${name}"`;
-  const { total_count, incomplete_results } = JSON.parse(
-    gh(['-X', 'GET', 'search/issues', '-f', `q=${query}`, '-F', 'per_page=1']),
-  );
-  return { total_count, incomplete_results };
+// A search that cannot be trusted reports an incomplete result so the label is kept.
+export function usage(name, search = gh) {
+  const unknown = { total_count: null, incomplete_results: true };
+  if (name.includes('"')) {
+    console.log(`skip delete (name contains a quote): ${name}`);
+    return unknown;
+  }
+  try {
+    const { total_count, incomplete_results } = JSON.parse(
+      search([
+        '-X',
+        'GET',
+        'search/issues',
+        '-f',
+        `q=repo:${REPOSITORY} label:"${name}"`,
+        '-F',
+        'per_page=1',
+      ]),
+    );
+    return { total_count, incomplete_results };
+  } catch {
+    console.log(`skip delete (search failed): ${name}`);
+    return unknown;
+  }
 }
 
 const fields = (label) => [
@@ -113,6 +131,8 @@ export function run(argv = process.argv.slice(2)) {
     const { delete: unused, skip } = partitionPrune(plan.delete, usages);
     for (const label of skip) {
       const found = usages.get(label.name);
+      // usage() already logged why an unsearchable label is kept.
+      if (found.total_count === null) continue;
       console.log(
         found.incomplete_results !== false
           ? `${verb}skip delete (search incomplete): ${label.name}`

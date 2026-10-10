@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { partitionPrune, planLabelSync } from './labels-sync.mjs';
+import { partitionPrune, planLabelSync, usage } from './labels-sync.mjs';
 
 const bug = { name: 'bug', color: 'd73a4a', description: 'Broken' };
 
@@ -93,4 +93,38 @@ test('never deletes a live autorelease: tagged label absent from the file', () =
     [bug, { name: 'autorelease: tagged', color: 'ededed' }],
   );
   assert.deepEqual(plan.delete, []);
+});
+
+test('usage keeps labels whose name contains a quote without searching', (t) => {
+  const log = t.mock.method(console, 'log', () => {});
+  const search = () => assert.fail('search must not run');
+  assert.deepEqual(usage('say "hi"', search), {
+    total_count: null,
+    incomplete_results: true,
+  });
+  assert.equal(
+    log.mock.calls[0].arguments[0],
+    'skip delete (name contains a quote): say "hi"',
+  );
+});
+
+test('usage keeps the label when the search fails instead of aborting', (t) => {
+  const log = t.mock.method(console, 'log', () => {});
+  const search = () => {
+    throw new Error('rate limited');
+  };
+  const found = usage('old', search);
+  assert.deepEqual(found, { total_count: null, incomplete_results: true });
+  assert.deepEqual(
+    partitionPrune([{ name: 'old' }], new Map([['old', found]])),
+    { delete: [], skip: [{ name: 'old' }] },
+  );
+  assert.equal(
+    log.mock.calls[0].arguments[0],
+    'skip delete (search failed): old',
+  );
+  const ok = usage('old', () =>
+    JSON.stringify({ total_count: 0, incomplete_results: false }),
+  );
+  assert.deepEqual(ok, { total_count: 0, incomplete_results: false });
 });
