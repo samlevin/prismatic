@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { REPOSITORY } from './issue-triage.mjs';
 
-export const REPOSITORY = 'samlevin/prismatic';
 // Release Please owns every `autorelease:` label; the sync never deletes them.
 const isProtected = (name) => name.startsWith('autorelease:');
 const CATALOG = new URL('../.github/labels.json', import.meta.url);
