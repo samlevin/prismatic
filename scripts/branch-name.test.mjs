@@ -192,3 +192,44 @@ test('--require-issue skips exempt branches and needs --check', () => {
   );
   assert.throws(() => run(['48', '--require-issue']), /needs --check/);
 });
+
+test('part suffixes only pass for layers 2 and up', () => {
+  for (const name of [
+    'agent/1-x-part-1',
+    'agent/1-x-part-0',
+    'agent/1-x-part-01',
+  ])
+    assert.equal(isCanonicalBranch(name), false, name);
+  for (const name of [
+    'agent/1-x-part-2',
+    'agent/1-x-part-12',
+    'agent/1-part-2',
+  ])
+    assert.equal(isCanonicalBranch(name), true, name);
+});
+
+test('--actor and --layer only apply when generating', () => {
+  assert.throws(
+    () => run(['--check', 'agent/5-x', '--actor', 'sam']),
+    /only apply when generating/,
+  );
+  assert.throws(
+    () => run(['--check', '--layer', '2']),
+    /only apply when generating/,
+  );
+});
+
+test('generation maps 404 and other failures like --require-issue', () => {
+  const fail = (stderr) => () => {
+    throw Object.assign(new Error('x'), { stderr });
+  };
+  assert.throws(
+    () => run(['9'], { issue: fail('gh: Not Found (HTTP 404)') }),
+    /Issue #9 was not found/,
+  );
+  assert.throws(
+    () => run(['9'], { issue: fail('token secret') }),
+    (error) =>
+      error.message === 'GitHub request failed' && error.cause instanceof Error,
+  );
+});

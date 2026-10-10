@@ -4,7 +4,7 @@ import { REPOSITORY } from './issue-triage.mjs';
 
 const MAX_SLUG = 40;
 const CANONICAL =
-  /^[a-z0-9-]+\/[1-9][0-9]*-[a-z0-9]+(-[a-z0-9]+)*(-part-[2-9][0-9]*)?$/;
+  /^[a-z0-9-]+\/[1-9][0-9]*-[a-z0-9]+(-(?!part-[0-9]+$)[a-z0-9]+)*(-part-(?:[2-9]|[1-9][0-9]+))?$/;
 const EXEMPT = [/^release-please--/, /^dependabot\//];
 
 export function slugify(title) {
@@ -58,6 +58,8 @@ export function parseArguments(argv) {
     requireIssue: false,
   };
   const positional = [];
+  let actorGiven = false;
+  let layerGiven = false;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--check') options.check = true;
@@ -66,8 +68,13 @@ export function parseArguments(argv) {
       const value = argv[++index];
       if (value === undefined || value.startsWith('--'))
         throw new Error(`Option ${argument} requires a value`);
-      if (argument === '--actor') options.actor = value;
-      else options.layer = Number(value);
+      if (argument === '--actor') {
+        options.actor = value;
+        actorGiven = true;
+      } else {
+        options.layer = Number(value);
+        layerGiven = true;
+      }
     } else if (argument.startsWith('--'))
       throw new Error(`Unknown option ${argument}`);
     else positional.push(argument);
@@ -75,6 +82,8 @@ export function parseArguments(argv) {
   if (positional.length > 1) throw new Error('Too many arguments');
   if (options.requireIssue && !options.check)
     throw new Error('--require-issue needs --check');
+  if (options.check && (actorGiven || layerGiven))
+    throw new Error('--actor and --layer only apply when generating');
   options.value = positional[0];
   return options;
 }
@@ -98,6 +107,20 @@ export function issueNumber(name) {
   return name.slice(name.indexOf('/') + 1).match(/^[1-9][0-9]*/)[0];
 }
 
+function lookupIssue(fetch, number) {
+  try {
+    return fetch(number);
+  } catch (error) {
+    // Never print stderr: it can contain authentication details.
+    throw new Error(
+      String(error?.stderr ?? '').includes('HTTP 404')
+        ? `Issue #${number} was not found`
+        : 'GitHub request failed',
+      { cause: error },
+    );
+  }
+}
+
 export function run(
   argv,
   { current = currentBranch, issue = fetchIssue } = {},
@@ -113,18 +136,7 @@ export function run(
       );
     if (options.requireIssue) {
       const number = issueNumber(name);
-      let found;
-      try {
-        found = issue(number);
-      } catch (error) {
-        // Never print stderr: it can contain authentication details.
-        throw new Error(
-          String(error?.stderr ?? '').includes('HTTP 404')
-            ? `Issue #${number} was not found`
-            : 'GitHub request failed',
-          { cause: error },
-        );
-      }
+      const found = lookupIssue(issue, number);
       if (!found || typeof found !== 'object')
         throw new Error(`Issue #${number} was not found`);
       if ('pull_request' in found)
@@ -136,7 +148,7 @@ export function run(
     throw new Error('Usage: branch-name.mjs <issue> | --check [name]');
   if (!/^[1-9][0-9]*$/.test(options.value))
     throw new Error('Issue must be a positive number');
-  const found = issue(options.value);
+  const found = lookupIssue(issue, options.value);
   if (found?.pull_request)
     throw new Error(`Issue #${options.value} is a pull request`);
   const title = found?.title;
