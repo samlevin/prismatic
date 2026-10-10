@@ -1,0 +1,50 @@
+name: Sync labels
+
+on:
+  pull_request:
+    paths:
+      - .github/labels.json
+  push:
+    branches: [main]
+    paths:
+      - .github/labels.json
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview the label plan without writes
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: prismatic-labels-sync-${{ github.event_name == 'pull_request' && github.ref || 'apply' }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'samlevin/prismatic'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts
+            .github/labels.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Sync labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLY: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
+        run: |
+          if [ "$APPLY" = "true" ]; then
+            node scripts/labels-sync.mjs --apply --prune
+          else
+            node scripts/labels-sync.mjs
+          fi

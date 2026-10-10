@@ -30,7 +30,7 @@ Each issue gets a priority, a size, and one severity label. Priority defaults to
 | M | One outcome across a few components |
 | L | Too big to start; break it down first |
 
-For the type, use one of `bug`, `enhancement`, or `documentation`, and add `area:` labels for the parts of the repo affected. An epic gets the `epic` label instead of a type label. The full list is in [.github/labels.json](.github/labels.json).
+For the type, use one of `bug`, `enhancement`, or `documentation`, and add `area:` labels for the parts of the repo affected. An epic gets the `epic` label instead of a type label. [.github/labels.json](.github/labels.json) is the source of truth for every label, and it is shared with mcc-stats-suite. Change a label by editing that file and running `node scripts/labels-sync.mjs --apply` (run it without `--apply` first to preview the plan). Never create labels with `gh label create`.
 
 ## Status
 
@@ -48,9 +48,12 @@ Before you start an issue, assign yourself, leave a short comment saying what yo
 
 - Title it with [Conventional Commits](https://www.conventionalcommits.org/), e.g. `feat: add CSV export`.
 - Fill in the PR template. Put `Closes #N` for the issue the PR finishes, and link the parent issue if there is one.
+- Run the tests before you push: `node --test scripts/*.test.mjs`.
 - Add tests for behavior you change, and update docs if you change how something is used or operated.
 - Keep PRs reviewable. Past roughly 400 lines of changed production code (not counting tests, docs, or lockfiles), split the work into stacked PRs.
 
 ## Automation
 
 A GitHub Action keeps the board tidy. It moves triaged issues from Inbox to Ready, and it closes a container once all its sub-issues are closed. It needs the `PRISMATIC_PROJECT_TOKEN` repository secret. Details are in [.github/workflows/issue-triage.yml](.github/workflows/issue-triage.yml).
+
+The [labels workflow](.github/workflows/labels.yml) previews the label plan on pull requests that change `.github/labels.json`. On `main` it applies the file and deletes labels that are not in it and that no issue or pull request carries. You can also run it by hand; it defaults to a dry run. Its script is tested with `node --test scripts/labels-sync.test.mjs`.
