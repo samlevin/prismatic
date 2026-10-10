@@ -44,6 +44,8 @@ For the type, use one of `bug`, `enhancement`, or `documentation`, and add `area
 
 Before you start an issue, assign yourself, leave a short comment saying what you plan to do, and move it to In progress. If you drop it, say so in a comment.
 
+Issues and pull requests opened by the owner's identity, which the Codex and Claude agents share, are assigned to `samlevin` automatically by `.github/workflows/assign-owner.yml`. Agents still pass `--assignee samlevin` to `gh issue create` and `gh pr create`, so the assignment never depends on the workflow.
+
 ## Pull requests
 
 - Title it with [Conventional Commits](https://www.conventionalcommits.org/), e.g. `feat: add CSV export`.
