@@ -51,11 +51,17 @@ export function branchName({ issue, title, actor = 'agent', layer = 1 }) {
 }
 
 export function parseArguments(argv) {
-  const options = { actor: 'agent', layer: 1, check: false };
+  const options = {
+    actor: 'agent',
+    layer: 1,
+    check: false,
+    requireIssue: false,
+  };
   const positional = [];
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--check') options.check = true;
+    else if (argument === '--require-issue') options.requireIssue = true;
     else if (argument === '--actor' || argument === '--layer') {
       const value = argv[++index];
       if (value === undefined || value.startsWith('--'))
@@ -67,6 +73,8 @@ export function parseArguments(argv) {
     else positional.push(argument);
   }
   if (positional.length > 1) throw new Error('Too many arguments');
+  if (options.requireIssue && !options.check)
+    throw new Error('--require-issue needs --check');
   options.value = positional[0];
   return options;
 }
@@ -86,9 +94,22 @@ function issueTitle(issue) {
   return JSON.parse(output).title;
 }
 
+function fetchIssue(number) {
+  const output = execFileSync(
+    'gh',
+    ['api', `repos/${REPOSITORY}/issues/${number}`],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  return JSON.parse(output);
+}
+
+export function issueNumber(name) {
+  return name.slice(name.indexOf('/') + 1).match(/^[1-9][0-9]*/)[0];
+}
+
 export function run(
   argv,
-  { title = issueTitle, current = currentBranch } = {},
+  { title = issueTitle, current = currentBranch, issue = fetchIssue } = {},
 ) {
   const options = parseArguments(argv);
   if (options.check) {
@@ -99,6 +120,19 @@ export function run(
       throw new Error(
         `Branch "${name}" must be <actor>/<issue>-<slug>[-part-N]; run: node scripts/branch-name.mjs <issue>`,
       );
+    if (options.requireIssue) {
+      const number = issueNumber(name);
+      let found;
+      try {
+        found = issue(number);
+      } catch {
+        throw new Error(`Issue #${number} was not found`);
+      }
+      if (!found || typeof found !== 'object')
+        throw new Error(`Issue #${number} was not found`);
+      if ('pull_request' in found)
+        throw new Error(`#${number} is a pull request, not an issue`);
+    }
     return `Branch ${name} is valid`;
   }
   if (!options.value)

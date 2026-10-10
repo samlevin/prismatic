@@ -46,8 +46,7 @@ Before you start an issue, assign yourself, leave a short comment saying what yo
 
 ## Pull requests
 
-- Name the branch `<actor>/<issue>-<slug>`, where the actor is `agent` for AI agents and your GitHub login for people, and later stacked layers append `-part-2`, `-part-3`. Run `node scripts/branch-name.mjs <issue>` (add `--actor <login>` for people, `--layer <n>` for stacked layers) and rename the worktree branch to its output before the first commit; never pick a name by hand. CI rejects other names, and Release Please and Dependabot branches are exempt.
-- Run `node --test scripts/*.test.mjs` before pushing.
+- Name the branch `<actor>/<issue>-<slug>`, where the actor is `agent` for AI agents and your GitHub login for people, and later stacked layers append `-part-2`, `-part-3`. Run `node scripts/branch-name.mjs <issue>` (add `--actor <login>` for people, `--layer <n>` for stacked layers) and rename the worktree branch to its output before the first commit; never pick a name by hand. CI rejects other names, and Release Please and Dependabot branches are exempt. Branches opened before this rule fail the check on their next push; after renaming a branch, close and reopen the PR to re-run it, because a rename emits no pull_request event.
 - Title it with [Conventional Commits](https://www.conventionalcommits.org/), e.g. `feat: add CSV export`.
 - Fill in the PR template. Put `Closes #N` for the issue the PR finishes, and link the parent issue if there is one.
 - Add tests for behavior you change, and update docs if you change how something is used or operated.

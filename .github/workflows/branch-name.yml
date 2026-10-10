@@ -2,7 +2,7 @@ name: Branch name
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -14,8 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # Execute trusted default-branch code, never the pull request's copy.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           sparse-checkout: scripts
       - uses: actions/setup-node@v4
@@ -23,15 +25,11 @@ jobs:
           node-version: '22.16.0'
       - name: Check the branch name
         env:
-          HEAD_REF: ${{ github.head_ref }}
-        run: node scripts/branch-name.mjs --check "$HEAD_REF"
-      - name: Confirm the issue exists
-        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_REF: ${{ github.head_ref }}
-          REPO: ${{ github.repository }}
         run: |
-          case "$HEAD_REF" in release-please--*|dependabot/*) exit 0 ;; esac
-          number="${HEAD_REF#*/}"
-          number="${number%%-*}"
-          gh issue view "$number" --repo "$REPO" --json number
+          if [ ! -f scripts/branch-name.mjs ]; then
+            echo "scripts/branch-name.mjs is not on the default branch yet; skipping."
+            exit 0
+          fi
+          node scripts/branch-name.mjs --check "$HEAD_REF" --require-issue
