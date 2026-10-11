@@ -30,7 +30,7 @@ Each issue gets a priority, a size, and one severity label. Priority defaults to
 | M | One outcome across a few components |
 | L | Too big to start; break it down first |
 
-For the type, use one of `bug`, `enhancement`, or `documentation`, and add `area:` labels for the parts of the repo affected. An epic gets the `epic` label instead of a type label. [.github/labels.json](.github/labels.json) is the source of truth for every label, and it is shared with mcc-stats-suite. Change a label by editing that file, preview the plan with `node scripts/labels-sync.mjs --prune`, and let the push to `main` apply and prune. Never create labels with `gh label create`.
+For the type, use one of `bug`, `enhancement`, or `documentation`, and add `area:` labels for the parts of the repo affected. An epic gets the `epic` label instead of a type label. [.github/labels.json](.github/labels.json) lists the labels. Its shared core is identical to mcc-stats-suite's. To change a shared label, edit the file in both repos and apply the change by hand in both with `gh label create`, `gh label edit`, or `gh label delete`.
 
 ## Status
 
@@ -55,7 +55,3 @@ Before you start an issue, assign yourself, leave a short comment saying what yo
 ## Automation
 
 A GitHub Action keeps the board tidy. It moves triaged issues from Inbox to Ready, and it closes a container once all its sub-issues are closed. It needs the `PRISMATIC_PROJECT_TOKEN` repository secret. Details are in [.github/workflows/issue-triage.yml](.github/workflows/issue-triage.yml).
-
-The [CI workflow](.github/workflows/ci.yml) runs `node --test scripts/*.test.mjs` on pull requests and on pushes to `main`.
-
-The [labels workflow](.github/workflows/labels.yml) has two jobs. On pull requests that change `.github/labels.json`, a read-only `preview` job prints the label plan, including which labels it would delete or skip. On `main` (push or manual run), a separate `apply` job with write access applies the file and deletes labels that are not in it and that no issue or pull request carries; a manual run defaults to a dry run. Its script is tested with `node --test scripts/labels-sync.test.mjs`.
