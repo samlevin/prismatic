@@ -56,3 +56,5 @@ Before you start an issue, assign yourself, leave a short comment saying what yo
 ## Automation
 
 A GitHub Action keeps the board tidy. It moves triaged issues from Inbox to Ready, and it closes a container once all its sub-issues are closed. It needs the `PRISMATIC_PROJECT_TOKEN` repository secret. Details are in [.github/workflows/issue-triage.yml](.github/workflows/issue-triage.yml).
+
+The [CI workflow](.github/workflows/ci.yml) runs `node --test scripts/*.test.mjs` on pull requests and on pushes to `main`.

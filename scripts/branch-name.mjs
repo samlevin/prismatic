@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { REPOSITORY } from './issue-triage.mjs';
-import { ghApi } from './github-rest.mjs';
 
 const MAX_SLUG = 40;
 const CANONICAL =
@@ -104,6 +103,21 @@ function currentBranch() {
 
 export function issueNumber(name) {
   return name.slice(name.indexOf('/') + 1).match(/^[1-9][0-9]*/)[0];
+}
+
+// Errors carry the HTTP status when gh reports one and never expose stderr.
+function ghApi(args) {
+  try {
+    return execFileSync('gh', ['api', ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (cause) {
+    const error = new Error('GitHub request failed', { cause });
+    const match = /HTTP (\d{3})/.exec(String(cause?.stderr ?? ''));
+    if (match) error.httpStatus = Number(match[1]);
+    throw error;
+  }
 }
 
 function lookupIssue(api, number) {
