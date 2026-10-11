@@ -59,32 +59,22 @@ test('renames a label that differs only by name case', () => {
   assert.deepEqual(plan.update, [{ ...bug, current: 'Bug' }]);
 });
 
-const found = (total_count, incomplete_results = false) => ({
-  total_count,
-  incomplete_results,
-});
-
-test('prune skips labels still in use and deletes unused ones', () => {
+test('prune skips labels in use and deletes only confirmed unused ones', () => {
   const used = { name: 'used' };
   const unused = { name: 'unused' };
+  const unknown = { name: 'unknown' };
   const usages = new Map([
-    ['used', found(3)],
-    ['unused', found(0)],
+    ['used', 'used'],
+    ['unused', 'unused'],
+    ['unknown', 'unknown'],
   ]);
-  assert.deepEqual(partitionPrune([used, unused], usages), {
-    delete: [unused],
-    skip: [used],
-  });
-});
-
-test('prune never deletes when the usage search was incomplete or missing', () => {
-  const timedOut = { name: 'timed-out' };
-  const missing = { name: 'missing' };
-  const usages = new Map([['timed-out', found(0, true)]]);
-  assert.deepEqual(partitionPrune([timedOut, missing], usages), {
-    delete: [],
-    skip: [timedOut, missing],
-  });
+  assert.deepEqual(
+    partitionPrune([used, unused, unknown, { name: 'x' }], usages),
+    {
+      delete: [unused],
+      skip: [used, unknown, { name: 'x' }],
+    },
+  );
 });
 
 test('never deletes a live autorelease: tagged label absent from the file', () => {
@@ -95,36 +85,33 @@ test('never deletes a live autorelease: tagged label absent from the file', () =
   assert.deepEqual(plan.delete, []);
 });
 
-test('usage keeps labels whose name contains a quote without searching', (t) => {
-  const log = t.mock.method(console, 'log', () => {});
-  const search = () => assert.fail('search must not run');
-  assert.deepEqual(usage('say "hi"', search), {
-    total_count: null,
-    incomplete_results: true,
-  });
-  assert.equal(
-    log.mock.calls[0].arguments[0],
-    'skip delete (name contains a quote): say "hi"',
+test('usage queries issues by encoded label and reads the array', () => {
+  const urls = [];
+  const api = (args) => {
+    urls.push(args[0]);
+    return urls.length === 1 ? '[]' : '[{"number":1}]';
+  };
+  assert.equal(usage('say "hi" & more', api), 'unused');
+  assert.equal(usage('old', api), 'used');
+  assert.ok(
+    urls[0].endsWith(
+      `issues?labels=${encodeURIComponent('say "hi" & more')}&state=all&per_page=1`,
+    ),
   );
 });
 
-test('usage keeps the label when the search fails instead of aborting', (t) => {
+test('usage keeps the label when the lookup fails instead of aborting', (t) => {
   const log = t.mock.method(console, 'log', () => {});
-  const search = () => {
-    throw new Error('rate limited');
-  };
-  const found = usage('old', search);
-  assert.deepEqual(found, { total_count: null, incomplete_results: true });
+  const found = usage('old', () => {
+    throw new Error('GitHub request failed');
+  });
+  assert.equal(found, 'unknown');
   assert.deepEqual(
     partitionPrune([{ name: 'old' }], new Map([['old', found]])),
     { delete: [], skip: [{ name: 'old' }] },
   );
   assert.equal(
     log.mock.calls[0].arguments[0],
-    'skip delete (search failed): old',
+    'skip delete (lookup failed): old',
   );
-  const ok = usage('old', () =>
-    JSON.stringify({ total_count: 0, incomplete_results: false }),
-  );
-  assert.deepEqual(ok, { total_count: 0, incomplete_results: false });
 });

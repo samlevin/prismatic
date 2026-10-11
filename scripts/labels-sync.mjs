@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { ghApi } from './github-rest.mjs';
 import { REPOSITORY } from './issue-triage.mjs';
 
 // Release Please owns every `autorelease:` label; the sync never deletes them.
@@ -33,28 +33,18 @@ export function planLabelSync(desired, actual) {
 }
 
 // Pure: a label still carried by any issue or pull request is never deleted.
-// An incomplete search can truncate the count to 0, so it also blocks deletion.
-// `usages` maps a label name to { total_count, incomplete_results }.
+// `usages` maps a label name to 'used', 'unused', or 'unknown'; only 'unused'
+// allows deletion.
 export function partitionPrune(deletes, usages) {
   const result = { delete: [], skip: [] };
-  for (const label of deletes) {
-    const found = usages.get(label.name);
-    const safe =
-      found &&
-      found.incomplete_results === false &&
-      Number.isInteger(found.total_count) &&
-      found.total_count === 0;
-    (safe ? result.delete : result.skip).push(label);
-  }
+  for (const label of deletes)
+    (usages.get(label.name) === 'unused' ? result.delete : result.skip).push(
+      label,
+    );
   return result;
 }
 
-function gh(args) {
-  return execFileSync('gh', ['api', ...args], {
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
-}
+const gh = (args) => ghApi(args);
 
 function liveLabels() {
   return JSON.parse(
@@ -62,29 +52,18 @@ function liveLabels() {
   ).flat();
 }
 
-// A search that cannot be trusted reports an incomplete result so the label is kept.
-export function usage(name, search = gh) {
-  const unknown = { total_count: null, incomplete_results: true };
-  if (name.includes('"')) {
-    console.log(`skip delete (name contains a quote): ${name}`);
-    return unknown;
-  }
+// Any lookup error keeps the label.
+export function usage(name, api = ghApi) {
   try {
-    const { total_count, incomplete_results } = JSON.parse(
-      search([
-        '-X',
-        'GET',
-        'search/issues',
-        '-f',
-        `q=repo:${REPOSITORY} label:"${name}"`,
-        '-F',
-        'per_page=1',
+    const issues = JSON.parse(
+      api([
+        `repos/${REPOSITORY}/issues?labels=${encodeURIComponent(name)}&state=all&per_page=1`,
       ]),
     );
-    return { total_count, incomplete_results };
+    return Array.isArray(issues) && issues.length === 0 ? 'unused' : 'used';
   } catch {
-    console.log(`skip delete (search failed): ${name}`);
-    return unknown;
+    console.log(`skip delete (lookup failed): ${name}`);
+    return 'unknown';
   }
 }
 
@@ -129,16 +108,10 @@ export function run(argv = process.argv.slice(2)) {
   else {
     const usages = new Map(plan.delete.map((l) => [l.name, usage(l.name)]));
     const { delete: unused, skip } = partitionPrune(plan.delete, usages);
-    for (const label of skip) {
-      const found = usages.get(label.name);
-      // usage() already logged why an unsearchable label is kept.
-      if (found.total_count === null) continue;
-      console.log(
-        found.incomplete_results !== false
-          ? `${verb}skip delete (search incomplete): ${label.name}`
-          : `${verb}skip delete (${found.total_count} issues or pull requests): ${label.name}`,
-      );
-    }
+    for (const label of skip)
+      // usage() already logged why an unreadable label is kept.
+      if (usages.get(label.name) === 'used')
+        console.log(`${verb}skip delete (in use): ${label.name}`);
     for (const label of unused) {
       console.log(`${verb}delete: ${label.name}`);
       if (apply)
@@ -149,4 +122,9 @@ export function run(argv = process.argv.slice(2)) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-  run();
+  try {
+    run();
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
