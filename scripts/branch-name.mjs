@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { REPOSITORY } from './issue-triage.mjs';
+import { ghApi } from './github-rest.mjs';
 
 const MAX_SLUG = 40;
 const CANONICAL =
-  /^[a-z0-9-]+\/[1-9][0-9]*-[a-z0-9]+(-(?!part-[0-9]+$)[a-z0-9]+)*(-part-(?:[2-9]|[1-9][0-9]+))?$/;
+  /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\/[1-9][0-9]*-(?!part-[0-9]+(?:-|$))[a-z0-9]+(?:-(?!part-[0-9]+(?:-|$))[a-z0-9]+)*(?:-part-(?:[2-9]|[1-9][0-9]+))?$/;
 const EXEMPT = [/^release-please--/, /^dependabot\//];
 
 export function slugify(title) {
@@ -72,6 +73,8 @@ export function parseArguments(argv) {
         options.actor = value;
         actorGiven = true;
       } else {
+        if (!/^[1-9][0-9]*$/.test(value))
+          throw new Error('--layer requires a positive integer');
         options.layer = Number(value);
         layerGiven = true;
       }
@@ -89,42 +92,31 @@ export function parseArguments(argv) {
 }
 
 function currentBranch() {
-  return execFileSync('git', ['branch', '--show-current'], {
-    encoding: 'utf8',
-  }).trim();
-}
-
-function fetchIssue(number) {
-  const output = execFileSync(
-    'gh',
-    ['api', `repos/${REPOSITORY}/issues/${number}`],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-  return JSON.parse(output);
+  try {
+    return execFileSync('git', ['branch', '--show-current'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch (cause) {
+    throw new Error('Not inside a git work tree', { cause });
+  }
 }
 
 export function issueNumber(name) {
   return name.slice(name.indexOf('/') + 1).match(/^[1-9][0-9]*/)[0];
 }
 
-function lookupIssue(fetch, number) {
+function lookupIssue(api, number) {
   try {
-    return fetch(number);
+    return JSON.parse(api([`repos/${REPOSITORY}/issues/${number}`]));
   } catch (error) {
-    // Never print stderr: it can contain authentication details.
-    throw new Error(
-      String(error?.stderr ?? '').includes('HTTP 404')
-        ? `Issue #${number} was not found`
-        : 'GitHub request failed',
-      { cause: error },
-    );
+    if (error?.httpStatus === 404)
+      throw new Error(`Issue #${number} was not found`, { cause: error });
+    throw error;
   }
 }
 
-export function run(
-  argv,
-  { current = currentBranch, issue = fetchIssue } = {},
-) {
+export function run(argv, { current = currentBranch, api = ghApi } = {}) {
   const options = parseArguments(argv);
   if (options.check) {
     const name = options.value ?? current();
@@ -136,7 +128,7 @@ export function run(
       );
     if (options.requireIssue) {
       const number = issueNumber(name);
-      const found = lookupIssue(issue, number);
+      const found = lookupIssue(api, number);
       if (!found || typeof found !== 'object')
         throw new Error(`Issue #${number} was not found`);
       if ('pull_request' in found)
@@ -148,7 +140,7 @@ export function run(
     throw new Error('Usage: branch-name.mjs <issue> | --check [name]');
   if (!/^[1-9][0-9]*$/.test(options.value))
     throw new Error('Issue must be a positive number');
-  const found = lookupIssue(issue, options.value);
+  const found = lookupIssue(api, options.value);
   if (found?.pull_request)
     throw new Error(`Issue #${options.value} is a pull request`);
   const title = found?.title;
@@ -169,8 +161,7 @@ if (
   try {
     console.log(run(process.argv.slice(2)));
   } catch (error) {
-    // Do not print subprocess stderr, which can contain authentication details.
-    console.error(error.status ? 'GitHub request failed' : error.message);
+    console.error(error.message);
     process.exitCode = 1;
   }
 }
