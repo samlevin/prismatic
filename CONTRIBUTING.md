@@ -30,7 +30,7 @@ Each issue gets a priority, a size, and one severity label. Priority defaults to
 | M | One outcome across a few components |
 | L | Too big to start; break it down first |
 
-For the type, use one of `bug`, `enhancement`, or `documentation`, and add `area:` labels for the parts of the repo affected. An epic gets the `epic` label instead of a type label. The full list is in [.github/labels.json](.github/labels.json).
+For the type, use one of `bug`, `enhancement`, or `documentation`, and add `area:` labels for the parts of the repo affected. An epic gets the `epic` label instead of a type label. [.github/labels.json](.github/labels.json) is the source of truth for every label, and it is shared with mcc-stats-suite. Change a label by editing that file, preview the plan with `node scripts/labels-sync.mjs --prune`, and let the push to `main` apply and prune. Never create labels with `gh label create`.
 
 ## Status
 
@@ -49,9 +49,14 @@ Before you start an issue, assign yourself, leave a short comment saying what yo
 - Name the branch `<actor>/<issue>-<slug>`, where the actor is `agent` for AI agents and your GitHub login for people, and later stacked layers append `-part-2`, `-part-3`. Run `node scripts/branch-name.mjs <issue>` (add `--actor <login>` for people, `--layer <n>` for stacked layers) and rename the worktree branch to its output before the first commit; never pick a name by hand. CI rejects other names, and Release Please and Dependabot branches are exempt. Branches opened before this rule fail the check on their next push; rename on GitHub with `gh api -X POST repos/samlevin/prismatic/branches/<old>/rename -f new_name=<new>` so the PR survives, then close and reopen it to re-run the check, because a rename emits no pull_request event; never push a new branch and delete the old one, which closes the PR for good.
 - Title it with [Conventional Commits](https://www.conventionalcommits.org/), e.g. `feat: add CSV export`.
 - Fill in the PR template. Put `Closes #N` for the issue the PR finishes, and link the parent issue if there is one.
+- Run the tests before you push: `node --test scripts/*.test.mjs`.
 - Add tests for behavior you change, and update docs if you change how something is used or operated.
 - Keep PRs reviewable. Past roughly 400 lines of changed production code (not counting tests, docs, or lockfiles), split the work into stacked PRs.
 
 ## Automation
 
 A GitHub Action keeps the board tidy. It moves triaged issues from Inbox to Ready, and it closes a container once all its sub-issues are closed. It needs the `PRISMATIC_PROJECT_TOKEN` repository secret. Details are in [.github/workflows/issue-triage.yml](.github/workflows/issue-triage.yml).
+
+The [CI workflow](.github/workflows/ci.yml) runs `node --test scripts/*.test.mjs` on pull requests and on pushes to `main`.
+
+The [labels workflow](.github/workflows/labels.yml) has two jobs. On pull requests that change `.github/labels.json`, a read-only `preview` job prints the label plan, including which labels it would delete or skip. On `main` (push or manual run), a separate `apply` job with write access applies the file and deletes labels that are not in it and that no issue or pull request carries; a manual run defaults to a dry run. Its script is tested with `node --test scripts/labels-sync.test.mjs`.
