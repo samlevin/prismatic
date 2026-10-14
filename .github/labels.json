@@ -2,6 +2,11 @@
   "repository": "samlevin/prismatic",
   "labels": [
     {
+      "name": "accessibility",
+      "color": "f143ab",
+      "description": "Barrier affecting people with disabilities"
+    },
+    {
       "name": "area: infrastructure",
       "color": "d4c5f9",
       "description": "OpenTofu foundation and persistent shared resources"
@@ -10,6 +15,11 @@
       "name": "area: repository",
       "color": "57606a",
       "description": "Repository-wide tooling, policy, or documentation"
+    },
+    {
+      "name": "automation: container-closed",
+      "color": "cfd3d7",
+      "description": "Managed marker: container closed automatically after its children completed"
     },
     {
       "name": "bug",
@@ -30,6 +40,11 @@
       "name": "enhancement",
       "color": "a2eeef",
       "description": "New feature or request"
+    },
+    {
+      "name": "epic",
+      "color": "6f42c1",
+      "description": "Explicitly requested notable body of work; exclusive work-category label"
     },
     {
       "name": "good first issue",
@@ -92,19 +107,9 @@
       "description": "Planned capability or maintenance with no evidenced defect"
     },
     {
-      "name": "epic",
-      "color": "6f42c1",
-      "description": "Explicitly requested notable body of work; exclusive work-category label"
-    },
-    {
       "name": "wontfix",
       "color": "ffffff",
       "description": "This will not be worked on"
-    },
-    {
-      "name": "automation: container-closed",
-      "color": "cfd3d7",
-      "description": "Managed marker: container closed automatically after its children completed"
     }
   ]
 }
