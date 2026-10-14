@@ -1,0 +1,45 @@
+name: Copy linked issue metadata
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to reconcile
+        required: true
+        type: string
+      dry_run:
+        description: Preview metadata without writes
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-issue-metadata-${{ github.event.pull_request.number || inputs.pull_request }}
+  cancel-in-progress: false
+
+jobs:
+  copy:
+    name: Copy labels, assignees, milestone, and project to PR
+    if: github.repository == 'samlevin/prismatic' && (github.event_name == 'pull_request_target' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Always execute trusted default-branch code, including for fork PRs.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: scripts
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.16.0'
+      - name: Copy labels, assignees, milestone, and project membership
+        env:
+          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_request }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: node scripts/issue-pr-metadata.mjs

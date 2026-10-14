@@ -46,7 +46,7 @@ Before you start an issue, assign yourself, leave a short comment saying what yo
 
 ## Pull requests
 
-- Name the branch `<actor>/<issue>-<slug>`, where the actor is `agent` for AI agents and your GitHub login for people, and later stacked layers append `-part-2`, `-part-3`. Run `node scripts/branch-name.mjs <issue>` (add `--actor <login>` for people, `--layer <n>` for stacked layers) and rename the worktree branch to its output before the first commit; never pick a name by hand. CI rejects other names, and Release Please and Dependabot branches are exempt. Branches opened before this rule fail the check on their next push; rename on GitHub with `gh api -X POST repos/samlevin/prismatic/branches/<old>/rename -f new_name=<new>` so the PR survives, then close and reopen it to re-run the check, because a rename emits no pull_request event; never push a new branch and delete the old one, which closes the PR for good.
+- Name the branch `<actor>/<issue>-<slug>`, where the actor is `agent` for AI agents and your GitHub login for people, and later stacked layers append `-part-2`, `-part-3`. Run `node scripts/branch-name.mjs <issue>` (add `--actor <login>` for people, `--layer <n>` for stacked layers) and rename the worktree branch to its output before the first commit; never pick a name by hand. Nothing in CI checks branch names, so following this rule is up to you.
 - Title it with [Conventional Commits](https://www.conventionalcommits.org/), e.g. `feat: add CSV export`.
 - Fill in the PR template. Put `Closes #N` for the issue the PR finishes, and link the parent issue if there is one.
 - Run the tests before you push: `node --test scripts/*.test.mjs`.
@@ -56,5 +56,9 @@ Before you start an issue, assign yourself, leave a short comment saying what yo
 ## Automation
 
 A GitHub Action keeps the board tidy. It moves triaged issues from Inbox to Ready, and it closes a container once all its sub-issues are closed. It needs the `PRISMATIC_PROJECT_TOKEN` repository secret. Details are in [.github/workflows/issue-triage.yml](.github/workflows/issue-triage.yml).
+
+Two more actions run when a pull request opens, is edited, or leaves draft. [pr-issue-metadata.yml](.github/workflows/pr-issue-metadata.yml) copies the linked issue's labels, assignees, milestone, and project membership onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues. [pr-issue-status.yml](.github/workflows/pr-issue-status.yml) moves every issue the pull request closes to In review, from Ready or In progress for collaborators and from In progress only for everyone else. Both use the same secret and log a skip instead of failing when an issue is not on the board.
+
+[secret-scan.yml](.github/workflows/secret-scan.yml) runs gitleaks on every pull request and push to `main`, and [semantic.pr.yaml](.github/workflows/semantic.pr.yaml) fails a pull request whose title does not follow Conventional Commits.
 
 The [CI workflow](.github/workflows/ci.yml) runs `node --test scripts/*.test.mjs` on pull requests and on pushes to `main`.

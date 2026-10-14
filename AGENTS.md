@@ -44,7 +44,15 @@ Version-controlled agents and skills under `.claude/agents/` and `.claude/skills
 
 ## Branch names
 
-Every branch an agent pushes for an issue is named `agent/<issue>-<slug>`. When one leaf is split into stacked layers, layers after the first end in `-part-<n>`. A branch stacked on another issue's PR uses its own issue's name. Print the name with `node scripts/branch-name.mjs <issue>`, adding `--layer <n>` for layer 2 and up, and create the branch with that name before the first commit. A request with no issue uses `agent/<slug>`, with the slug built by the same rules from a short description of the change. CI checks pull request head names with the same script.
+Every branch an agent pushes for an issue is named `agent/<issue>-<slug>`. When one leaf is split into stacked layers, layers after the first end in `-part-<n>`. A branch stacked on another issue's PR uses its own issue's name:
+
+- `<issue>` is the number of the leaf issue the PR closes, without `#`.
+- `<slug>` is that issue's title in lowercase, with accents dropped and every run of other characters turned into `-`. "Part N" in the title becomes `partN`. The slug is cut to 40 characters at a word boundary, and is `issue` when the title has no ASCII letters or digits.
+- Examples: `agent/5-generate-and-enforce-branch-names-from` for #5, and `agent/5-generate-and-enforce-branch-names-from-part-2` for its second stacked layer.
+
+A request with no issue uses `agent/<slug>`, with the slug built by the same rules from a short description of the change.
+
+For issue work, never type a branch name by hand. Print it with `node scripts/branch-name.mjs <issue>`, adding `--layer <n>` for layer 2 and up. Create the branch with that name, or run `git branch -m <name>` when your tool created the worktree branch under another name. Do this before the first commit. Once a branch is pushed, keep its name, even if the issue title changes later. Nothing in CI checks branch names, so following this rule is up to you.
 
 ## Hard rules
 
@@ -59,5 +67,5 @@ Repo `samlevin/prismatic`, trunk `main`, project [Prismatic delivery](https://gi
 
 - Triage, statuses, and PR rules live in [CONTRIBUTING.md](CONTRIBUTING.md); labels in [.github/labels.json](.github/labels.json); forms in `.github/ISSUE_TEMPLATE/`.
 - PR titles use Conventional Commits, e.g. `feat: add CSV export`. Body: `Closes #N`, plus `Parent issue or epic: #P` when one exists. For a request with no issue, write `No linked issue.` instead and skip the issue state steps.
-- Issue states: claim and move to `In progress` before coding; move to `In review` when the PR opens. Never mark issues `Done`.
+- Issue states: claim and move to `In progress` before coding. `pr-issue-status.yml` moves the closing issue to `In review` when the PR opens; move it yourself only if its run logs a skip. Never mark issues `Done`.
 - Issue titles are plain, with no `[Type]:` prefix. For issue filing, follow `.agents/issue-creation.md`.

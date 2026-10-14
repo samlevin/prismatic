@@ -56,7 +56,25 @@ export function ghGraphql(query, variables) {
   return result.data;
 }
 
-export async function discover(api) {
+// Errors carry the HTTP status when gh reports one and never expose stderr.
+export function ghRest(args) {
+  try {
+    return execFileSync('gh', ['api', ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (cause) {
+    const error = new Error('GitHub request failed', { cause });
+    const match = /HTTP (\d{3})/.exec(String(cause?.stderr ?? ''));
+    if (match) error.httpStatus = Number(match[1]);
+    throw error;
+  }
+}
+
+export async function discover(
+  api,
+  required = { Status: ['Inbox', 'Ready'], Priority: PRIORITIES, Size: SIZES },
+) {
   let projectId;
   const fields = await paginate(async (cursor) => {
     const data = await api(
@@ -73,11 +91,7 @@ export async function discover(api) {
     return project.fields;
   });
   const selected = {};
-  for (const [name, options] of Object.entries({
-    Status: ['Inbox', 'Ready'],
-    Priority: PRIORITIES,
-    Size: SIZES,
-  })) {
+  for (const [name, options] of Object.entries(required)) {
     const matches = fields.filter((field) => field.name === name);
     if (matches.length !== 1)
       throw new Error(`Expected one ${name} single-select field`);
@@ -147,6 +161,25 @@ export async function readItem(api, id, context) {
   return item;
 }
 
+export async function updateProjectStatus(api, context, itemId, status) {
+  const field = context.fields.Status;
+  const options = field.options.filter((option) => option.name === status);
+  if (options.length !== 1)
+    throw new Error(`Missing or ambiguous Status option ${status}`);
+  await api(
+    `mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+      updateProjectV2ItemFieldValue(input: { projectId: $project, itemId: $item,
+        fieldId: $field, value: { singleSelectOptionId: $option } }) { projectV2Item { id } }
+    }`,
+    {
+      project: context.projectId,
+      item: itemId,
+      field: field.id,
+      option: options[0].id,
+    },
+  );
+}
+
 export async function reconcile({
   api,
   dryRun = true,
@@ -190,22 +223,7 @@ export async function reconcile({
       `${dryRun ? 'DRY_RUN would move' : 'Moving'} issue #${fresh.content.number} Inbox -> Ready`,
     );
     if (dryRun) continue;
-    await api(
-      `mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
-        updateProjectV2ItemFieldValue(input: { projectId: $project, itemId: $item,
-          fieldId: $field, value: { singleSelectOptionId: $option } }) {
-          projectV2Item { id }
-        }
-      }`,
-      {
-        project: freshContext.projectId,
-        item: fresh.id,
-        field: freshContext.fields.Status.id,
-        option: freshContext.fields.Status.options.find(
-          (option) => option.name === 'Ready',
-        ).id,
-      },
-    );
+    await updateProjectStatus(api, freshContext, fresh.id, 'Ready');
     updated++;
   }
   log(
