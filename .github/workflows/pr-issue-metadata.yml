@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   copy:
-    name: Copy labels, milestone, and project to PR
+    name: Copy labels, assignees, milestone, and project to PR
     if: github.repository == 'samlevin/prismatic' && (github.event_name == 'pull_request_target' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.16.0'
-      - name: Copy labels, milestone, and project membership
+      - name: Copy labels, assignees, milestone, and project membership
         env:
           PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_request }}

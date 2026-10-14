@@ -83,11 +83,22 @@ export async function readMetadata(api, id) {
     );
     return data.node?.projectItems;
   });
+  const assignees = await paginate(async (cursor) => {
+    const data = await api(
+      `query($id: ID!, $cursor: String) { node(id: $id) {
+        ... on Issue { assignees(first: 100, after: $cursor) { nodes { id } ${PAGE} } }
+        ... on PullRequest { assignees(first: 100, after: $cursor) { nodes { id } ${PAGE} } }
+      } }`,
+      { id, cursor },
+    );
+    return data.node?.assignees;
+  });
   return {
     labels: labels.map((label) => label.id),
     projects: projects
       .filter((item) => item.project && !item.project.closed)
       .map((item) => item.project.id),
+    assignees: assignees.map((assignee) => assignee.id),
   };
 }
 
@@ -138,6 +149,11 @@ export async function copyMetadata({
   const projects = [
     ...new Set(issues.flatMap((issue) => issue.projects)),
   ].filter((id) => !current.projects.includes(id));
+  // The PR inherits whoever owns the issues it closes; nobody is assigned
+  // to an issue by this script, and assignees already on the PR stay.
+  const assignees = [
+    ...new Set(issues.flatMap((issue) => issue.assignees)),
+  ].filter((id) => !current.assignees.includes(id));
   const milestones = [
     ...new Set(issues.map((issue) => issue.milestone?.id).filter(Boolean)),
   ];
@@ -148,7 +164,7 @@ export async function copyMetadata({
   const milestone =
     !pr.milestone && milestones.length === 1 ? milestones[0] : null;
   log(
-    `PR #${number}: ${labels.length} labels, ${projects.length} projects, ${milestone ? 1 : 0} milestone to copy${dryRun ? ' (dry run)' : ''}.`,
+    `PR #${number}: ${labels.length} labels, ${assignees.length} assignees, ${projects.length} projects, ${milestone ? 1 : 0} milestone to copy${dryRun ? ' (dry run)' : ''}.`,
   );
   if (dryRun) return;
   // A description edit during discovery must not apply stale issue metadata.
@@ -164,6 +180,11 @@ export async function copyMetadata({
     await api(
       `mutation($id: ID!, $labels: [ID!]!) { addLabelsToLabelable(input: {labelableId: $id, labelIds: $labels}) { clientMutationId } }`,
       { id: pr.id, labels },
+    );
+  if (assignees.length)
+    await api(
+      `mutation($id: ID!, $assignees: [ID!]!) { addAssigneesToAssignable(input: {assignableId: $id, assigneeIds: $assignees}) { clientMutationId } }`,
+      { id: pr.id, assignees },
     );
   if (milestone && !fresh.node.milestone)
     await api(

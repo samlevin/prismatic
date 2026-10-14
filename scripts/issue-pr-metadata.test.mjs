@@ -41,12 +41,14 @@ function fixture({
       id: 'i1',
       labels: ['l1', 'shared'],
       projects: ['p1'],
+      assignees: ['u1'],
       milestone: { id: 'm1' },
     },
     2: {
       id: 'i2',
       labels: ['l2', 'shared'],
       projects: ['p1', 'p2'],
+      assignees: ['u1', 'u2'],
       milestone: { id: 'm1' },
     },
   };
@@ -86,6 +88,20 @@ function fixture({
         },
       };
     }
+    if (query.includes('assignees(first:')) {
+      const source =
+        variables.id === 'pr'
+          ? existing
+          : Object.values(sources).find((issue) => issue.id === variables.id);
+      return {
+        node: {
+          assignees: {
+            nodes: (source.assignees ?? []).map((id) => ({ id })),
+            pageInfo: { hasNextPage: false },
+          },
+        },
+      };
+    }
     if (query.includes('projectItems(first:')) {
       const source =
         variables.id === 'pr'
@@ -109,11 +125,12 @@ function fixture({
   return { api, writes, calls, log: () => {} };
 }
 
-test('copies the union once while preserving PR labels and projects', async () => {
+test('copies the union once while preserving PR labels, assignees, and projects', async () => {
   const f = fixture({
     existing: {
       labels: ['manual', 'shared'],
       projects: ['manual-project', 'p1'],
+      assignees: ['reviewer', 'u1'],
     },
   });
   await copyMetadata({ ...f, number: 10, dryRun: false });
@@ -121,14 +138,35 @@ test('copies the union once while preserving PR labels and projects', async () =
     f.writes.map((write) => write.variables),
     [
       { id: 'pr', labels: ['l1', 'l2'] },
+      { id: 'pr', assignees: ['u2'] },
       { id: 'pr', milestone: 'm1' },
       { project: 'p2', id: 'pr' },
     ],
   );
+  assert.ok(
+    f.writes.every(
+      (write) =>
+        !write.query.includes('assigneeIds') || write.variables.id === 'pr',
+    ),
+  );
+});
+test('unassigned issues add no assignees', async () => {
+  const f = fixture({
+    sources: {
+      1: { id: 'i1', labels: [], projects: [], assignees: [], milestone: null },
+    },
+    body: 'Closes #1',
+  });
+  await copyMetadata({ ...f, number: 10, dryRun: false });
+  assert.deepEqual(f.writes, []);
 });
 test('reruns with matching metadata make no writes', async () => {
   const f = fixture({
-    existing: { labels: ['l1', 'l2', 'shared'], projects: ['p1', 'p2'] },
+    existing: {
+      labels: ['l1', 'l2', 'shared'],
+      projects: ['p1', 'p2'],
+      assignees: ['u1', 'u2'],
+    },
     milestone: { id: 'm1' },
   });
   await copyMetadata({ ...f, number: 10, dryRun: false });
@@ -171,10 +209,19 @@ test('changed descriptions prevent mutations', async () => {
   );
   assert.deepEqual(f.writes, []);
 });
-test('project and label reads paginate and exclude closed projects', async () => {
+test('project, label, and assignee reads paginate and exclude closed projects', async () => {
   const cursors = [];
   const api = async (query, { cursor }) => {
     cursors.push(cursor);
+    if (query.includes('assignees(first:'))
+      return {
+        node: {
+          assignees: {
+            nodes: [{ id: cursor ? 'u2' : 'u1' }],
+            pageInfo: { hasNextPage: !cursor, endCursor: 'next' },
+          },
+        },
+      };
     if (query.includes('labels(first:'))
       return {
         node: {
@@ -196,8 +243,9 @@ test('project and label reads paginate and exclude closed projects', async () =>
   assert.deepEqual(await readMetadata(api, 'issue'), {
     labels: ['l1', 'l2'],
     projects: ['p1'],
+    assignees: ['u1', 'u2'],
   });
-  assert.deepEqual(cursors, [null, 'next', null, 'next']);
+  assert.deepEqual(cursors, [null, 'next', null, 'next', null, 'next']);
 });
 test('discovery failures prevent partial writes', async () => {
   const f = fixture();
@@ -297,6 +345,7 @@ test('valid issues still supply metadata alongside missing references', async ()
     f.writes.map((write) => write.variables),
     [
       { id: 'pr', labels: ['l1', 'shared'] },
+      { id: 'pr', assignees: ['u1'] },
       { id: 'pr', milestone: 'm1' },
       { project: 'p1', id: 'pr' },
     ],
