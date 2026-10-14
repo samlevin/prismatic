@@ -20,5 +20,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.16.0'
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Generated agent definitions are current
+        run: npm run agents:check
       - name: Test
         run: node --test scripts/*.test.mjs

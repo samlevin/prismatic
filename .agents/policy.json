@@ -1,0 +1,205 @@
+{
+  "description": "Repository binding, model, and effort policy for the agent workflows. scripts/agent-policy.mjs reads this file; both the Claude Code and Codex definitions are generated from it. The capabilities and supported models match mcc-stats-suite; only the binding is this repository's.",
+  "binding": {
+    "namespace": "prism",
+    "label": "Prismatic",
+    "repository": "samlevin/prismatic",
+    "project": {
+      "owner": "samlevin",
+      "number": 2,
+      "name": "Prismatic delivery"
+    },
+    "docs": {
+      "triage": "CONTRIBUTING.md",
+      "workflow": "AGENTS.md",
+      "guides": [
+        "CONTRIBUTING.md"
+      ]
+    },
+    "features": {
+      "infrastructure": false
+    }
+  },
+  "capabilities": {
+    "issue-creation": {
+      "summary": "Plan, draft, and publish issues in the main thread",
+      "claude": {
+        "model": "sonnet",
+        "effort": "medium"
+      },
+      "codex": {
+        "model": "gpt-6.1-sol",
+        "effort": "medium"
+      }
+    },
+    "issue-triage": {
+      "summary": "Independent read-only classification of drafted issues",
+      "claude": {
+        "model": "haiku",
+        "effort": "low"
+      },
+      "codex": {
+        "model": "gpt-6-luna",
+        "effort": "low"
+      }
+    },
+    "orchestration": {
+      "summary": "Serial dispatch of a container's executable leaves",
+      "claude": {
+        "model": "sonnet",
+        "effort": "medium"
+      },
+      "codex": {
+        "model": "gpt-6-luna",
+        "effort": "medium"
+      }
+    },
+    "implementation": {
+      "summary": "Leaf delivery and PR rework through a ready-for-review PR",
+      "claude": {
+        "model": "opus",
+        "effort": "high"
+      },
+      "codex": {
+        "model": "gpt-6.1-sol",
+        "effort": "high"
+      }
+    },
+    "stack-management": {
+      "summary": "Branch topology and gh stack operations for the implementer",
+      "claude": {
+        "model": "sonnet",
+        "effort": "low"
+      },
+      "codex": {
+        "model": "gpt-6-luna",
+        "effort": "low"
+      }
+    },
+    "code-review": {
+      "summary": "Read-only review against acceptance criteria and exact SHAs",
+      "claude": {
+        "model": "opus",
+        "effort": "high"
+      },
+      "codex": {
+        "model": "gpt-6.1-sol",
+        "effort": "high"
+      }
+    },
+    "security-review": {
+      "summary": "Explicitly requested read-only security review",
+      "claude": {
+        "model": "opus",
+        "effort": "max"
+      },
+      "codex": {
+        "model": "gpt-6-astra",
+        "effort": "high"
+      }
+    }
+  },
+  "roles": {
+    "issue-triager": "issue-triage",
+    "orchestrator": "orchestration",
+    "implementer": "implementation",
+    "stack-manager": "stack-management",
+    "code-reviewer": "code-review",
+    "security-reviewer": "security-review"
+  },
+  "supported": {
+    "claude": {
+      "description": "Model aliases accepted by the Agent tool and subagent frontmatter, with the effort levels each supports. Full IDs matching modelIdPattern are accepted with the same effort levels.",
+      "modelIdPattern": "^claude-[a-z0-9-]+$",
+      "models": {
+        "haiku": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "sonnet": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "opus": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "fable": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    },
+    "codex": {
+      "description": "Model slugs accepted by spawn_agent, with the reasoning efforts each supports. Keep this in step with the Codex model catalog (`codex debug models`).",
+      "models": {
+        "gpt-6.1-sol": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "ultra"
+        ],
+        "gpt-6-sol": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "ultra"
+        ],
+        "gpt-6-astra": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "ultra"
+        ],
+        "gpt-6-luna": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "gpt-5.6-sol": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "ultra"
+        ],
+        "gpt-5.6-terra": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "ultra"
+        ],
+        "gpt-5.6-luna": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    }
+  }
+}
