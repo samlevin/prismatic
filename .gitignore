@@ -2,3 +2,4 @@
 .claude/worktrees/
 CLAUDE.local.md
 node_modules/
+.codex/worktrees/
