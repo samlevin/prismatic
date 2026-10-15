@@ -474,6 +474,42 @@ test('the write-prose skill keeps its attribution in both tools', () => {
     );
 });
 
+test('the review-code skill resolves #N as a pull request in both tools', () => {
+  const files = render();
+  for (const path of [
+    `.claude/skills/${PREFIX}review-code/SKILL.md`,
+    `.agents/skills/${PREFIX}review-code/SKILL.md`,
+  ]) {
+    const skill = files.get(path);
+    assert.match(
+      skill,
+      /`#N`, a bare number `N`, or a PR URL always names pull request N/,
+    );
+    assert.match(
+      skill,
+      /gh pr view N --repo \S+ --json [^`]*closingIssuesReferences/,
+    );
+    assert.match(skill, /no pull request #N exists/);
+    assert.match(skill, /Do not fall back to reading N as an issue/);
+    assert.match(skill, /git fetch origin pull\/N\/head <baseRefName>/);
+    assert.match(skill, /criteria come from the request/);
+    assert.doesNotMatch(skill, /its issue's acceptance criteria/);
+    assert.match(
+      skill,
+      /^description: .*pull request \(open, merged, or closed\) or pushed branch.*always pull request N, never an issue/m,
+    );
+  }
+  assert.match(
+    files.get(`.claude/skills/${PREFIX}review-code/SKILL.md`),
+    /^argument-hint: "?<#PR \| PR number \| PR URL \| branch>/m,
+  );
+  for (const path of [
+    `.claude/agents/${PREFIX}code-reviewer.md`,
+    `.codex/agents/${PREFIX}code-reviewer.toml`,
+  ])
+    assert.match(files.get(path), /`pull\/<N>\/head` in `requested` mode/);
+});
+
 test('generated definitions in the repository are current', () => {
   assert.deepEqual(check(), []);
 });
