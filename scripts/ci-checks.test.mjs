@@ -147,7 +147,7 @@ test('the checks job runs after detection with its selection', () => {
   assert.ok(run.steps.some((candidate) => candidate.run === 'npm ci'));
 });
 
-test('the required job waits for every other job and runs unless the run is cancelled', () => {
+test('the required job waits for every other job and runs even when the run is cancelled', () => {
   const { jobs } = ciWorkflow;
   const required = jobs['require-scoped-checks'];
   assert.deepEqual(
@@ -156,10 +156,16 @@ test('the required job waits for every other job and runs unless the run is canc
       .filter((id) => id !== 'require-scoped-checks')
       .sort(),
   );
+  // A skipped job reports success, so a cancelled run must still fail here.
   for (const cancelled of [true, false])
     assert.equal(
-      evaluate(required.if, { cancelled: () => cancelled }),
-      !cancelled,
+      evaluate(required.if, {
+        always: () => true,
+        cancelled: () => cancelled,
+        success: () => !cancelled,
+        failure: () => false,
+      }),
+      true,
     );
   assert.deepEqual(required.steps[0].env, {
     SCOPE_RESULT: '${{ needs.detect-changes.result }}',

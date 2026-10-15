@@ -100,8 +100,9 @@ test('workflows not started by a pull request or push name their subject', () =>
   }
 });
 
-test('required status checks keep the names the main ruleset requires', () => {
-  // Renaming one of these jobs needs a matching ruleset change at merge.
+test('required status check candidates keep their names', () => {
+  // These are the jobs the main ruleset should require. Renaming one needs a
+  // matching ruleset change at merge once the ruleset requires it.
   for (const [file, id, name] of [
     [
       'ci-checks.yml',

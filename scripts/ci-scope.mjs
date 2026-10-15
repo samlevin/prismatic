@@ -1,7 +1,7 @@
 // Selects the CI checks a pull request needs from its changed paths.
 //
 // The CI workflow reads this file from the pull request's base commit, so a
-// pull request cannot loosen its own selection. Keep the exports pure: tests
+// change to this file takes effect only after it merges. Keep the exports pure: tests
 // and the workflow call them without a checkout or GitHub access.
 
 // Directories whose files feed lint, the generated agent definitions, or the

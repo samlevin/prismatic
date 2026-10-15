@@ -97,13 +97,13 @@ jobs:
           CI_FULL: ${{ needs.detect-changes.outputs.full }}
         run: node scripts/ci-checks.mjs
 
-  # The main ruleset requires this job's name. A skipped job cannot be a
-  # required check, so this job always runs and fails unless every selected
-  # check passed.
+  # The main ruleset should require this job's name and no other job here.
+  # GitHub reports a skipped job as passing, so this job runs even when the
+  # run is cancelled, and fails unless every selected check passed.
   require-scoped-checks:
     name: Require every check selected for the changed files
     needs: [detect-changes, run-checks]
-    if: ${{ !cancelled() }}
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
