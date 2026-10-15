@@ -9,7 +9,7 @@
     {
       "name": "area: infrastructure",
       "color": "d4c5f9",
-      "description": "OpenTofu foundation and persistent shared resources"
+      "description": "Cloud foundation and persistent shared resources"
     },
     {
       "name": "area: repository",

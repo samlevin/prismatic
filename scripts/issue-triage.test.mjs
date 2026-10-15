@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   configuration,
@@ -513,4 +513,55 @@ test('catalog has unique names, supported severities, and all directly affected 
     assert.match(label.color, /^[a-f0-9]{6}$/);
     assert.ok(label.description.length > 0);
   }
+});
+
+// Every directory under packages/ is an npm workspace and needs a
+// `package: <directory>` label so issues and PRs can name it.
+function workspacesWithoutLabels(directories, labels) {
+  const names = new Set(labels.map((label) => label.name));
+  return directories.filter((name) => !names.has(`package: ${name}`));
+}
+
+function workspaceDirectories() {
+  try {
+    return readdirSync(new URL('../packages/', import.meta.url), {
+      withFileTypes: true,
+    })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+test('every workspace under packages/ has a package label', () => {
+  const manifest = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  );
+  assert.deepEqual(manifest.workspaces, ['packages/*']);
+  const { labels } = JSON.parse(
+    readFileSync(new URL('../.github/labels.json', import.meta.url), 'utf8'),
+  );
+  assert.deepEqual(workspacesWithoutLabels(workspaceDirectories(), labels), []);
+  for (const label of labels.filter(({ name }) => name.startsWith('package:')))
+    assert.match(label.name, /^package: [a-z0-9][a-z0-9-]*$/);
+});
+
+test('a workspace without a package label is reported', () => {
+  const labels = [{ name: 'package: api' }, { name: 'area: repository' }];
+  assert.deepEqual(workspacesWithoutLabels(['api'], labels), []);
+  assert.deepEqual(workspacesWithoutLabels(['api', 'web'], labels), ['web']);
+  assert.deepEqual(workspacesWithoutLabels(['repository'], labels), [
+    'repository',
+  ]);
+});
+
+test('label descriptions do not name OpenTofu or Terraform', () => {
+  const { labels } = JSON.parse(
+    readFileSync(new URL('../.github/labels.json', import.meta.url), 'utf8'),
+  );
+  for (const label of labels)
+    assert.doesNotMatch(label.description, /OpenTofu|Terraform/, label.name);
 });

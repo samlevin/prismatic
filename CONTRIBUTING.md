@@ -49,16 +49,22 @@ Before you start an issue, assign yourself, leave a short comment saying what yo
 - Name the branch `<actor>/<issue>-<slug>`, where the actor is `agent` for AI agents and your GitHub login for people, and later stacked layers append `-part-2`, `-part-3`. Run `node scripts/branch-name.mjs <issue>` (add `--actor <login>` for people, `--layer <n>` for stacked layers) and rename the worktree branch to its output before the first commit; never pick a name by hand. Nothing in CI checks branch names, so following this rule is up to you.
 - Title it with [Conventional Commits](https://www.conventionalcommits.org/), e.g. `feat: add CSV export`.
 - Fill in the PR template. Put `Closes #N` for the issue the PR finishes, and link the parent issue if there is one.
-- Run the tests before you push: `node --test scripts/*.test.mjs`.
+- Run `npm run check` before you push. It runs the format check, lint, the generated agent definition check, and every script test. `npm run format` and `npm run lint:fix` fix what they can.
 - Add tests for behavior you change, and update docs if you change how something is used or operated.
 - Keep PRs reviewable. Past roughly 400 lines of changed production code (not counting tests, docs, or lockfiles), split the work into stacked PRs.
 
 ## Automation
 
-A GitHub Action keeps the board tidy. It moves triaged issues from Inbox to Ready, and it closes a container once all its sub-issues are closed. It needs the `PRISMATIC_PROJECT_TOKEN` repository secret. Details are in [.github/workflows/issue-triage.yml](.github/workflows/issue-triage.yml).
+Workflow files are named `<area>-<name>.yml`, and each workflow is named `<Area>: <name>`. The areas are `ci` for checks on pull requests and pushes, and `tracker` for the project board. Every job and step has a name that says what it does. `scripts/workflow-names.test.mjs` enforces this.
 
-Two more actions run when a pull request opens, is edited, or leaves draft. [pr-issue-metadata.yml](.github/workflows/pr-issue-metadata.yml) copies the linked issue's labels, assignees, milestone, and project membership onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues. [pr-issue-status.yml](.github/workflows/pr-issue-status.yml) moves every issue the pull request closes to In review, from Ready or In progress for collaborators and from In progress only for everyone else. Both use the same secret and log a skip instead of failing when an issue is not on the board.
+[ci-checks.yml](.github/workflows/ci-checks.yml) runs only the checks a pull request needs. The `Detect changed areas` job lists the changed files and classifies them with `scripts/ci-scope.mjs`, read from the base commit so a pull request cannot loosen its own selection. A pull request that changes only Markdown or `LICENSE` runs the format check. Any other change, including a path the classifier does not know, also runs lint, `npm run agents:check`, and every `scripts/*.test.mjs`. Pushes to `main` run every check, and so does a pull request whose files cannot be classified. `scripts/ci-checks.mjs` runs the selected commands. The `Require every check selected for the changed files` job always runs and fails unless every selected check passed. Require this job, not the individual checks, in the `main` ruleset, because a skipped job cannot be a required check.
 
-[secret-scan.yml](.github/workflows/secret-scan.yml) runs gitleaks on every pull request and push to `main`, and [semantic.pr.yaml](.github/workflows/semantic.pr.yaml) fails a pull request whose title does not follow Conventional Commits.
+[ci-secret-scan.yml](.github/workflows/ci-secret-scan.yml) runs Gitleaks on every pull request and push to `main`, and [ci-pr-title.yml](.github/workflows/ci-pr-title.yml) fails a pull request whose title does not follow Conventional Commits.
 
-The [CI workflow](.github/workflows/ci.yml) runs `node --test scripts/*.test.mjs` on pull requests and on pushes to `main`.
+[tracker-issue-states.yml](.github/workflows/tracker-issue-states.yml) keeps the board tidy. It moves triaged issues from Inbox to Ready, and it closes a container once all its sub-issues are closed. It needs the `PRISMATIC_PROJECT_TOKEN` repository secret.
+
+Two more tracker workflows run when a pull request opens, is edited, or leaves draft. [tracker-pr-metadata.yml](.github/workflows/tracker-pr-metadata.yml) copies the linked issue's labels, assignees, milestone, and project membership onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues. [tracker-pr-issue-status.yml](.github/workflows/tracker-pr-issue-status.yml) moves every issue the pull request closes to In review, from Ready or In progress for collaborators and from In progress only for everyone else. Both use the same secret and log a skip instead of failing when an issue is not on the board.
+
+## Workspaces
+
+`package.json` declares `packages/*` as npm workspaces. Each directory under `packages/` needs a `package: <directory>` label in [.github/labels.json](.github/labels.json), and a test fails when one is missing. `.tool-versions` pins the Node version that CI uses.
