@@ -26,7 +26,7 @@ body:
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: Use observable, testable conditions.
+      description: Use observable, testable conditions. For a removal or rewrite, also list what must stay unchanged.
       placeholder: |
         - [ ] Given ..., when ..., then ...
         - [ ] Existing ... remains unchanged
@@ -36,7 +36,7 @@ body:
     id: approach
     attributes:
       label: Implementation notes
-      description: Name likely boundaries, contracts, risks, and decisions. Leave implementation freedom where it is useful.
+      description: Name likely boundaries, contracts, risks, and decisions. For a removal or rewrite, describe the intent and the behavior it affects, not only the strings to replace. Leave implementation freedom where it is useful.
   - type: textarea
     id: validation
     attributes:

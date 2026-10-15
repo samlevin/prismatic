@@ -1,5 +1,5 @@
 {
-  "description": "Repository binding, model, and effort policy for the agent workflows. scripts/agent-policy.mjs reads this file; both the Claude Code and Codex definitions are generated from it. The capabilities and supported models match mcc-stats-suite; only the binding is this repository's.",
+  "description": "Repository binding, model, and effort policy for the agent workflows. scripts/agent-policy.mjs reads this file; both the Claude Code and Codex definitions are generated from it. Only the binding block is specific to this repository.",
   "binding": {
     "namespace": "prism",
     "label": "Prismatic",

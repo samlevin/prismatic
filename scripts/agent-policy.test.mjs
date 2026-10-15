@@ -370,7 +370,7 @@ capability: issue-creation
 claude:
   disable-model-invocation: true
 codex:
-  display_name: "MCC: Sample"
+  display_name: "${policy.binding.label}: Sample"
   allow_implicit_invocation: false
 ---
 Body.
@@ -394,7 +394,10 @@ Body.
   ]);
   assert.match(codex['SKILL.md'], new RegExp(`^name: ${PREFIX}sample$`, 'm'));
   assert.doesNotMatch(codex['SKILL.md'], /^model:/m);
-  assert.match(codex['agents/openai.yaml'], /display_name: 'MCC: Sample'/);
+  assert.match(
+    codex['agents/openai.yaml'],
+    new RegExp(`display_name: '${policy.binding.label}: Sample'`),
+  );
   assert.match(codex['agents/openai.yaml'], /allow_implicit_invocation: false/);
 });
 
