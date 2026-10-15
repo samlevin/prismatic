@@ -36,4 +36,4 @@ Use `spawn_agent` with `agent_type: {{prefix}}security-reviewer`, `model` and `r
 
 ## Report
 
-Print the verdict, scope and SHAs, findings, limits, and the `Policy:` and `Runtime:` lines verbatim. If the runtime model differs from the dispatched one, say so. Never print secret values; cite locations. Filing issues or posting to the PR needs a separate explicit request.
+Print the verdict, scope and SHAs, findings, limits, and the `Requested settings:` line verbatim. Never print secret values; cite locations. Filing issues or posting to the PR needs a separate explicit request.

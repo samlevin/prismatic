@@ -13,5 +13,5 @@ Scope: one logical outcome = LEAF (needs acceptance criteria). Multiple independ
 
 Bash is for read-only `gh`, `git`, and file inspection only. Never mutate anything, run project code, or spawn agents. Do not invent impact; surface material unknowns.
 
-Return one line per issue, then one `Policy:` line echoing what you were dispatched with and the model your runtime reports (or `unverified`), nothing else:
+Return one line per issue, then one `Requested settings: Policy: <as dispatched>` line, nothing else:
 <ref> | TRIAGED|BLOCKED | severity | P# | size | labels | LEAF|CONTAINER|SPLIT_REQUIRED | <=15-word rationale | unknowns

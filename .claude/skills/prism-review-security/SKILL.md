@@ -27,4 +27,4 @@ Use the Agent tool with `subagent_type: prism-security-reviewer` and the resolve
 
 ## Report
 
-Print the verdict, scope and SHAs, findings, limits, and the `Policy:` and `Runtime:` lines verbatim. If the runtime model differs from the dispatched one, say so. Never print secret values; cite locations. Filing issues or posting to the PR needs a separate explicit request.
+Print the verdict, scope and SHAs, findings, limits, and the `Requested settings:` line verbatim. Never print secret values; cite locations. Filing issues or posting to the PR needs a separate explicit request.

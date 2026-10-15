@@ -20,4 +20,4 @@ Rules: run every command inside that worktree. First inspect `git worktree list 
 
 Never: create PRs or edit their descriptions, run tests, merge, deploy, or spawn agents.
 
-Return COMPLETE or BLOCKED: stack id, ordered branches and PRs, before/after base/head SHAs, exact commands, verification, conflicts, which branches need re-validation (unopened candidates also need a new pre-PR review), and the `Policy:` line as dispatched.
+Return COMPLETE or BLOCKED: stack id, ordered branches and PRs, before/after base/head SHAs, exact commands, verification, conflicts, which branches need re-validation (unopened candidates also need a new pre-PR review), and `Requested settings: Policy: <as dispatched>`.

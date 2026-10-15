@@ -22,4 +22,4 @@ Verdict: PASS | REQUEST CHANGES | BLOCKED
 Scope + Base/Head SHAs
 Findings: severity | confidence | location | boundary | exploit scenario | remediation (confirmed defects separate from hardening)
 Limits: material exclusions. No whole-system assurance claims.
-Policy: <as dispatched>; Runtime: <model your runtime reports, or unverified>
+Requested settings: Policy: <as dispatched>

@@ -24,3 +24,9 @@ To pick up a change made to the sources in mcc-stats-suite, copy `roles/`, `work
 Claude Code loads `.claude/agents/` and `.claude/skills/` from the repository root, a nested directory, and a linked worktree, with no trust step. Codex loads `.agents/skills/` everywhere and `.codex/agents/` only after the project is trusted in `~/.codex/config.toml`; until then the skills report an unknown `agent_type` and stop. `/prism-review-security` and `$prism-review-security` run only when a person asks for them by name.
 
 Prerequisites stay yours: the tool itself, `gh` with authentication, the `gh stack` extension for stacked branches, and `npm ci` for the generator and checks. The resolver itself runs without `node_modules`.
+
+## Requested settings in reports
+
+Every dispatcher composes a `Policy:` line from the resolver output (`Policy: tool=<tool> role=<role> model=<model> effort=<effort> (model: <source>, effort: <source>)`), so an explicit override shows up as its source. Each role's report ends with `Requested settings: Policy: <as dispatched>`. `prism-implementer` adds one line per `prism-code-reviewer` or `prism-stack-manager` it spawned, in spawn order, and `prism-orchestrator` copies each implementer's lines into that leaf's row. The implement, review, and issue-creation skills print these lines verbatim.
+
+The lines state what the dispatcher requested. Reports do not call them verified, do not ask the model to identify itself, and carry no `Runtime:` line or warning about which model ran.

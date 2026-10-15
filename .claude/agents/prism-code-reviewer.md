@@ -25,5 +25,5 @@ Base/Head: <sha>..<sha>
 Acceptance: met / gaps (one line each)
 Findings: severity | file:line | problem | fix
 Limits: only missing evidence that affects the verdict; tests read, not run.
-Policy: <as dispatched>; Runtime: <model your runtime reports, or unverified>
+Requested settings: Policy: <as dispatched>
 The verdict is valid only for that exact base/head pair.
