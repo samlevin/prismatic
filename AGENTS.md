@@ -1,10 +1,10 @@
 # Agent rules
 
-These repository instructions apply to all coding agents, including Claude and Codex. The repository ships its own namespaced agents and skills for both tools (see [Repository agent workflows](#repository-agent-workflows)); tool runtime details live in those definitions, never in a contributor's personal configuration. Prismatic holds its issue workflow so far: issue forms, labels, and the Node scripts in `scripts/` that keep the project board in sync. There is no product code yet. Do not read CONTRIBUTING.md or other guides unless the task changes them or the loaded instructions lack a rule you need.
+These rules apply to every coding agent, including Claude Code and Codex. Prismatic has no product code yet. It holds the issue workflow (issue forms, labels, and the Node scripts in `scripts/` that keep the project board in sync) and the agent workflows described below. Do not read CONTRIBUTING.md or other guides unless the task changes them or these rules lack one you need.
 
 ## Checks
 
-Run the narrowest set that covers your change, once before pushing.
+Run the narrowest set that covers your change, once before pushing. `npm run format` and `npm run lint:fix` fix what they can.
 
 | Changed | Run |
 | --- | --- |
@@ -12,21 +12,21 @@ Run the narrowest set that covers your change, once before pushing.
 | `scripts/`, `.github/`, or root configuration | `npm run check` (format, lint, agent definitions, and every script test) |
 | `.agents/`, `.claude/`, `.codex/`, or `scripts/agent-policy*` | `npm run agents:generate` after editing a source, then `npm run check` |
 
-Tests mock GitHub and never call it.
+CI picks its checks from the changed files, as CONTRIBUTING.md describes. Tests mock GitHub and never call it.
 
 ## Autonomous delivery
 
-- A delivery request authorizes issue claims, project moves, commits, pushes, and ready-for-review PRs. Merges, deployments, destructive operations, and changes to GitHub repository settings, CI secrets, or agent tool settings require explicit user authorization.
-- Each writer works in its own git worktree based on fresh `origin/main`. Use the worktree your tool creates (Claude Code: `.claude/worktrees/`); otherwise run `git worktree add` under the ignored `.codex/worktrees/` directory. Never edit, install, build, or switch branches in the human checkout. Never modify a worktree you did not create. If your worktree holds changes you did not make, stop and report them instead of committing or discarding them.
+- A delivery request authorizes issue claims, project moves, commits, pushes, and ready-for-review PRs. Filing authorizes issue publication. Review authorizes no edits or PR writes. Merges, deployments, destructive operations, and changes to GitHub repository settings, CI secrets, or agent tool settings require explicit user authorization.
+- Each writer works in its own git worktree based on fresh `origin/main`: the one your tool creates (Claude Code: `.claude/worktrees/`), or else one you add with `git worktree add` under the ignored `.codex/worktrees/`. Never edit, install, build, or switch branches in the human checkout, and never modify a worktree you did not create. If your worktree holds changes you did not make, stop and report them instead of committing or discarding them.
 - When a leaf lacks Priority or Size, set Priority to P2 and Size from the scope, as `.agents/issue-creation.md` does. Missing tracker metadata alone does not block delivery. Stop for a concrete unmet prerequisite or missing acceptance criteria.
-- When a leaf depends on an unmerged prerequisite PR, stack on it without asking: create the worktree from fresh `origin/main`, then base the branch on the prerequisite branch. You may build on an unmerged blocker whose PR is open, ready for review, passing checks, and pre-PR approved; record its head SHA in your claim. Split one leaf into stacked layers only when each layer is reviewable on its own; line count alone does not require a stack.
+- When a leaf depends on an unmerged prerequisite PR that is open, ready for review, passing checks, and pre-PR approved, stack on it without asking: create the worktree from fresh `origin/main`, base the branch on the prerequisite branch, and record its head SHA in your claim. Split one leaf into stacked layers only when each layer is reviewable on its own; line count alone does not require a stack.
 - Hand off after the final push. Include acceptance criteria, verified prerequisites, repo, branch, worktree path, the head SHA, and the base SHA from `git merge-base <base> HEAD`. Rework handoffs include the existing PR URL.
 - Use independent code review for changes across components, shared contracts, security boundaries, and other substantial behavior changes. Always use it, however small the diff, for any change to `.agents/`, `.claude/`, `.codex/`, `AGENTS.md`, `scripts/agent-policy*`, or `.github/workflows/`. Elsewhere, skip it for localized low-risk changes, documentation, and mechanical edits. Reviewers check the diff and relevant callers against the supplied criteria. They may run read-only `git` and `gh` commands, but never edit files or run project code.
 - Report what changed, the PR URL, checks and results, and any concrete blocker. Report current CI status without waiting for, polling, or rerunning remote CI.
 
 ## Repository agent workflows
 
-Version-controlled agents and skills under `.claude/agents/` and `.claude/skills/` (Claude Code) and `.codex/agents/` and `.agents/skills/` (Codex) encapsulate delivery. Every identifier starts with `prism-`, so a contributor's own `code-reviewer` or `issue-implementer` keeps working, and routing always names the `prism-` definition. Both tools get the same roles, handoffs, and checks; only the packaging differs. The definitions are generated from `.agents/roles/`, `.agents/workflows/`, and `.agents/policy.json`: edit the source, run `npm run agents:generate`, and commit the output, or ask `prism-agents` to do all three. `.agents/README.md` has the layout, the trust requirements, and how to pick up upstream source changes.
+The repository ships the same delivery roles, handoffs, and checks for Claude Code (`.claude/agents/`, `.claude/skills/`) and Codex (`.codex/agents/`, `.agents/skills/`). Tool runtime details live in these definitions, not in configuration outside the repository. Every identifier starts with `prism-` so it cannot collide with a same-named agent or skill defined elsewhere, and routing always names the `prism-` definition. The definitions are generated from `.agents/roles/`, `.agents/workflows/`, and `.agents/policy.json`: edit the source, run `npm run agents:generate`, and commit the output, or ask `prism-agents` to do all three. `.agents/README.md` has the layout and the trust requirements.
 
 | Request | Claude Code | Codex | Role it dispatches |
 | --- | --- | --- | --- |
@@ -38,21 +38,15 @@ Version-controlled agents and skills under `.claude/agents/` and `.claude/skills
 | Change, add, or regenerate these agents and skills | `/prism-agents` | `$prism-agents` | none; edits sources, regenerates both tools, verifies |
 
 - Serial delivery: `prism-orchestrator` dispatches one executable leaf at a time in dependency order and starts the next only after the previous leaf's PR is open or its blocker is recorded. Sibling leaves never run concurrently, even on request.
-- Handoffs: `prism-implementer` spawns `prism-code-reviewer` before opening a PR when the review threshold above applies, and `prism-stack-manager` for stacked branches. Nothing else spawns a reviewer, and no automatic flow spawns `prism-security-reviewer`.
-- Authority: filing authorizes issue publication; implementation authorizes claims, project moves, commits, pushes, and ready-for-review PRs; review authorizes no edits or PR writes. Merges, deployments, and settings changes keep their separate approval.
-- Model and effort: `.agents/policy.json` names the model and effort for issue creation, triage, orchestration, implementation, stack management, code review, and security review, per tool. Every dispatcher runs `node scripts/agent-policy.mjs resolve --tool <claude|codex> --role <role>` and passes the result explicitly when it spawns; it never inherits a session or contributor default. An explicit `model <name>` or `effort <level>` in the request overrides only that setting, for that task and the handoffs it names (`reviewer effort max`), and changes nothing on disk. Unsupported values fail with a message instead of substituting another model or effort. Each agent's report ends with `Requested settings: Policy: <as dispatched>`, plus one such line for every role it spawned, and relaying skills print those lines verbatim. They record what was requested; reports never claim the model was verified and say nothing about which model ran.
+- Handoffs: `prism-implementer` spawns `prism-code-reviewer` before opening a PR when the review rule above applies, and `prism-stack-manager` for stacked branches. Nothing else spawns a reviewer, and no automatic flow spawns `prism-security-reviewer`.
+- Model and effort: `.agents/policy.json` names the model and effort for each role, per tool. Every dispatcher runs `node scripts/agent-policy.mjs resolve --tool <claude|codex> --role <role>` and passes the result explicitly when it spawns, never inheriting a session or user default. An explicit `model <name>` or `effort <level>` in the request overrides only that setting, for that task and the handoffs it names (`reviewer effort max`), and changes nothing on disk. Unsupported values fail with a message instead of substituting another model or effort.
+- Reports: each agent's report ends with `Requested settings: Policy: <as dispatched>`, plus one such line for every role it spawned, and relaying skills print those lines verbatim. The lines record what was requested. Reports never claim the model was verified, never ask a model to identify itself, and carry no `Runtime:` line or other remark about which model ran.
 
 ## Branch names
 
-Every branch an agent pushes for an issue is named `agent/<issue>-<slug>`. When one leaf is split into stacked layers, layers after the first end in `-part-<n>`. A branch stacked on another issue's PR uses its own issue's name:
+Name every branch you push for an issue `agent/<issue>-<slug>`, where `<issue>` is the leaf the PR closes, even when the branch stacks on another issue's PR. Stacked layers after the first end in `-part-<n>`. Print the name with `node scripts/branch-name.mjs <issue>`, adding `--layer <n>` for layer 2 and up, and never type it by hand. Create the branch with that name, or run `git branch -m <name>` on the branch your tool created, before the first commit. Once a branch is pushed, keep its name even if the issue title changes. Nothing in CI checks branch names.
 
-- `<issue>` is the number of the leaf issue the PR closes, without `#`.
-- `<slug>` is that issue's title in lowercase, with accents dropped and every run of other characters turned into `-`. "Part N" in the title becomes `partN`. The slug is cut to 40 characters at a word boundary, and is `issue` when the title has no ASCII letters or digits.
-- Examples: `agent/5-generate-and-enforce-branch-names-from` for #5, and `agent/5-generate-and-enforce-branch-names-from-part-2` for its second stacked layer.
-
-A request with no issue uses `agent/<slug>`, with the slug built by the same rules from a short description of the change.
-
-For issue work, never type a branch name by hand. Print it with `node scripts/branch-name.mjs <issue>`, adding `--layer <n>` for layer 2 and up. Create the branch with that name, or run `git branch -m <name>` when your tool created the worktree branch under another name. Do this before the first commit. Once a branch is pushed, keep its name, even if the issue title changes later. Nothing in CI checks branch names, so following this rule is up to you.
+A request with no issue uses `agent/<slug>`, built from a short description of the change by the script's rules: lowercase, accents dropped, every run of other characters turned into `-`, "Part N" written `partN`, cut to 40 characters at a word boundary, and `issue` when nothing is left. For example, #5 gets `agent/5-generate-and-enforce-branch-names-from`, and its second layer adds `-part-2`.
 
 ## Hard rules
 

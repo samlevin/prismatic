@@ -108,7 +108,7 @@ test('the binding resolves every placeholder and feature section', () => {
 
 test('generated output carries no unresolved placeholder and follows the binding', () => {
   for (const [path, content] of render()) {
-    // The maintainer skill documents the placeholders literally.
+    // The prism-agents skill documents the placeholders literally.
     if (!path.includes(`/${PREFIX}agents/`))
       assert.doesNotMatch(content, /\{\{/, path);
     assert.ok(path.includes(`/${PREFIX}`), path);
