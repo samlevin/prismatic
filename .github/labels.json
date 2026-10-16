@@ -67,11 +67,6 @@
       "description": "May change durable evidence or a public data contract"
     },
     {
-      "name": "risk: deployment",
-      "color": "e99695",
-      "description": "May affect deployment, rollback, or persistent infrastructure"
-    },
-    {
       "name": "risk: security",
       "color": "ee0701",
       "description": "Needs explicit security or privacy review"
