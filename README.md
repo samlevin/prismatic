@@ -18,7 +18,7 @@ Install the Node version pinned in `.tool-versions`: with [asdf](https://asdf-vm
 
 ## Checks
 
-`npm run check` runs the format check, lint of JavaScript and Markdown, the generated agent definition check, and every script test. `npm run format` and `npm run lint:fix` fix what they can.
+`npm run check` runs the format check, lint of JavaScript and Markdown, the generated agent definition check, and every script test. `npm run format` and `npm run lint:fix` fix what they can in code. Fix Markdown lint problems by hand.
 
 ## Contributing
 

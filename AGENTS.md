@@ -4,7 +4,7 @@ These rules apply to every coding agent, including Claude Code and Codex. Prisma
 
 ## Checks
 
-Run the narrowest set that covers your change, once before pushing. `npm run format` and `npm run lint:fix` fix what they can.
+Run the narrowest set that covers your change, once before pushing. `npm run format` and `npm run lint:fix` fix what they can in code. Fix Markdown lint problems by hand.
 
 | Changed | Run |
 | --- | --- |

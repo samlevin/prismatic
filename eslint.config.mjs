@@ -14,6 +14,9 @@ export default [
       // checkout would lint every worktree too.
       '.claude/worktrees/**',
       '.codex/worktrees/**',
+      // Untracked personal agent instructions, such as CLAUDE.local.md.
+      '**/*.local.md',
+      '**/AGENTS.override.md',
     ],
   },
   {

@@ -16,7 +16,7 @@
     "format": "prettier . --write --ignore-unknown",
     "format:check": "prettier . --check --ignore-unknown",
     "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix",
+    "lint:fix": "eslint . --fix --ignore-pattern '**/*.md'",
     "lint:md": "eslint --max-warnings 0 \"**/*.md\"",
     "test": "node --test scripts/*.test.mjs",
     "check": "npm run format:check && npm run lint && npm run agents:check && npm test"

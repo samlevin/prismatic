@@ -77,3 +77,17 @@ test('Markdown in agent worktrees is ignored', async () => {
       `${filePath} is linted`,
     );
 });
+
+test('untracked personal agent files are not linted', async () => {
+  for (const filePath of [
+    'CLAUDE.local.md',
+    'docs/CLAUDE.local.md',
+    'AGENTS.override.md',
+  ])
+    assert.equal(
+      await eslint.isPathIgnored(filePath),
+      true,
+      `${filePath} is linted`,
+    );
+  assert.equal(await eslint.isPathIgnored('AGENTS.md'), false);
+});
