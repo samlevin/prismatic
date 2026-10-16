@@ -7,11 +7,6 @@
       "description": "Barrier affecting people with disabilities"
     },
     {
-      "name": "area: infrastructure",
-      "color": "d4c5f9",
-      "description": "Cloud foundation and persistent shared resources"
-    },
-    {
       "name": "area: repository",
       "color": "57606a",
       "description": "Repository-wide tooling, policy, or documentation"
