@@ -17,11 +17,13 @@
     "format:check": "prettier . --check --ignore-unknown",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
+    "lint:md": "eslint --max-warnings 0 \"**/*.md\"",
     "test": "node --test scripts/*.test.mjs",
     "check": "npm run format:check && npm run lint && npm run agents:check && npm test"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@eslint/markdown": "^8.0.3",
     "eslint": "^10.12.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",

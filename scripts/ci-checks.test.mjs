@@ -11,9 +11,12 @@ import { evaluate, runScript, workflow } from './workflow-test-helpers.mjs';
 
 const require = createRequire(import.meta.url);
 const ciWorkflow = workflow('ci-checks.yml');
-const formatOnly = [['npm', ['run', 'format:check']]];
+const documentationChecks = [
+  ['npm', ['run', 'format:check']],
+  ['npm', ['run', 'lint:md']],
+];
 
-test('Markdown and LICENSE changes select only the format check', () => {
+test('Markdown and LICENSE changes select the format check and the Markdown lint', () => {
   for (const paths of [
     ['README.md'],
     ['LICENSE'],
@@ -22,7 +25,11 @@ test('Markdown and LICENSE changes select only the format check', () => {
     ['packages/api/README.md'],
   ]) {
     assert.deepEqual(selectScopes(paths), { full: false }, paths.join());
-    assert.deepEqual(checks(selectScopes(paths)), formatOnly, paths.join());
+    assert.deepEqual(
+      checks(selectScopes(paths)),
+      documentationChecks,
+      paths.join(),
+    );
   }
 });
 
@@ -71,13 +78,20 @@ test('the full selection runs format, lint, agent definitions, and every script 
     ['npm', ['run', 'agents:check']],
     ['node', ['--test', ...tests]],
   ]);
-  assert.deepEqual(checks({ full: false }), formatOnly);
+  assert.deepEqual(checks({ full: false }), documentationChecks);
   const { scripts } = JSON.parse(
     readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
   );
-  for (const name of ['format:check', 'lint', 'agents:check'])
+  for (const name of ['format:check', 'lint', 'lint:md', 'agents:check'])
     assert.equal(typeof scripts[name], 'string', name);
   assert.equal(scripts.lint, 'eslint . --max-warnings 0');
+  // Both lint scripts fail on any warning, so a Markdown problem fails CI.
+  assert.equal(scripts['lint:md'], 'eslint --max-warnings 0 "**/*.md"');
+  // Prettier never reads Markdown; the Markdown lint is its only check.
+  assert.match(
+    readFileSync(new URL('../.prettierignore', import.meta.url), 'utf8'),
+    /^\*\*\/\*\.md$/m,
+  );
 });
 
 test('every check runs even after one fails, and any failure rejects', async () => {

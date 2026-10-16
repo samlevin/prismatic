@@ -14,8 +14,9 @@ const toolingDirectories = [
   'scripts/',
 ];
 
-// Returns 'documentation' for a path that only the format check reads, and
-// 'full' for everything else, including a path this file does not know.
+// Returns 'documentation' for a path that only the format check and the
+// Markdown lint read, and 'full' for everything else, including a path this
+// file does not know.
 export function classify(path) {
   if (toolingDirectories.some((directory) => path.startsWith(directory)))
     return 'full';
@@ -23,9 +24,10 @@ export function classify(path) {
   return 'full';
 }
 
-// `full` selects lint, the agent definition check, and every script test on
-// top of the format check, which always runs. An empty list selects every
-// check because it means the comparison found nothing to classify.
+// `full` selects lint of every file, the agent definition check, and every
+// script test on top of the format check, which always runs. Otherwise the
+// Markdown lint joins the format check. An empty list selects every check
+// because it means the comparison found nothing to classify.
 export function selectScopes(paths) {
   return {
     full:
