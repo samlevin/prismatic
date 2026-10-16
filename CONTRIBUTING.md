@@ -52,7 +52,7 @@ Before you start, assign yourself, comment with your plan, and move the issue to
 
 ## Pull requests
 
-- Name the branch `<actor>/<issue>-<slug>`: the actor is your GitHub login, or `agent` for AI agents. Run `node scripts/branch-name.mjs <issue> --actor <login>` and use its output before the first commit; never pick a name by hand. Nothing in CI checks branch names.
+- Name the branch `<login>/<issue>-<slug>`, where `<login>` is your GitHub login. Run `node scripts/branch-name.mjs <issue> --actor <login>` and use its output before the first commit; never pick a name by hand. Nothing in CI checks branch names.
 - Title the PR with [Conventional Commits](https://www.conventionalcommits.org/), e.g. `feat: add CSV export`.
 - Fill in the PR template. Put `Closes #N` for the issue the PR finishes, and link the parent issue if there is one.
 - Add tests for behavior you change, and update docs if you change how something is used or operated.
@@ -66,10 +66,16 @@ Run `npm run check` before you push. It runs the format check, lint, the generat
 
 Workflow files are named `<area>-<name>.yml`, and each workflow is named `<Area>: <name>`. The areas are `ci` for checks on pull requests and pushes, and `tracker` for the project board. Every job and step has a name that says what it does. `scripts/workflow-names.test.mjs` enforces this.
 
-[ci-checks.yml](.github/workflows/ci-checks.yml) runs only the checks a pull request needs. The `Detect changed areas` job classifies the changed files with `scripts/ci-scope.mjs`, read from the base commit, so a change to the classifier applies only after it merges. A pull request that changes only Markdown outside `.agents/`, `.claude/`, `.codex/`, `.github/`, and `scripts/`, or `LICENSE`, runs the format check. Anything else, including a path the classifier doesn't know, also runs lint, `npm run agents:check`, and every `scripts/*.test.mjs`. Pushes to `main` run every check, and so does a pull request whose files can't be classified. The `Require every check selected for the changed files` job always runs, even in a cancelled run, and fails unless every selected check passed. Require this job, not the individual checks, in the `main` ruleset: GitHub reports a skipped job as passing, so a required check must never be skipped.
+[ci-checks.yml](.github/workflows/ci-checks.yml) runs only the checks a pull request needs. The `Detect changed areas` job classifies the changed files with `scripts/ci-scope.mjs`, read from the base commit, so a change to the classifier applies only after it merges.
+
+A pull request that changes only Markdown outside `.agents/`, `.claude/`, `.codex/`, `.github/`, and `scripts/`, or `LICENSE`, runs the format check. Anything else, including a path the classifier doesn't know, also runs lint, `npm run agents:check`, and every `scripts/*.test.mjs`. Pushes to `main` run every check, and so does a pull request whose files can't be classified.
+
+The `Require every check selected for the changed files` job always runs, even in a cancelled run, and fails unless every selected check passed. Require this job, not the individual checks, in the `main` ruleset: GitHub reports a skipped job as passing, so a required check must never be skipped.
 
 [ci-secret-scan.yml](.github/workflows/ci-secret-scan.yml) runs Gitleaks on every pull request and push to `main`. [ci-pr-title.yml](.github/workflows/ci-pr-title.yml) fails a pull request whose title doesn't follow Conventional Commits.
 
 [tracker-issue-states.yml](.github/workflows/tracker-issue-states.yml) moves triaged issues from Inbox to Ready and closes a container once all its sub-issues are closed. It needs the `PRISMATIC_PROJECT_TOKEN` repository secret.
 
-Two more tracker workflows run when a pull request opens, is edited, or leaves draft, and use the same secret. [tracker-pr-metadata.yml](.github/workflows/tracker-pr-metadata.yml) copies the linked issue's labels, assignees, milestone, and project membership onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues. [tracker-pr-issue-status.yml](.github/workflows/tracker-pr-issue-status.yml) moves every issue the pull request closes to In review, from Ready or In progress for collaborators and from In progress only for everyone else. Both log a skip instead of failing when an issue isn't on the board.
+Two more tracker workflows run when a pull request opens, is edited, or leaves draft, and use the same secret. [tracker-pr-metadata.yml](.github/workflows/tracker-pr-metadata.yml) copies the linked issue's labels, assignees, milestone, and project membership onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues.
+
+[tracker-pr-issue-status.yml](.github/workflows/tracker-pr-issue-status.yml) moves every issue the pull request closes to In review, from Ready or In progress for collaborators and from In progress only for everyone else. Both log a skip instead of failing when an issue isn't on the board.

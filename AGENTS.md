@@ -1,6 +1,6 @@
 # Agent rules
 
-These rules apply to every coding agent, including Claude Code and Codex. Prismatic has no product code yet. It holds the issue workflow (issue forms, labels, and the Node scripts in `scripts/` that keep the project board in sync) and the agent workflows described below. Do not read CONTRIBUTING.md or other guides unless the task changes them or these rules lack one you need.
+These rules apply to every coding agent, including Claude Code and Codex. Prismatic has no product code yet. It holds the issue workflow (issue forms, labels, and the Node scripts in `scripts/` that keep the project board in sync) and the agent workflows described below. CONTRIBUTING.md is the guide for people. Read it only when the task changes it or when a rule here sends you there.
 
 ## Checks
 

@@ -14,7 +14,7 @@ Prismatic has no product code yet. This repository holds the tooling that will d
 
 ## Setup
 
-Install the Node version in `.tool-versions`, then run `npm ci`. Working on issues also needs the [GitHub CLI](https://cli.github.com/) with authentication.
+Install the Node version pinned in `.tool-versions`: with [asdf](https://asdf-vm.com/), run `asdf plugin add nodejs` and then `asdf install`; otherwise install that version any way you like. Then run `npm ci` and `npm run check`. Nothing here needs AWS, Docker, or any other service. Working on issues also needs the [GitHub CLI](https://cli.github.com/) with authentication.
 
 ## Checks
 
