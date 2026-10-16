@@ -1,8 +1,8 @@
 import { pathToFileURL } from 'node:url';
+import { failureMessage, ghGraphql } from './github-api.mjs';
 import {
   configuration,
   discover,
-  ghGraphql,
   paginate,
   REPOSITORY,
 } from './issue-triage.mjs';
@@ -225,11 +225,7 @@ if (
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
     await reconcileContainers({ api: ghGraphql, ...config });
   } catch (error) {
-    console.error(
-      error.code || error.status
-        ? 'GitHub API request failed; check issue and Projects permissions.'
-        : error.message,
-    );
+    console.error(failureMessage(error));
     process.exitCode = 1;
   }
 }

@@ -4,9 +4,9 @@
 // issue whose item has no Status gets Inbox, so issue-triage.mjs picks it up.
 // Pull request items keep no Status, and an existing Status never changes.
 import { pathToFileURL } from 'node:url';
+import { failureMessage, ghGraphql } from './github-api.mjs';
 import {
   discover,
-  ghGraphql,
   readItem,
   REPOSITORY,
   updateProjectStatus,
@@ -123,12 +123,7 @@ if (
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
     await addToProject({ api: ghGraphql, ...config });
   } catch (error) {
-    // Do not print subprocess stderr, which can contain authentication details.
-    console.error(
-      error.code || error.status
-        ? 'GitHub API request failed; check authentication and Projects permissions.'
-        : error.message,
-    );
+    console.error(failureMessage(error));
     process.exitCode = 1;
   }
 }

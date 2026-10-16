@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'node:url';
+import { failureMessage } from './github-api.mjs';
 import {
   linkedIssues,
   metadataGraphql,
@@ -169,11 +170,7 @@ if (
       dryRun: mode === 'true',
     });
   } catch (error) {
-    console.error(
-      error.code || error.status
-        ? 'GitHub API request failed; check authentication and Projects permissions.'
-        : error.message,
-    );
+    console.error(failureMessage(error));
     process.exitCode = 1;
   }
 }
