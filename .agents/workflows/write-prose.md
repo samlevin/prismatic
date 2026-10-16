@@ -2,12 +2,12 @@
 name: write-prose
 description: Style rules for text published for OTHER people to read. Load ONLY when writing or editing a PR title/description, commit message, GitHub issue body or comment, PR review comment, README/docs file, release notes, or email. NEVER load for replies to the user, progress updates, final reports, agent-to-agent handoffs, or code.
 codex:
-  display_name: "{{label}}: Write prose"
+  display_name: "{{label}}: Plain language"
   short_description: "Style rules for PR bodies, issue bodies, comments, and docs"
   default_prompt: "Use ${{prefix}}write-prose before writing this text for other people."
 ---
 
-# {{label}} write prose
+# {{label}} plain language
 
 These rules cover text that other people read: PR titles and bodies, commit messages, issue bodies and comments, review comments, docs, release notes, and email. Unless the text is for someone else, such as the users who read a release note, write for a developer who knows the repository and has little time. They read the first sentence closely and the rest only if it earns it. Give them the facts in the order they need them, in the plainest words that are still accurate, and stop when the facts run out.
 
@@ -81,4 +81,4 @@ Use the most ordinary word that is still accurate. These come up most often:
 
 ## Format
 
-Don't hard-wrap prose. Write each paragraph as one line and let the display wrap it. Put code symbols in backticks: function and package names, parameters, file paths, commands, and literal syntax.
+Don't hard-wrap text. Write each paragraph as one line and let the display wrap it. Put code symbols in backticks: function and package names, parameters, file paths, commands, and literal syntax.
