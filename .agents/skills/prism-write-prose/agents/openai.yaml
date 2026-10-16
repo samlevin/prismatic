@@ -1,7 +1,0 @@
-# Generated from .agents/workflows/write-prose.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`.
-interface:
-  display_name: 'Prismatic: Write prose'
-  short_description: Style rules for PR bodies, issue bodies, comments, and docs
-  default_prompt: Use $prism-write-prose before writing this text for other people.
-policy:
-  allow_implicit_invocation: true

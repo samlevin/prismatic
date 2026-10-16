@@ -34,7 +34,7 @@ The repository ships the same delivery roles, handoffs, and checks for Claude Co
 | File or draft issues | `/prism-create-github-issue` | `$prism-create-github-issue` | `prism-issue-triager` (read-only metadata) |
 | Review a pushed branch or PR | `/prism-review-code` | `$prism-review-code` | `prism-code-reviewer` (read-only, reports to you) |
 | Security review, only when a person asks | `/prism-review-security` | `$prism-review-security` | `prism-security-reviewer` (read-only) |
-| Write a PR body, issue body, comment, or doc | `/prism-write-prose` | `$prism-write-prose` | none |
+| Write a PR body, issue body, comment, or doc | `/prism-plain-language` | `$prism-plain-language` | none |
 | Change, add, or regenerate these agents and skills | `/prism-agents` | `$prism-agents` | none; edits sources, regenerates both tools, verifies |
 
 - Serial delivery: `prism-orchestrator` dispatches one executable leaf at a time in dependency order and starts the next only after the previous leaf's PR is open or its blocker is recorded. Sibling leaves never run concurrently, even on request.
