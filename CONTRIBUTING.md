@@ -57,7 +57,7 @@ Before you start, assign yourself, comment with your plan, and move the issue to
 - Fill in the PR template. Put `Closes #N` for the issue the PR finishes, and link the parent issue if there is one.
 - Add tests for behavior you change, and update docs if you change how something is used or operated.
 - Past roughly 400 lines of changed production code (not counting tests, docs, or lockfiles), split the work into stacked PRs. Each layer is its own branch and PR on top of the previous one; `--layer <n>` names layers 2 and up with `-part-<n>`. Early layers reference the issue, and only the last one closes it.
-- To build on another issue's open PR, branch from that PR's branch, name your branch for your own issue, and set the PR's base to that branch.
+- To build on another issue's open PR, branch from that PR's branch, name your branch for your own issue, and set your PR's base to that branch.
 
 ## Checks
 
