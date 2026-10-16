@@ -1,7 +1,5 @@
 name: Issue
 description: Define one reviewable, independently verifiable unit of work.
-projects:
-  - 'samlevin/2'
 body:
   - type: markdown
     attributes:

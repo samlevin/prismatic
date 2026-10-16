@@ -2,8 +2,6 @@ name: Bug
 description: Report behavior that differs from an existing contract or expectation.
 labels:
   - 'bug'
-projects:
-  - 'samlevin/2'
 body:
   - type: markdown
     attributes:

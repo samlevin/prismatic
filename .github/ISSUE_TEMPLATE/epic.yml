@@ -2,8 +2,6 @@ name: Epic
 description: Explicitly requested notable body of work.
 labels:
   - 'epic'
-projects:
-  - 'samlevin/2'
 body:
   - type: markdown
     attributes:
