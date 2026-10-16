@@ -554,6 +554,16 @@ test('reports carry requested settings and no runtime model claims', () => {
         `one \`Requested settings: Policy: <as sent>\` line per ${PREFIX}code-reviewer or ${PREFIX}stack-manager you spawned, in spawn order`,
       ),
     );
+  for (const path of [
+    `.claude/agents/${PREFIX}orchestrator.md`,
+    `.codex/agents/${PREFIX}orchestrator.toml`,
+  ])
+    assert.ok(
+      files
+        .get(path)
+        .includes("the implementer's `Requested settings:` lines verbatim"),
+      path,
+    );
   for (const skill of [
     'implement',
     'review-code',
