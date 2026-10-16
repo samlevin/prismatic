@@ -75,7 +75,7 @@ The `Require every check selected for the changed files` job always runs, even i
 
 [ci-secret-scan.yml](.github/workflows/ci-secret-scan.yml) runs Gitleaks on every pull request and push to `main`. [ci-pr-title.yml](.github/workflows/ci-pr-title.yml) fails a pull request whose title doesn't follow Conventional Commits.
 
-The tracker workflows need the `PRISMATIC_PROJECT_TOKEN` repository secret, because the default `GITHUB_TOKEN` cannot write to a user project.
+The tracker workflows need the `PRISMATIC_PROJECT_TOKEN` repository secret, because the default `GITHUB_TOKEN` cannot write to a user project. The token shares its account's API rate limits with that account's local `gh` use. When a GitHub call fails, the script logs GitHub's error type and message, says when a rate limit resets, and never prints the token or `gh` output beyond that.
 
 [tracker-project-membership.yml](.github/workflows/tracker-project-membership.yml) adds every issue and pull request to the board when it opens, however it was created, including pull requests from forks. It runs only scripts from the default branch, never code from the pull request. GitHub's API cannot turn on the project's built-in auto-add, so this workflow does it instead. It also sets a new issue's Status to Inbox, so triage picks it up. Pull requests get no Status, and an issue that already has a Status keeps it. Running it again for an item already on the board changes nothing. Nothing else adds items, and the issue forms don't name the project.
 

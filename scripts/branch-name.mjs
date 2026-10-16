@@ -1,5 +1,6 @@
 import { pathToFileURL } from 'node:url';
-import { REPOSITORY, ghRest } from './issue-triage.mjs';
+import { failureMessage, ghRest } from './github-api.mjs';
+import { REPOSITORY } from './issue-triage.mjs';
 
 const MAX_SLUG = 40;
 // Titles with no ASCII letters or digits still need a usable slug.
@@ -121,7 +122,7 @@ if (
   try {
     console.log(run(process.argv.slice(2)));
   } catch (error) {
-    console.error(error.message);
+    console.error(failureMessage(error));
     process.exitCode = 1;
   }
 }

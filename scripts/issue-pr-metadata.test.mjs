@@ -255,14 +255,14 @@ test('GitHub NOT_FOUND for a missing issue is skipped while other errors fail', 
   assert.deepEqual(metadataGraphql(query, {}, run(response('NOT_FOUND'))), {
     repository: { issueOrPullRequest: null },
   });
-  assert.throws(
-    () => metadataGraphql(query, {}, run(response('FORBIDDEN'))),
-    /returned errors/,
-  );
+  assert.throws(() => metadataGraphql(query, {}, run(response('FORBIDDEN'))), {
+    message:
+      'GitHub GraphQL request failed: FORBIDDEN: no message. Check the token and Projects access.',
+  });
   assert.throws(
     () =>
       metadataGraphql(query, {}, run(response('NOT_FOUND', ['repository']))),
-    /returned errors/,
+    /GitHub GraphQL request failed: NOT_FOUND/,
   );
   assert.throws(
     () =>
@@ -271,7 +271,7 @@ test('GitHub NOT_FOUND for a missing issue is skipped while other errors fail', 
         {},
         run(response('NOT_FOUND')),
       ),
-    /returned errors/,
+    /GitHub GraphQL request failed: NOT_FOUND/,
   );
   assert.throws(
     () =>
@@ -286,7 +286,7 @@ test('GitHub NOT_FOUND for a missing issue is skipped while other errors fail', 
           ],
         }),
       ),
-    /returned errors/,
+    /GitHub GraphQL request failed: NOT_FOUND: no message; FORBIDDEN: no message\. Check the token/,
   );
 });
 
