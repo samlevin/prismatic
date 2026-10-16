@@ -44,9 +44,9 @@ The repository ships the same delivery roles, handoffs, and checks for Claude Co
 
 ## Branch names
 
-Name every branch you push for an issue `agent/<issue>-<slug>`, where `<issue>` is the leaf the PR closes, even when the branch stacks on another issue's PR. Stacked layers after the first end in `-part-<n>`. Print the name with `node scripts/branch-name.mjs <issue>`, adding `--layer <n>` for layer 2 and up, and never type it by hand. Create the branch with that name, or run `git branch -m <name>` on the branch your tool created, before the first commit. Once a branch is pushed, keep its name even if the issue title changes. Nothing in CI checks branch names.
+Name every branch you push for an issue `agent/<issue>-<slug>`, where `<issue>` is the leaf the PR closes, even when the branch stacks on another issue's PR. Stacked layers after the first end in `-part-<n>`. Print the name with `node scripts/branch-name.mjs <issue>`, adding `--layer <n>` for layer 2 and up, and never type it by hand. Create the branch with that name, or run `git branch -m <name>` on the branch your tool created, before the first commit. Once a branch is pushed, keep its name even if the issue title changes. Nothing in CI checks branch names. For example, #5 gets `agent/5-generate-and-enforce-branch-names-from`, and its second layer adds `-part-2`.
 
-A request with no issue uses `agent/<slug>`, built from a short description of the change by the script's rules: lowercase, accents dropped, every run of other characters turned into `-`, "Part N" written `partN`, cut to 40 characters at a word boundary, and `issue` when nothing is left. For example, #5 gets `agent/5-generate-and-enforce-branch-names-from`, and its second layer adds `-part-2`.
+A request with no issue uses `agent/<slug>`, built from a short description of the change by the same slug rules the script applies to issue titles: lowercase, accents dropped, every run of other characters turned into `-`, "Part N" written `partN`, cut to 40 characters at a word boundary, and `issue` when nothing is left.
 
 ## Hard rules
 
