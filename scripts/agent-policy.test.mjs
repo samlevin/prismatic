@@ -493,6 +493,12 @@ test('the review-code skill resolves #N as a pull request in both tools', () => 
     assert.match(skill, /Do not fall back to reading N as an issue/);
     assert.match(skill, /git fetch origin pull\/N\/head <baseRefName>/);
     assert.match(skill, /criteria come from the request/);
+    assert.match(
+      skill,
+      /fails because `<baseRefName>` no longer exists[^\n]*`git fetch origin <baseRefOid>`[^\n]*`git merge-base origin\/main <headRefOid>`[^\n]*`origin\/main` fallback/,
+    );
+    assert.match(skill, /combine their acceptance criteria, labeled by issue/);
+    assert.match(skill, /issue URLs \(every closing issue, or `none`/);
     assert.doesNotMatch(skill, /its issue's acceptance criteria/);
     assert.match(
       skill,
@@ -506,8 +512,21 @@ test('the review-code skill resolves #N as a pull request in both tools', () => 
   for (const path of [
     `.claude/agents/${PREFIX}code-reviewer.md`,
     `.codex/agents/${PREFIX}code-reviewer.toml`,
-  ])
-    assert.match(files.get(path), /`pull\/<N>\/head` in `requested` mode/);
+  ]) {
+    const reviewer = files.get(path);
+    assert.match(reviewer, /`pull\/<N>\/head` in `requested` mode/);
+    assert.match(
+      reviewer,
+      /description ?[:=] ?"?Independent read-only review of a \S+ pull request or pushed branch/,
+    );
+    assert.doesNotMatch(reviewer, /review of a pushed \S+ branch/);
+    assert.match(reviewer, /one or more issue URLs/);
+    assert.match(reviewer, /lists every issue the PR closes/);
+    assert.match(
+      reviewer,
+      /`origin\/main` fallback[^\n]*name the fallback in Limits/,
+    );
+  }
 });
 
 test('generated definitions in the repository are current', () => {

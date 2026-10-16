@@ -20,15 +20,16 @@ The target is a pull request or a pushed branch in `{{repository}}`, never an is
    - A branch name: `git ls-remote origin <branch>` gives the head; the base is the merge base with `origin/main` unless the request names one.
 2. Fetch the objects on the human checkout (read-only; fetching does not change a checkout). The reviewer reads through `git diff` and `git show` in that worktree path.
    - PR: `git fetch origin pull/N/head <baseRefName>`. GitHub keeps `pull/N/head` after the branch is deleted, so this works for merged and closed PRs. The head SHA is `headRefOid`, the base SHA is `git merge-base <baseRefOid> <headRefOid>`, and the remote ref is `pull/N/head`.
+   - Deleted base branch: when that fetch fails because `<baseRefName>` no longer exists (a merged or closed stacked PR), run `git fetch origin pull/N/head`, then `git fetch origin <baseRefOid>`. If the base commit still cannot be fetched, run `git fetch origin main`, use `git merge-base origin/main <headRefOid>` as the base SHA, and state in the packet that the base is an `origin/main` fallback for the deleted `<baseRefName>`, so the diff may include that branch's commits.
    - Branch: `git fetch origin <branch>`; the remote ref is the branch.
-3. Acceptance criteria. For a PR, read every issue in `closingIssuesReferences` (`gh issue view <issue> --repo {{repository}} --json body,comments`). For a branch, read only an issue the request names by URL or as "issue N". With no such issue, use the request text as the criteria, set the issue to `none`, and say in the packet that the criteria come from the request.
+3. Acceptance criteria. For a PR, read every issue in `closingIssuesReferences` (`gh issue view <issue> --repo {{repository}} --json body,comments`) and combine their acceptance criteria, labeled by issue. For a branch, read only an issue the request names by URL or as "issue N". With no such issue, use the request text as the criteria, set the issue to `none`, and say in the packet that the criteria come from the request.
 4. Parse overrides: `model <name>` and `effort <level>` apply to the reviewer. A partial override changes only the named setting.
 
 ## Dispatch
 
 Run `node scripts/agent-policy.mjs resolve --tool <tool> --role code-reviewer`, adding `--model` or `--effort` only for an override. If it exits non-zero, stop and report its message verbatim. Compose `Policy: tool=<tool> role={{prefix}}code-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)`.
 
-Packet: `review_mode=requested`, repo, the PR URL when the target is a PR, issue URL (or `none` and the source of the criteria), acceptance criteria, remote ref, base SHA, head SHA, the worktree path, and the `Policy:` line. Leave out your own opinion of the change.
+Packet: `review_mode=requested`, repo, the PR URL when the target is a PR, issue URLs (every closing issue, or `none` and the source of the criteria), acceptance criteria, remote ref, base SHA (and whether it is an `origin/main` fallback), head SHA, the worktree path, and the `Policy:` line. Leave out your own opinion of the change.
 
 <!-- claude-only -->
 Use the Agent tool with `subagent_type: {{prefix}}code-reviewer` and the resolver's `model` and `effort` passed explicitly.
