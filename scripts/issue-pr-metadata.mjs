@@ -205,7 +205,9 @@ if (
   try {
     if (process.env.GITHUB_ACTIONS === 'true') {
       if (!process.env.PRISMATIC_PROJECT_TOKEN)
-        throw new Error('PRISMATIC_PROJECT_TOKEN is required for Projects access.');
+        throw new Error(
+          'PRISMATIC_PROJECT_TOKEN is required for Projects access.',
+        );
       if (process.env.GITHUB_REPOSITORY !== REPOSITORY)
         throw new Error('Unexpected repository');
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;

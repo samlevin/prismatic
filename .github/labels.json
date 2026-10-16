@@ -7,11 +7,6 @@
       "description": "Barrier affecting people with disabilities"
     },
     {
-      "name": "area: infrastructure",
-      "color": "d4c5f9",
-      "description": "OpenTofu foundation and persistent shared resources"
-    },
-    {
       "name": "area: repository",
       "color": "57606a",
       "description": "Repository-wide tooling, policy, or documentation"
@@ -70,11 +65,6 @@
       "name": "risk: data-contract",
       "color": "b60205",
       "description": "May change durable evidence or a public data contract"
-    },
-    {
-      "name": "risk: deployment",
-      "color": "e99695",
-      "description": "May affect deployment, rollback, or persistent infrastructure"
     },
     {
       "name": "risk: security",

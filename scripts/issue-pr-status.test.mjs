@@ -253,7 +253,10 @@ test('dry runs make no writes and changed PR descriptions or authors abort write
 
 test('status events are limited and isolated from metadata reconciliation', () => {
   const status = readFileSync(
-    new URL('../.github/workflows/pr-issue-status.yml', import.meta.url),
+    new URL(
+      '../.github/workflows/tracker-pr-issue-status.yml',
+      import.meta.url,
+    ),
     'utf8',
   );
   assert.match(status, /types: \[opened, edited, reopened, ready_for_review\]/);

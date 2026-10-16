@@ -1,5 +1,16 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import {
   configuration,
@@ -513,4 +524,91 @@ test('catalog has unique names, supported severities, and all directly affected 
     assert.match(label.color, /^[a-f0-9]{6}$/);
     assert.ok(label.description.length > 0);
   }
+});
+
+// Every directory under packages/ that holds a package.json is an npm
+// workspace and needs a `package: <directory>` label so issues and PRs can
+// name it. A directory without a package.json is not a workspace yet, so a
+// pull request that adds only `packages/<new>/README.md` stays docs-only and
+// does not fail this test on the next push to main.
+function workspacesWithoutLabels(directories, labels) {
+  const names = new Set(labels.map((label) => label.name));
+  return directories.filter((name) => !names.has(`package: ${name}`));
+}
+
+function workspaceDirectories(root = new URL('../packages/', import.meta.url)) {
+  try {
+    return readdirSync(root, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          existsSync(new URL(`${entry.name}/package.json`, root)),
+      )
+      .map((entry) => entry.name)
+      .sort();
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+test('every workspace under packages/ has a package label', () => {
+  const manifest = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  );
+  assert.deepEqual(manifest.workspaces, ['packages/*']);
+  const { labels } = JSON.parse(
+    readFileSync(new URL('../.github/labels.json', import.meta.url), 'utf8'),
+  );
+  assert.deepEqual(workspacesWithoutLabels(workspaceDirectories(), labels), []);
+  for (const label of labels.filter(({ name }) => name.startsWith('package:')))
+    assert.match(label.name, /^package: [a-z0-9][a-z0-9-]*$/);
+});
+
+test('a workspace without a package label is reported', () => {
+  const labels = [{ name: 'package: api' }, { name: 'area: repository' }];
+  assert.deepEqual(workspacesWithoutLabels(['api'], labels), []);
+  assert.deepEqual(workspacesWithoutLabels(['api', 'web'], labels), ['web']);
+  assert.deepEqual(workspacesWithoutLabels(['repository'], labels), [
+    'repository',
+  ]);
+});
+
+test('only directories with a package.json count as workspaces', () => {
+  const root = mkdtempSync(join(tmpdir(), 'prismatic-packages-'));
+  try {
+    const url = pathToFileURL(`${root}/`);
+    assert.deepEqual(workspaceDirectories(url), []);
+    mkdirSync(join(root, 'web'));
+    writeFileSync(join(root, 'web', 'package.json'), '{}');
+    mkdirSync(join(root, 'api'));
+    writeFileSync(join(root, 'api', 'package.json'), '{}');
+    mkdirSync(join(root, 'docs-only'));
+    writeFileSync(join(root, 'docs-only', 'README.md'), '# Draft\n');
+    mkdirSync(join(root, 'empty'));
+    writeFileSync(join(root, 'notes.md'), '# Notes\n');
+    assert.deepEqual(workspaceDirectories(url), ['api', 'web']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a missing packages directory has no workspaces', () => {
+  const root = mkdtempSync(join(tmpdir(), 'prismatic-packages-'));
+  try {
+    assert.deepEqual(
+      workspaceDirectories(pathToFileURL(join(root, 'packages') + '/')),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('label descriptions do not name OpenTofu or Terraform', () => {
+  const { labels } = JSON.parse(
+    readFileSync(new URL('../.github/labels.json', import.meta.url), 'utf8'),
+  );
+  for (const label of labels)
+    assert.doesNotMatch(label.description, /OpenTofu|Terraform/, label.name);
 });

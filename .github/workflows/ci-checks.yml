@@ -1,0 +1,116 @@
+name: 'CI: checks'
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to a pull request supersedes its older run. Every push to main
+# gets its own group, so main validation is never cancelled.
+concurrency:
+  group: ci-checks-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('push-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  detect-changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
+    steps:
+      # Pull requests run the checks scripts/ci-scope.mjs selects, read from
+      # the base commit. Pushes, and any failure to classify, run every check.
+      - name: Classify changed files
+        id: scope
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const { pathToFileURL } = require('url');
+            let full = true;
+            if (context.eventName !== 'pull_request') {
+              core.info('A push runs every check.');
+            } else {
+              try {
+                const { base, head } = context.payload.pull_request;
+                const comparison = await github.rest.repos.compareCommitsWithBasehead({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  basehead: `${base.sha}...${head.sha}`,
+                });
+                const files = comparison.data.files || [];
+                // The comparison lists at most 300 files, so a full page may be truncated.
+                if (files.length >= 300)
+                  throw new Error('the comparison reached its file list limit');
+                const paths = files.flatMap((file) =>
+                  file.previous_filename
+                    ? [file.previous_filename, file.filename]
+                    : [file.filename],
+                );
+                const baseline = await github.rest.repos.getContent({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  path: 'scripts/ci-scope.mjs',
+                  ref: base.sha,
+                });
+                const classifierPath = path.join(process.env.RUNNER_TEMP, 'ci-scope-baseline.mjs');
+                fs.writeFileSync(classifierPath, Buffer.from(baseline.data.content, 'base64'));
+                const { selectScopes } = await import(pathToFileURL(classifierPath));
+                if (typeof selectScopes !== 'function')
+                  throw new Error('the base classifier has no selectScopes export');
+                const scopes = selectScopes(paths);
+                if (typeof scopes?.full !== 'boolean')
+                  throw new Error('the base classifier returned no full selection');
+                full = scopes.full;
+              } catch (error) {
+                core.warning(`Could not classify the changed files; running every check: ${error.message}`);
+                full = true;
+              }
+            }
+            core.info(full ? 'Selected every check.' : 'Selected the format check only.');
+            core.setOutput('full', String(full));
+
+  run-checks:
+    name: Run checks selected for the changed files
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .tool-versions
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run selected checks
+        env:
+          CI_FULL: ${{ needs.detect-changes.outputs.full }}
+        run: node scripts/ci-checks.mjs
+
+  # The main ruleset should require this job's name and no other job here.
+  # GitHub reports a skipped job as passing, so this job runs even when the
+  # run is cancelled, and fails unless every selected check passed.
+  require-scoped-checks:
+    name: Require every check selected for the changed files
+    needs: [detect-changes, run-checks]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail unless every selected check passed
+        env:
+          SCOPE_RESULT: ${{ needs.detect-changes.result }}
+          CHECKS_RESULT: ${{ needs.run-checks.result }}
+        run: |
+          test "$SCOPE_RESULT" = success
+          test "$CHECKS_RESULT" = success

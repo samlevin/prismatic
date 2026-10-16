@@ -9,8 +9,8 @@ Run the narrowest set that covers your change, once before pushing.
 | Changed | Run |
 | --- | --- |
 | Docs only | Nothing |
-| `scripts/` or `.github/` | `node --test scripts/*.test.mjs` |
-| `.agents/`, `.claude/`, `.codex/`, or `scripts/agent-policy*` | `npm run agents:generate` after editing a source, then `npm run agents:check` and `node --test scripts/agent-policy.test.mjs` |
+| `scripts/`, `.github/`, or root configuration | `npm run check` (format, lint, agent definitions, and every script test) |
+| `.agents/`, `.claude/`, `.codex/`, or `scripts/agent-policy*` | `npm run agents:generate` after editing a source, then `npm run check` |
 
 Tests mock GitHub and never call it.
 
@@ -67,5 +67,5 @@ Repo `samlevin/prismatic`, trunk `main`, project [Prismatic delivery](https://gi
 
 - Triage, statuses, and PR rules live in [CONTRIBUTING.md](CONTRIBUTING.md); labels in [.github/labels.json](.github/labels.json); forms in `.github/ISSUE_TEMPLATE/`.
 - PR titles use Conventional Commits, e.g. `feat: add CSV export`. Body: `Closes #N`, plus `Parent issue or epic: #P` when one exists. For a request with no issue, write `No linked issue.` instead and skip the issue state steps.
-- Issue states: claim and move to `In progress` before coding. `pr-issue-status.yml` moves the closing issue to `In review` when the PR opens; move it yourself only if its run logs a skip. Never mark issues `Done`.
+- Issue states: claim and move to `In progress` before coding. `tracker-pr-issue-status.yml` moves the closing issue to `In review` when the PR opens; move it yourself only if its run logs a skip. Never mark issues `Done`.
 - Issue titles are plain, with no `[Type]:` prefix. For issue filing, follow `.agents/issue-creation.md`.

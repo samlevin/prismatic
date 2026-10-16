@@ -12,9 +12,7 @@
     "docs": {
       "triage": "CONTRIBUTING.md",
       "workflow": "AGENTS.md",
-      "guides": [
-        "CONTRIBUTING.md"
-      ]
+      "guides": ["CONTRIBUTING.md"]
     },
     "features": {
       "infrastructure": false
@@ -112,93 +110,22 @@
       "description": "Model aliases accepted by the Agent tool and subagent frontmatter, with the effort levels each supports. Full IDs matching modelIdPattern are accepted with the same effort levels.",
       "modelIdPattern": "^claude-[a-z0-9-]+$",
       "models": {
-        "haiku": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "sonnet": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "opus": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "fable": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ]
+        "haiku": ["low", "medium", "high", "xhigh", "max"],
+        "sonnet": ["low", "medium", "high", "xhigh", "max"],
+        "opus": ["low", "medium", "high", "xhigh", "max"],
+        "fable": ["low", "medium", "high", "xhigh", "max"]
       }
     },
     "codex": {
       "description": "Model slugs accepted by spawn_agent, with the reasoning efforts each supports. Keep this in step with the Codex model catalog (`codex debug models`).",
       "models": {
-        "gpt-6.1-sol": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max",
-          "ultra"
-        ],
-        "gpt-6-sol": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max",
-          "ultra"
-        ],
-        "gpt-6-astra": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max",
-          "ultra"
-        ],
-        "gpt-6-luna": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ],
-        "gpt-5.6-sol": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max",
-          "ultra"
-        ],
-        "gpt-5.6-terra": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max",
-          "ultra"
-        ],
-        "gpt-5.6-luna": [
-          "low",
-          "medium",
-          "high",
-          "xhigh",
-          "max"
-        ]
+        "gpt-6.1-sol": ["low", "medium", "high", "xhigh", "max", "ultra"],
+        "gpt-6-sol": ["low", "medium", "high", "xhigh", "max", "ultra"],
+        "gpt-6-astra": ["low", "medium", "high", "xhigh", "max", "ultra"],
+        "gpt-6-luna": ["low", "medium", "high", "xhigh", "max"],
+        "gpt-5.6-sol": ["low", "medium", "high", "xhigh", "max", "ultra"],
+        "gpt-5.6-terra": ["low", "medium", "high", "xhigh", "max", "ultra"],
+        "gpt-5.6-luna": ["low", "medium", "high", "xhigh", "max"]
       }
     }
   }
