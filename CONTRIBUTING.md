@@ -67,4 +67,4 @@ Two more tracker workflows run when a pull request opens, is edited, or leaves d
 
 ## Workspaces
 
-`package.json` declares `packages/*` as npm workspaces. Each directory under `packages/` needs a `package: <directory>` label in [.github/labels.json](.github/labels.json), and a test fails when one is missing. `.tool-versions` pins the Node version that CI uses.
+`package.json` declares `packages/*` as npm workspaces. Each directory under `packages/` that contains a `package.json` needs a `package: <directory>` label in [.github/labels.json](.github/labels.json), and a test fails when one is missing. `.tool-versions` pins the Node version that CI uses.
