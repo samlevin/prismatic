@@ -77,7 +77,7 @@ The `Require every check selected for the changed files` job always runs, even i
 
 The tracker workflows need the `PRISMATIC_PROJECT_TOKEN` repository secret, because the default `GITHUB_TOKEN` cannot write to a user project.
 
-[tracker-project-membership.yml](.github/workflows/tracker-project-membership.yml) adds every issue and pull request to the board when it opens, however it was created, including pull requests from forks. It runs only scripts from the default branch, never code from the pull request. GitHub's API cannot turn on the project's built-in auto-add, so this workflow does it instead. Running it again for an item already on the board changes nothing. Nothing else adds items, and the issue forms don't name the project.
+[tracker-project-membership.yml](.github/workflows/tracker-project-membership.yml) adds every issue and pull request to the board when it opens, however it was created, including pull requests from forks. It runs only scripts from the default branch, never code from the pull request. GitHub's API cannot turn on the project's built-in auto-add, so this workflow does it instead. It also sets a new issue's Status to Inbox, so triage picks it up. Pull requests get no Status, and an issue that already has a Status keeps it. Running it again for an item already on the board changes nothing. Nothing else adds items, and the issue forms don't name the project.
 
 [tracker-issue-states.yml](.github/workflows/tracker-issue-states.yml) moves triaged issues from Inbox to Ready and closes a container once all its sub-issues are closed.
 

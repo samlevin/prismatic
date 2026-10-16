@@ -1,10 +1,19 @@
 // Adds one issue or pull request in this repository to the Prismatic delivery
 // project. The project's built-in auto-add cannot be enabled through the API,
-// so tracker-project-membership.yml runs this when an issue or PR opens.
+// so tracker-project-membership.yml runs this when an issue or PR opens. An
+// issue whose item has no Status gets Inbox, so issue-triage.mjs picks it up.
+// Pull request items keep no Status, and an existing Status never changes.
 import { pathToFileURL } from 'node:url';
-import { ghGraphql, REPOSITORY } from './issue-triage.mjs';
+import {
+  discover,
+  ghGraphql,
+  readItem,
+  REPOSITORY,
+  updateProjectStatus,
+} from './issue-triage.mjs';
 
 export const PROJECT = { owner: 'samlevin', number: 2 };
+export const INITIAL_STATUS = 'Inbox';
 
 export async function addToProject({
   api,
@@ -18,7 +27,8 @@ export async function addToProject({
   const data = await api(
     `query($owner: String!, $name: String!, $number: Int!, $login: String!, $project: Int!) {
       repository(owner: $owner, name: $name) { issueOrPullRequest(number: $number) {
-        __typename ... on Issue { id } ... on PullRequest { id }
+        __typename ... on PullRequest { id }
+        ... on Issue { id projectItems(first: 100) { nodes { id project { id } } } }
       } }
       user(login: $login) { projectV2(number: $project) { id closed } }
     }`,
@@ -26,12 +36,38 @@ export async function addToProject({
   );
   const content = data.repository?.issueOrPullRequest;
   if (!content?.id) throw new Error(`#${number} not found in ${REPOSITORY}`);
-  const kind = content.__typename === 'PullRequest' ? 'pull request' : 'issue';
+  const isIssue = content.__typename === 'Issue';
+  const kind = isIssue ? 'issue' : 'pull request';
   const project = data.user?.projectV2;
   if (!project?.id || project.closed)
     throw new Error('Prismatic delivery project is unavailable');
+  // Resolve the Status field and its Inbox option by name before any write, so
+  // a renamed field or option fails the run before it adds anything.
+  const context = isIssue
+    ? await discover(api, { Status: [INITIAL_STATUS] })
+    : null;
+  if (context && context.projectId !== project.id)
+    throw new Error('Prismatic delivery project changed during the run');
   if (dryRun) {
-    log(`DRY_RUN would add ${kind} #${number} to Prismatic delivery.`);
+    if (!isIssue) {
+      log(`DRY_RUN would add ${kind} #${number} to Prismatic delivery.`);
+      return null;
+    }
+    const existing = content.projectItems?.nodes?.find(
+      (node) => node?.project?.id === project.id,
+    );
+    if (!existing) {
+      log(
+        `DRY_RUN would add issue #${number} to Prismatic delivery and set its Status to ${INITIAL_STATUS}.`,
+      );
+      return null;
+    }
+    const status = (await readItem(api, existing.id, context))?.fields.Status;
+    log(
+      status
+        ? `DRY_RUN would keep issue #${number} as item ${existing.id} with Status ${status}.`
+        : `DRY_RUN would keep issue #${number} as item ${existing.id} and set its Status to ${INITIAL_STATUS}.`,
+    );
     return null;
   }
   // GitHub returns the existing item when the content is already in the
@@ -46,6 +82,16 @@ export async function addToProject({
   if (!item)
     throw new Error(`GitHub did not return a project item for #${number}`);
   log(`Added ${kind} #${number} to Prismatic delivery as item ${item}.`);
+  if (!isIssue) return item;
+  const current = await readItem(api, item, context);
+  if (!current)
+    throw new Error(`Could not read project item ${item} for #${number}`);
+  if (current.fields.Status) {
+    log(`Kept Status ${current.fields.Status} on issue #${number}.`);
+    return item;
+  }
+  await updateProjectStatus(api, context, item, INITIAL_STATUS);
+  log(`Set Status ${INITIAL_STATUS} on issue #${number}.`);
   return item;
 }
 
