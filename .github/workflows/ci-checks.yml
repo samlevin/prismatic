@@ -72,7 +72,7 @@ jobs:
                 full = true;
               }
             }
-            core.info(full ? 'Selected every check.' : 'Selected the format check only.');
+            core.info(full ? 'Selected every check.' : 'Selected the format check and Markdown lint only.');
             core.setOutput('full', String(full));
 
   run-checks:

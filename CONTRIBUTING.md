@@ -10,7 +10,7 @@ Pick a template:
 - **Container** for a group of related issues: explain what, why, and how, and add the pieces as sub-issues. A container has no PR and closes once all its sub-issues close.
 - **Epic** for a large body of work, usually tied to a milestone, and only when you mean it. A big task alone isn't an epic.
 
-Keep titles plain ("Add CSV export", not "[Task]: Add CSV export"); labels carry the type.
+Keep titles plain ("Add CSV export", not "\[Task]: Add CSV export"); labels carry the type.
 
 ## Triage
 
@@ -61,7 +61,7 @@ Before you start, assign yourself, comment with your plan, and move the issue to
 
 ## Checks
 
-Run `npm run check` before you push. It runs the format check, lint, the generated agent definition check, and every script test. `npm run format` and `npm run lint:fix` fix what they can. `.tool-versions` pins the Node version that CI uses.
+Run `npm run check` before you push. It runs the format check, lint of JavaScript and Markdown, the generated agent definition check, and every script test. `npm run format` and `npm run lint:fix` fix what they can. `.tool-versions` pins the Node version that CI uses.
 
 ## Automation
 
@@ -69,7 +69,7 @@ Workflow files are named `<area>-<name>.yml`, and each workflow is named `<Area>
 
 [ci-checks.yml](.github/workflows/ci-checks.yml) runs only the checks a pull request needs. The `Detect changed areas` job classifies the changed files with `scripts/ci-scope.mjs`, read from the base commit, so a change to the classifier applies only after it merges.
 
-A pull request that changes only Markdown outside `.agents/`, `.claude/`, `.codex/`, `.github/`, and `scripts/`, or `LICENSE`, runs the format check. Anything else, including a path the classifier doesn't know, also runs lint, `npm run agents:check`, and every `scripts/*.test.mjs`. Pushes to `main` run every check, and so does a pull request whose files can't be classified.
+A pull request that changes only Markdown outside `.agents/`, `.claude/`, `.codex/`, `.github/`, and `scripts/`, or `LICENSE`, runs the format check and the Markdown lint, `npm run lint:md`. Prettier ignores Markdown, so the Markdown lint is the only check that reads it. Anything else, including a path the classifier doesn't know, runs the format check, lint of every file, `npm run agents:check`, and every `scripts/*.test.mjs`. Pushes to `main` run every check, and so does a pull request whose files can't be classified.
 
 The `Require every check selected for the changed files` job always runs, even in a cancelled run, and fails unless every selected check passed. Require this job, not the individual checks, in the `main` ruleset: GitHub reports a skipped job as passing, so a required check must never be skipped.
 

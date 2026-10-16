@@ -1,6 +1,9 @@
 import eslint from '@eslint/js';
+import markdown from '@eslint/markdown';
 import prettier from 'eslint-config-prettier';
 import globals from 'globals';
+
+const javascriptFiles = ['**/*.{js,mjs,cjs}'];
 
 export default [
   {
@@ -15,10 +18,22 @@ export default [
   },
   {
     ...eslint.configs.recommended,
-    files: ['**/*.{js,mjs,cjs}'],
+    files: javascriptFiles,
     languageOptions: {
       globals: globals.node,
     },
   },
-  prettier,
+  // eslint-config-prettier only turns JavaScript rules off, so it stays on
+  // JavaScript files and never reaches Markdown.
+  { ...prettier, files: javascriptFiles },
+  // Markdown uses the plugin's recommended rules with the GitHub-Flavored
+  // parser, so tables are parsed as tables. Generated agent definitions and
+  // skills start with YAML front matter. These rules report problems such as
+  // broken links and wrong table column counts; they never reformat prose.
+  ...markdown.configs.recommended.map((config) => ({
+    ...config,
+    files: ['**/*.md'],
+    language: 'markdown/gfm',
+    languageOptions: { frontmatter: 'yaml' },
+  })),
 ];

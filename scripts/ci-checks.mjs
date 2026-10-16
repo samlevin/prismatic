@@ -1,6 +1,6 @@
 // Runs the CI checks that the scope job selected. CI_FULL is the `full`
 // output of scripts/ci-scope.mjs as the workflow computed it: `false` runs
-// only the format check, and `true` runs every check.
+// only the format check and the Markdown lint, and `true` runs every check.
 import { spawn } from 'node:child_process';
 import { appendFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -19,11 +19,15 @@ export function checks({ full }) {
   const commands = [['npm', ['run', 'format:check']]];
   if (full)
     commands.push(
+      // Lints JavaScript and Markdown.
       ['npm', ['run', 'lint']],
       // Generated agent definitions must match their sources under .agents/.
       ['npm', ['run', 'agents:check']],
       ['node', ['--test', ...testFiles()]],
     );
+  // Prettier ignores Markdown, so a documentation change gets the Markdown
+  // lint on its own.
+  else commands.push(['npm', ['run', 'lint:md']]);
   return commands;
 }
 
@@ -61,7 +65,7 @@ export function parseFull(value) {
 
 async function main() {
   const full = parseFull(process.env.CI_FULL);
-  const scope = full ? 'every check' : 'format check only';
+  const scope = full ? 'every check' : 'format check and Markdown lint only';
   console.log(`Selected: ${scope}`);
   await runChecks(checks({ full }));
   if (process.env.GITHUB_STEP_SUMMARY)

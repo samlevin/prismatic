@@ -8,7 +8,7 @@ Run the narrowest set that covers your change, once before pushing. `npm run for
 
 | Changed | Run |
 | --- | --- |
-| Docs only | Nothing |
+| Docs only | `npm run lint:md` |
 | `scripts/`, `.github/`, or root configuration | `npm run check` (format, lint, agent definitions, and every script test) |
 | `.agents/`, `.claude/`, `.codex/`, or `scripts/agent-policy*` | `npm run agents:generate` after editing a source, then `npm run check` |
 

@@ -13,7 +13,7 @@ Guidelines for writing clear, human-sounding prose. Based on the [Anti-Slop Refe
 
 Here is a passage from The Economist. Its house style is the register most prose this skill covers should default to: documentation, explanation, argument.
 
-> No form of emissions reduction, though, can quickly bend the current trajectory.[1][2] Endurance is what remains.[3][14] Making air conditioning more efficient, cheap and widespread[10] saves lives[6] and fits well with other policy goals, like making clean electricity cheap to produce and consume.[7] Ten years ago a commitment to phase out the fluorinated gases in cooling systems was reached in Kigali, the capital of Rwanda.[8][9] There is scope for extra international efforts to improve the machinery that uses them.[7][19] This could double the cooling benefit of phasing out the gases.[6]
+> No form of emissions reduction, though, can quickly bend the current trajectory.\[1]\[2] Endurance is what remains.\[3]\[14] Making air conditioning more efficient, cheap and widespread\[10] saves lives\[6] and fits well with other policy goals, like making clean electricity cheap to produce and consume.\[7] Ten years ago a commitment to phase out the fluorinated gases in cooling systems was reached in Kigali, the capital of Rwanda.\[8]\[9] There is scope for extra international efforts to improve the machinery that uses them.\[7]\[19] This could double the cooling benefit of phasing out the gases.\[6]
 
 Each sentence sets out to say one thing, says it, and stops.
 
@@ -23,18 +23,18 @@ Write like that.
 
 Here, on the other hand, is a horrendous rewrite, as sloppy as possible:
 
-> In this piece, we'll dive deep into the fascinating world of cooling![1] 🌡️[15] Here's the thing:[2] emissions reduction alone **isn't going to cut it**. In today's rapidly-warming world,[4] it's not about quick fixes — it's about *endurance*.[3] When it comes to[5] air conditioning, a technology that cools indoor air,[20] one might argue[5] that a comprehensive, holistic approach — making units more efficient, more affordable, and more accessible[10] — could potentially help save countless lives in some cases,[6] while seamlessly aligning with broader policy goals like fostering[7] clean, affordable electricity for all, and also, it's worth noting,[5] building on the pivotal commitment to phase out fluorinated gases that was reached ten years ago in Kigali — the vibrant capital of Rwanda —[16] a commitment that has reshaped the landscape of cooling policy and continues to empower stakeholders[9] across the realm of climate diplomacy.[8]
+> In this piece, we'll dive deep into the fascinating world of cooling!\[1] 🌡️\[15] Here's the thing:\[2] emissions reduction alone **isn't going to cut it**. In today's rapidly-warming world,\[4] it's not about quick fixes — it's about *endurance*.\[3] When it comes to\[5] air conditioning, a technology that cools indoor air,\[20] one might argue\[5] that a comprehensive, holistic approach — making units more efficient, more affordable, and more accessible\[10] — could potentially help save countless lives in some cases,\[6] while seamlessly aligning with broader policy goals like fostering\[7] clean, affordable electricity for all, and also, it's worth noting,\[5] building on the pivotal commitment to phase out fluorinated gases that was reached ten years ago in Kigali — the vibrant capital of Rwanda —\[16] a commitment that has reshaped the landscape of cooling policy and continues to empower stakeholders\[9] across the realm of climate diplomacy.\[8]
 >
-> But here's where it gets really exciting.[11] 🤯 The Kigali deal isn't just a treaty — it's a **game-changer**.[3] The machinery that leverages[7] these gases gets a myriad of enhancements via this framework,[19] which could unlock further benefits, and which, honestly,[5] may potentially double the cooling upside of phasing them out, depending on context.[6][8] Getting there is just[12] a matter of commitment. Furthermore, as we can see,[5] the journey ahead is a rich tapestry of innovation — a testament[7] to what we can achieve when we navigate this challenge together. In conclusion:[5] the bottom line?[13] Endurance is the name of the game — in other words, success is all about sticking with it for the long haul.[14] 💪
+> But here's where it gets really exciting.\[11] 🤯 The Kigali deal isn't just a treaty — it's a **game-changer**.\[3] The machinery that leverages\[7] these gases gets a myriad of enhancements via this framework,\[19] which could unlock further benefits, and which, honestly,\[5] may potentially double the cooling upside of phasing them out, depending on context.\[6]\[8] Getting there is just\[12] a matter of commitment. Furthermore, as we can see,\[5] the journey ahead is a rich tapestry of innovation — a testament\[7] to what we can achieve when we navigate this challenge together. In conclusion:\[5] the bottom line?\[13] Endurance is the name of the game — in other words, success is all about sticking with it for the long haul.\[14] 💪
 
 Do **NOT** write like that.
 
-The numbers below refer to the [bracketed] markers in both passages. Where a number appears in each, the pair is the sloppy and the plain version of the same thing. Entries 17 and 18 are paragraph-scale tells that a one-paragraph sample cannot show.
+The numbers below refer to the \[bracketed] markers in both passages. Where a number appears in each, the pair is the sloppy and the plain version of the same thing. Entries 17 and 18 are paragraph-scale tells that a one-paragraph sample cannot show.
 
 1. Throat-clearing: an opener that announces the piece instead of starting with the subject: "In this piece, we'll...", "Let's dive into...", "Let's explore...", "In this section, we will...". Don't clear your throat. The first sentence should do real work.
 2. Announce-then-deliver: a label and a colon in place of stating the fact ("The fix: retry on timeout", "Startup: the win", "Here's the thing: ..."). The label is scaffolding. State the fact as a sentence: "Retrying on timeout fixes it."
 3. Not-X-but-Y: "It's not X, it's Y" / "isn't just X, it's Y", the #1 LLM rhetorical crutch. State the positive directly. Restructure every time.
-4. Today's-world opener: "In today's [fast-paced/digital/modern] world...".
+4. Today's-world opener: "In today's \[fast-paced/digital/modern] world...".
 5. Filler phrases: they add zero information; state the thing directly.
     - "It's worth noting that..." / "It's important to note that..." / "Notably, ..." / "Importantly, ..." / "Interestingly, ..."
     - "As we can see..." / "As mentioned earlier..."
@@ -42,7 +42,7 @@ The numbers below refer to the [bracketed] markers in both passages. Where a num
     - "Furthermore, ..." / "Moreover, ..." / "Additionally, ..." -> use "and", "also", or just start a new sentence. If every paragraph opens with "However" or "Furthermore", drop the transition word and start with the actual subject.
     - "When it comes to..." / "In the realm of..."
     - "One might argue that..." / "It could be suggested that..."
-    - "A [comprehensive/holistic/nuanced] approach to..." -> "an approach to"
+    - "A \[comprehensive/holistic/nuanced] approach to..." -> "an approach to"
     - "honest"/"honestly"/"to be honest" as a throat-clear ("the honest tradeoff", "honestly, it's fine"): in speech this flags a rare, significant admission; sprinkled everywhere it's noise. Delete it in nearly every case.
 6. Hedging: the worst offender. "This approach may potentially help improve performance in some cases" means nothing. Say "this is faster" or say "we haven't benchmarked this yet". The original commits: "saves lives", "could double".
 7. Inflated diction: puffed-up words where plain ones exist: enhance/leverage for improve/use, plus seamlessly, fostering, pivotal, myriad, landscape, realm, empower, journey, tapestry, testament, navigate. The Banned Words lists below are the fuller reference.
