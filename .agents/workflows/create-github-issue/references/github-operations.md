@@ -8,9 +8,10 @@ Add `--type` only for a discovered native type. A blocker belongs in `--blocked-
 
 Relationships, if the CLI lacks flags: GraphQL `addSubIssue(issueId, subIssueId)` and `addBlockedBy(issueId, blockingIssueId)`, using node IDs from `gh issue view N --json id`. Never use displayed numbers as node IDs.
 
-Project: select it by owner and number, never by title.
+Project: select it by owner and number, never by title. Never add an issue to the project yourself; a repository workflow adds every new issue when it opens.
+`gh project view {{project.number}} --owner {{project.owner}} --format json --jq .id` gives the project ID (PID).
 `gh project field-list {{project.number}} --owner {{project.owner}} --format json`
-`gh project item-add {{project.number}} --owner {{project.owner}} --url ISSUE --format json` (check for existing membership first; template or project automation may have already added it)
+Find the item the workflow added: `gh api graphql -f query='query($id: ID!) { node(id: $id) { ... on Issue { projectItems(first: 100) { nodes { id project { id } } } } } }' -f id=ISSUE_NODE_ID`, where ISSUE_NODE_ID comes from `gh issue view URL --json id`. The item is the node whose `project.id` is PID. Check every 10 seconds for up to 3 minutes. If it never appears, keep the issue, skip its field edits, and report it as unfinished: not on the project, with no Priority, Size, or Status.
 `gh project item-edit --id ITEM --project-id PID --field-id FID --single-select-option-id OID`
 Resolve IDs from current metadata and never copy them across projects. If project authorization is missing, keep the created issue and report the gap. Never refresh auth or add scopes without permission.
 

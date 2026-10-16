@@ -1,7 +1,5 @@
 name: Container issue
 description: Group native sub-issues without deliverable work of its own.
-projects:
-  - 'samlevin/2'
 body:
   - type: markdown
     attributes:

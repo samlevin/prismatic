@@ -75,8 +75,12 @@ The `Require every check selected for the changed files` job always runs, even i
 
 [ci-secret-scan.yml](.github/workflows/ci-secret-scan.yml) runs Gitleaks on every pull request and push to `main`. [ci-pr-title.yml](.github/workflows/ci-pr-title.yml) fails a pull request whose title doesn't follow Conventional Commits.
 
-[tracker-issue-states.yml](.github/workflows/tracker-issue-states.yml) moves triaged issues from Inbox to Ready and closes a container once all its sub-issues are closed. It needs the `PRISMATIC_PROJECT_TOKEN` repository secret.
+The tracker workflows need the `PRISMATIC_PROJECT_TOKEN` repository secret, because the default `GITHUB_TOKEN` cannot write to a user project.
 
-Two more tracker workflows run when a pull request opens, is edited, or leaves draft, and use the same secret. [tracker-pr-metadata.yml](.github/workflows/tracker-pr-metadata.yml) copies the linked issue's labels, assignees, milestone, and project membership onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues.
+[tracker-project-membership.yml](.github/workflows/tracker-project-membership.yml) adds every issue and pull request to the board when it opens, however it was created, including pull requests from forks. It runs only scripts from the default branch, never code from the pull request. GitHub's API cannot turn on the project's built-in auto-add, so this workflow does it instead. Running it again for an item already on the board changes nothing. Nothing else adds items, and the issue forms don't name the project.
 
-[tracker-pr-issue-status.yml](.github/workflows/tracker-pr-issue-status.yml) moves every issue the pull request closes to In review, from Ready or In progress for collaborators and from In progress only for everyone else. Both log a skip instead of failing when an issue isn't on the board.
+[tracker-issue-states.yml](.github/workflows/tracker-issue-states.yml) moves triaged issues from Inbox to Ready and closes a container once all its sub-issues are closed.
+
+Two more tracker workflows run when a pull request opens, is edited, or leaves draft. [tracker-pr-metadata.yml](.github/workflows/tracker-pr-metadata.yml) copies the linked issue's labels, assignees, and milestone onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues.
+
+[tracker-pr-issue-status.yml](.github/workflows/tracker-pr-issue-status.yml) moves every issue the pull request closes to In review, from Ready or In progress for collaborators and from In progress only for everyone else. It logs a skip instead of failing when an issue isn't on the board.

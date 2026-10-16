@@ -54,8 +54,17 @@ test('workflow files, workflow names, and job names match the convention', () =>
         jobs: { 'mark-issues-in-review': 'Move closing issues to In review' },
       },
       'tracker-pr-metadata.yml': {
-        name: 'Tracker: copy issue metadata to PR',
-        jobs: { 'copy-issue-metadata': 'Copy linked issue metadata to PR' },
+        name: 'Tracker: copy issue labels, assignees, and milestone to PR',
+        jobs: {
+          'copy-issue-metadata':
+            'Copy linked issue labels, assignees, and milestone to PR',
+        },
+      },
+      'tracker-project-membership.yml': {
+        name: 'Tracker: add issues and pull requests to the project',
+        jobs: {
+          'add-to-project': 'Add the issue or pull request to the project',
+        },
       },
     },
   );
@@ -239,7 +248,8 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
             type: 'string',
           },
           dry_run: {
-            description: 'Preview metadata without writes',
+            description:
+              'Preview labels, assignees, and milestone without writes',
             type: 'boolean',
             default: true,
           },
@@ -268,6 +278,58 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
       },
     ],
   });
+  const eventNumber =
+    '${{ github.event.issue.number || github.event.pull_request.number }}';
+  assert.deepEqual(contract('tracker-project-membership.yml'), {
+    on: {
+      issues: { types: ['opened'] },
+      pull_request_target: { types: ['opened'] },
+    },
+    permissions: { contents: 'read' },
+    concurrency: {
+      group: `project-membership-${eventNumber}`,
+      'cancel-in-progress': false,
+    },
+    if: "github.repository == 'samlevin/prismatic'",
+    steps: [
+      checkout,
+      node,
+      {
+        uses: undefined,
+        with: undefined,
+        env: {
+          PRISMATIC_PROJECT_TOKEN: token,
+          ISSUE_OR_PR_NUMBER: eventNumber,
+          DRY_RUN: 'false',
+        },
+        run: 'node scripts/issue-project-membership.mjs',
+      },
+    ],
+  });
+});
+
+test('workflows started by pull_request_target never check out or run pull request code', () => {
+  for (const [file, definition] of definitions) {
+    if (!triggers(definition).includes('pull_request_target')) continue;
+    for (const [id, job] of Object.entries(definition.jobs))
+      for (const step of job.steps ?? []) {
+        const where = `${file} ${id} ${step.name}`;
+        if (step.uses?.startsWith('actions/checkout@')) {
+          assert.equal(
+            step.with?.ref,
+            '${{ github.event.repository.default_branch }}',
+            where,
+          );
+          assert.equal(step.with['persist-credentials'], false, where);
+          assert.equal(step.with['sparse-checkout'], 'scripts', where);
+        }
+        assert.doesNotMatch(
+          JSON.stringify(step),
+          /github\.event\.pull_request\.(?:head|merge_commit_sha|title|body)|github\.head_ref/,
+          where,
+        );
+      }
+  }
 });
 
 test('every pinned Node version matches .tool-versions', () => {
