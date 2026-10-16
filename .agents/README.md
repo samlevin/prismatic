@@ -1,6 +1,6 @@
 # Repository agent workflows
 
-This directory holds the shared sources for the delivery workflows that ship with the repository for Claude Code and Codex. The sources are the same files as in [mcc-stats-suite](https://github.com/samlevin/mcc-stats-suite); only `policy.json` differs, and its `binding` block names this repository, its project, its namespace prefix, and which feature sections apply.
+This directory holds the shared sources for the delivery workflows that ship with the repository for Claude Code and Codex. The sources are shared with other repositories that use the same workflows; only `policy.json` differs, and its `binding` block names this repository, its project, its namespace prefix, and which feature sections apply.
 
 | Path | Purpose |
 | --- | --- |
@@ -17,7 +17,7 @@ This directory holds the shared sources for the delivery workflows that ship wit
 
 Edit the sources, run `npm run agents:generate`, and commit the output; `/prism-agents` (Claude Code) or `$prism-agents` (Codex) does the whole loop. `npm run agents:check` and `scripts/agent-policy.test.mjs` fail when a generated file is stale, and CI runs both on every pull request. Generated files carry a header saying so.
 
-To pick up a change made to the sources in mcc-stats-suite, copy `roles/`, `workflows/`, `scripts/agent-policy.mjs`, and `scripts/agent-policy.test.mjs` over, keep this repository's `policy.json`, and regenerate. Sources never name a repository: they use `{{placeholders}}` and `{{#infrastructure}}` sections that the generator resolves from `binding`, and `features.infrastructure` is off here because nothing in this repository applies infrastructure from CI.
+To pick up an upstream change to the shared sources, copy `roles/`, `workflows/`, `scripts/agent-policy.mjs`, and `scripts/agent-policy.test.mjs` over, keep this repository's `policy.json`, and regenerate. Sources never name a repository: they use `{{placeholders}}` and `{{#infrastructure}}` sections that the generator resolves from `binding`, and `features.infrastructure` is off here because nothing in this repository applies infrastructure from CI.
 
 ## Trust and discovery
 
