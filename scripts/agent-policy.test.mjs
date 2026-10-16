@@ -602,10 +602,12 @@ test('only automation moves an issue to In review', () => {
     assert.match(
       implementer,
       /report the state you see and leave it unchanged/,
+      path,
     );
     assert.match(
       implementer,
       /project state as you found it \(reported, never corrected\)/,
+      path,
     );
     assert.doesNotMatch(implementer, /Move the issue to In review/, path);
   }
