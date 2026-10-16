@@ -29,7 +29,7 @@ export default [
   // Markdown uses the plugin's recommended rules with the GitHub-Flavored
   // parser, so tables are parsed as tables. Generated agent definitions and
   // skills start with YAML front matter. These rules report problems such as
-  // broken links and wrong table column counts; they never reformat prose.
+  // broken links and wrong table column counts; they never reformat text.
   ...markdown.configs.recommended.map((config) => ({
     ...config,
     files: ['**/*.md'],
