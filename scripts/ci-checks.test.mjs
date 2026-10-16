@@ -87,6 +87,12 @@ test('the full selection runs format, lint, agent definitions, and every script 
   assert.equal(scripts.lint, 'eslint . --max-warnings 0');
   // Both lint scripts fail on any warning, so a Markdown problem fails CI.
   assert.equal(scripts['lint:md'], 'eslint --max-warnings 0 "**/*.md"');
+  // Markdown lint only reports. `lint:fix` fixes code and never rewrites
+  // Markdown.
+  assert.equal(
+    scripts['lint:fix'],
+    "eslint . --fix --ignore-pattern '**/*.md'",
+  );
   // Prettier never reads Markdown; the Markdown lint is its only check.
   assert.match(
     readFileSync(new URL('../.prettierignore', import.meta.url), 'utf8'),
