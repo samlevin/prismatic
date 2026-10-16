@@ -582,6 +582,42 @@ test('reports carry requested settings and no runtime model claims', () => {
       );
 });
 
+test('only automation moves an issue to In review', () => {
+  const files = render();
+  for (const path of [
+    `.claude/agents/${PREFIX}implementer.md`,
+    `.codex/agents/${PREFIX}implementer.toml`,
+  ]) {
+    const implementer = files.get(path);
+    assert.match(
+      implementer,
+      /Move the project item to In progress[^\n]*In progress is the only project status you ever set: never set In review or Done\./,
+      path,
+    );
+    assert.match(
+      implementer,
+      /Never move the issue to In review: repository automation does that when the PR opens\./,
+      path,
+    );
+    assert.match(
+      implementer,
+      /report the state you see and leave it unchanged/,
+    );
+    assert.match(
+      implementer,
+      /project state as you found it \(reported, never corrected\)/,
+    );
+    assert.doesNotMatch(implementer, /Move the issue to In review/, path);
+  }
+  for (const path of [
+    `.claude/agents/${PREFIX}orchestrator.md`,
+    `.codex/agents/${PREFIX}orchestrator.toml`,
+    `.claude/skills/${PREFIX}implement/SKILL.md`,
+    `.agents/skills/${PREFIX}implement/SKILL.md`,
+  ])
+    assert.doesNotMatch(files.get(path), /move [^\n.]*In review/i, path);
+});
+
 test('generated definitions in the repository are current', () => {
   assert.deepEqual(check(), []);
 });
