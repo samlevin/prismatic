@@ -24,4 +24,4 @@ Spawn with `spawn_agent`: `agent_type: {{prefix}}implementer`, `model` and `reas
 
 Never: merge, enable auto-merge, deploy, apply infrastructure, change settings, invoke {{prefix}}security-reviewer, mark issues Done, or wait for or poll remote CI.
 
-Return READY FOR REVIEW or BLOCKED, with one row per leaf: issue, branch/base, PR URL(s), local checks, pre-PR approval base/head SHAs, stack id, project state, the implementer's `Requested settings:` lines verbatim, blocker. End with your own `Requested settings: Policy: <as dispatched>` line. List acceptance criteria that still depend on merge, deploy, or human verification. No narrative.
+Return READY FOR REVIEW or BLOCKED, with one row per leaf: issue, branch/base, PR URL(s), local checks, pre-PR approval base/head SHAs, stack id, project state, the implementer's `Requested settings:` lines verbatim, blocker. List acceptance criteria that still depend on merge, deploy, or human verification. End with your own `Requested settings: Policy: <as dispatched>` line. No narrative.
