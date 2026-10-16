@@ -5,90 +5,76 @@ description: Style rules for text published for OTHER people to read. Load ONLY 
 <!-- Generated from .agents/workflows/write-prose.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
 
 
-# Writing Prose That Doesn't Sound Like AI
+# Prismatic write prose
 
-Guidelines for writing clear, human-sounding prose. Based on the [Anti-Slop Reference](https://github.com/NousResearch/autonovel/blob/master/ANTI-SLOP.md). Apply these when writing documentation, blog posts, READMEs, or any prose.
+These rules cover text that other people read: PR titles and bodies, commit messages, issue bodies and comments, review comments, and docs. Write for a developer who knows the repository and has little time. They read the first sentence closely and the rest only if it earns it. Give them the facts in the order they need them, in the plainest words that are still accurate, and stop when the facts run out.
 
-Here is a passage from The Economist. Its house style is the register most prose this skill covers should default to: documentation, explanation, argument.
+## Example
 
-> No form of emissions reduction, though, can quickly bend the current trajectory.\[1]\[2] Endurance is what remains.\[3]\[14] Making air conditioning more efficient, cheap and widespread\[10] saves lives\[6] and fits well with other policy goals, like making clean electricity cheap to produce and consume.\[7] Ten years ago a commitment to phase out the fluorinated gases in cooling systems was reached in Kigali, the capital of Rwanda.\[8]\[9] There is scope for extra international efforts to improve the machinery that uses them.\[7]\[19] This could double the cooling benefit of phasing out the gases.\[6]
+A plain PR paragraph, for an invented change:
 
-Each sentence sets out to say one thing, says it, and stops.
+> The tracker scripts now retry a GitHub call once when it returns a 502. Before, one 502 failed the whole run and left the issue in the wrong column. I put the retry in `ghRest`, which every script calls. A second 502 still fails the run and logs GitHub's error message. The new tests mock a 502 then a success, two 502s, and a 404. A 404 still fails at once, with no retry.
 
-It is simple plain English prose. It carries no byline and needs none. Plainness, not personality, does the work. It's not trying to sell anything. It lets you figure out what the takeaways are.
+The same paragraph written badly. Each marker is a rule number below.
 
-Write like that.
+> In this PR, we'll dive into making our tracker scripts more resilient!\[1] 🚀\[15] Here's the thing:\[2] flaky GitHub responses aren't just an annoyance, they're a reliability crisis.\[3] This change introduces\[9] a robust, comprehensive, and seamless\[7]\[10] retry layer that could potentially help reduce failures in some cases\[5] — and, notably,\[6]\[16] it lands\[7] in `ghRest`, a helper that wraps the GitHub REST API,\[12] so every script gains retries via the shared layer, which keeps issue states accurate and also makes the whole tracker more reliable.\[8]\[9]\[11] But the real story is the tests.\[4] They cover just\[13] the cases that matter. Ready to merge?\[14]
 
-Here, on the other hand, is a horrendous rewrite, as sloppy as possible:
+Rule 17 works at the scale of a whole document, so one paragraph can't show it. When you add a rule, add a marked instance to the bad paragraph if one paragraph can show it.
 
-> In this piece, we'll dive deep into the fascinating world of cooling!\[1] 🌡️\[15] Here's the thing:\[2] emissions reduction alone **isn't going to cut it**. In today's rapidly-warming world,\[4] it's not about quick fixes — it's about *endurance*.\[3] When it comes to\[5] air conditioning, a technology that cools indoor air,\[20] one might argue\[5] that a comprehensive, holistic approach — making units more efficient, more affordable, and more accessible\[10] — could potentially help save countless lives in some cases,\[6] while seamlessly aligning with broader policy goals like fostering\[7] clean, affordable electricity for all, and also, it's worth noting,\[5] building on the pivotal commitment to phase out fluorinated gases that was reached ten years ago in Kigali — the vibrant capital of Rwanda —\[16] a commitment that has reshaped the landscape of cooling policy and continues to empower stakeholders\[9] across the realm of climate diplomacy.\[8]
->
-> But here's where it gets really exciting.\[11] 🤯 The Kigali deal isn't just a treaty — it's a **game-changer**.\[3] The machinery that leverages\[7] these gases gets a myriad of enhancements via this framework,\[19] which could unlock further benefits, and which, honestly,\[5] may potentially double the cooling upside of phasing them out, depending on context.\[6]\[8] Getting there is just\[12] a matter of commitment. Furthermore, as we can see,\[5] the journey ahead is a rich tapestry of innovation — a testament\[7] to what we can achieve when we navigate this challenge together. In conclusion:\[5] the bottom line?\[13] Endurance is the name of the game — in other words, success is all about sticking with it for the long haul.\[14] 💪
+## Rules
 
-Do **NOT** write like that.
-
-The numbers below refer to the \[bracketed] markers in both passages. Where a number appears in each, the pair is the sloppy and the plain version of the same thing. Entries 17 and 18 are paragraph-scale tells that a one-paragraph sample cannot show.
-
-1. Throat-clearing: an opener that announces the piece instead of starting with the subject: "In this piece, we'll...", "Let's dive into...", "Let's explore...", "In this section, we will...". Don't clear your throat. The first sentence should do real work.
-2. Announce-then-deliver: a label and a colon in place of stating the fact ("The fix: retry on timeout", "Startup: the win", "Here's the thing: ..."). The label is scaffolding. State the fact as a sentence: "Retrying on timeout fixes it."
-3. Not-X-but-Y: "It's not X, it's Y" / "isn't just X, it's Y", the #1 LLM rhetorical crutch. State the positive directly. Restructure every time.
-4. Today's-world opener: "In today's \[fast-paced/digital/modern] world...".
-5. Filler phrases: they add zero information; state the thing directly.
-    - "It's worth noting that..." / "It's important to note that..." / "Notably, ..." / "Importantly, ..." / "Interestingly, ..."
-    - "As we can see..." / "As mentioned earlier..."
-    - "In conclusion, ..." / "To summarize, ..."
-    - "Furthermore, ..." / "Moreover, ..." / "Additionally, ..." -> use "and", "also", or just start a new sentence. If every paragraph opens with "However" or "Furthermore", drop the transition word and start with the actual subject.
-    - "When it comes to..." / "In the realm of..."
-    - "One might argue that..." / "It could be suggested that..."
-    - "A \[comprehensive/holistic/nuanced] approach to..." -> "an approach to"
-    - "honest"/"honestly"/"to be honest" as a throat-clear ("the honest tradeoff", "honestly, it's fine"): in speech this flags a rare, significant admission; sprinkled everywhere it's noise. Delete it in nearly every case.
-6. Hedging: the worst offender. "This approach may potentially help improve performance in some cases" means nothing. Say "this is faster" or say "we haven't benchmarked this yet". The original commits: "saves lives", "could double".
-7. Inflated diction: puffed-up words where plain ones exist: enhance/leverage for improve/use, plus seamlessly, fostering, pivotal, myriad, landscape, realm, empower, journey, tapestry, testament, navigate. The Banned Words lists below are the fuller reference.
-8. Sentence sprawl: one over-long sentence stacking clauses that should be separate sentences, chained with "so", "which", "but", and "and", each extending or qualifying the last. Write one idea per sentence. When a draft sentence joins two thoughts, try the split. Keep the join only when the connection itself is the point.
-9. Artifact-as-agent: the commitment "has reshaped the landscape" and "continues to empower". Really, people reached a commitment; say what happened, with the actors in place. Three stacked habits make these sentences (e.g. "Your tests shaped the ones that landed"):
-    - Artifact as agent: an inanimate subject performs a verb only a person can do ("your tests shaped", "this PR introduces", "the change enables"). The person who did the work vanishes.
-    - Oblique reference instead of naming: the object is pointed at through a relative clause or metaphor ("the ones that landed") rather than named ("our new tests").
-    - Narrative compression into a single transitive clause: a who-did-what story (I read your tests, adapted them, committed mine) flattened into "X verbed Y", an aphorism that sounds polished because it discards the actors and the order of events. Common as a sentence-final flourish.
-
-    Rewrite as the actual events with the actual actors: "I took your tests as inspiration and added some updates based on these changes."
-10. The AI triad: three parallel "more X" adjectives. The original's list varies its forms. AI can't resist symmetry in general: three pros, three cons, five steps, equal-length sections, bullets where a sentence would do, every list item opening with the same grammatical structure. If you catch yourself writing exactly three or five items, be suspicious. Nobody structures their actual thoughts that neatly.
-11. Teaser pivot: "but here's where it gets really exciting", "X, but the main event is Y", "but the real story is...". A sibling of 3: a contrast flourish that withholds the point to build fake suspense. State the facts in order and let the emphasis come from what follows.
-12. Minimizing "just": using it as a casual softener ("resets just that kata", "it's just a wrapper", "just works"): be frugal with it. Usually delete it; when the restriction genuinely matters, "only" is plainer.
-13. Rhetorical wrap-up: a rhetorical question as a closing flourish.
-14. Restatement: saying the same thing twice. The original says it once, in four words. The commonest form is a lead sentence that summarizes the paragraph it starts; everything it says reappears, with more detail, in the sentences that follow. Delete it and nothing is lost:
+1. **Throat-clearing.** An opening that announces the text instead of starting it: "In this PR, we'll...", "Let's look at...", "In a world where...". Start with the subject.
+2. **Label and colon.** "The fix: retry on timeout." "Here's the thing: ..." The label is scaffolding. Write the sentence: "Retrying on timeout fixes it."
+3. **Contrast crutch.** "It isn't X, it's Y" sets up a claim nobody made so it can knock it down. Say Y.
+4. **Teaser.** "But the real story is...", "Here's where it gets interesting." Fake suspense that delays the point. Give the facts in order.
+5. **Hedging.** Stacked qualifiers such as "could potentially help in some cases" commit to nothing. If you know, say it: "this halves the run time." Otherwise say what is missing: "I haven't measured it."
+6. **Filler.** Words that announce importance instead of showing it: "notably", "importantly", "it's worth noting that", "as mentioned above", "in conclusion", "furthermore", "moreover", "additionally", "honestly". Delete them. Use "and" or "also", or start a new sentence.
+7. **Inflated words.** A grand word where a plain one is accurate. See [Words](#words).
+8. **Sprawl.** One sentence that chains clauses with "which", "and", "so", and "but", each qualifying the last. Put one idea in each sentence. Join two only when the link between them is the point.
+9. **Missing actor.** A person's work told without the person. The artifact acts ("this PR introduces", "your tests shaped ours"), the thing that changed becomes the subject while the doer hides in a phrase ("every script gains retries via the shared layer"), or the sentence goes passive ("a retry was added"). Make the doer the subject and the deed the verb: "I added a retry to `ghRest`." Or state the new state with no event: "`ghRest` retries once." A tool doing its own job is a fine subject: "the parser rejects malformed input." Name things directly too: "our new tests", not "the ones that merged".
+10. **Forced symmetry.** Three adjectives in a row, a list padded or trimmed to three items, every bullet opening the same way, bullets for what is one sentence. Facts are uneven. Let each list be as long as its facts.
+11. **Restatement.** Saying a thing twice: a lead sentence that sums up its paragraph, a first line that repeats its heading, a clause that repeats its sentence's opening. If deleting a phrase loses no information, delete it:
 
     > ~~Failures are visible now too.~~ A startup failure used to print to the server log and leave a half-booted dialog that looked ready. It now raises, the user gets an error toast and a red status dot, and the dialog stays editable.
 
-    The same disease occurs within a sentence ("editing needs no kernel: cards echo through the outbound queue, which is kernel-independent", where the final clause restates the opening) and between a header and its section's first line. Ask whether deleting the phrase removes any information from the document; if not, delete it. Summaries earn their place at document scale (an abstract, a TL;DR), not per paragraph. And prefer the shorter phrasing of the same fact: "nothing new needs specifying", not "there is nothing new to learn and nothing new to specify".
-15. Decoration: emoji, and decorative bold and italics. Bold and italics in the body of a paragraph should be used VERY sparingly; don't exhaust the reader with overuse of rhetorical flourishes. Avoid emojis and non-ascii unicode unless requested otherwise, e.g. "->" instead of "→".
-16. Splicing: em-dash interruptions and their kin. Avoid em dashes entirely. Substituting ` - ` or ` -- ` is just as bad, being the same interrupted-clause habit with different punctuation. Restructure the sentence instead, and when in doubt use a period. Two short sentences nearly always read better than one spliced one. Phrase combiners like `:` and `;` should be rare in normal prose (a colon that introduces a list or example is fine; one that splices two clauses is the habit to avoid), so don't fix an em dash by swapping in a different splice.
-17. Monotone rhythm: topic sentence, elaboration, example, wrap-up, paragraph after paragraph. The reader's eyes glaze over. Mix it up. Real writing is lumpy. Some sections run long because they need to. Others are two sentences because that's all there is to say.
-18. False depth: restating the problem in fancier words, listing obvious considerations, concluding with "it depends". Real depth comes from specifics, data, and edge cases.
-19. Recipient-as-subject: the thing that benefited is promoted to subject, the verb is "gets/gains/receives", and the doer hides in a trailing "via"/"through"/"thanks to" phrase: "the parser gains three node kinds". As in tell 9, the actor vanishes; the artifact just moves from performing the action to receiving it. Either name the doer and the deed ("I added three node kinds to the parser"), or drop agency entirely and state the new state ("there are now three node kinds in the parser"). The second avoids a drone of "I added..." sentences; what's banned is the middle form, where a fake event hides the real actor in a preposition.
-20. Explaining the known: telling readers what they already know. Defining a term the audience uses daily ("air conditioning, a technology that cools indoor air"), spelling out an inference they make instantly ("an empty anchor, which a browser displays as nothing"), or stating a practice they take for granted ("the README documents each feature"). Tell 14 is repeating yourself; this is repeating the reader. What counts as known depends on the audience, so name the audience when writing or reviewing, and cut what the reader would skim past.
+    Prefer the shorter wording of the same fact: "nothing new needs specifying", not "there is nothing new to learn and nothing new to specify". A summary belongs at the top of a long document, not at the top of each paragraph.
+12. **Explaining the known.** Defining a term the reader uses daily, spelling out an inference they make at once, describing a practice they take for granted. Decide who the reader is, then cut what they would skim.
+13. **"Just".** "It's just a wrapper", "it just works". Delete it. When the limit matters, "only" is clearer.
+14. **Closing flourish.** A rhetorical question or a one-line moral at the end. End on the last fact.
+15. **Decoration.** Emoji, bold or italics for emphasis in running text, and non-ASCII symbols such as arrows. Write `->` when you need an arrow. Bold labels at the start of list items are fine.
+16. **Splices.** Em dashes, ` - ` or ` -- ` used the same way, and semicolons or colons that join two clauses. Split the sentence or rebuild it. A colon that introduces a list or an example is fine.
+17. **Even texture.** Every paragraph runs topic sentence, detail, example, wrap-up, and every sentence has the same length. Break the pattern. A section can be two sentences when that is all it has to say. Depth comes from specifics, numbers, and edge cases, not from rewording the problem or ending on "it depends".
 
-Tells 9 and 19 are two faces of one device linguists call agent defocusing: grammar that pushes the true actor out of the subject seat (the passive is the third face). The positive rule is Williams's characters-and-actions principle: make the doer the subject and the deed the verb. A tool subject with a mechanical verb ("the parser rejects malformed input") is not defocusing; the tool really is that event's actor. The tell fires when a person's deed is narrated with the person missing.
+## Words
 
-When a new tell is added to this skill, add a marked instance to the sloppy passage too, where a one-paragraph sample can show it.
+Use the most ordinary word that is still accurate. These come up most often:
 
-## Banned Words
+| Instead of | Write |
+| --- | --- |
+| bolster, enhance, elevate | strengthen, improve |
+| comprehensive, holistic | complete, whole, or cut it |
+| crucial, pivotal, vital | important, or say why it matters |
+| delve into | look at, read |
+| empower, enable (a person) | let |
+| ensure | make sure, or name the check that does it |
+| facilitate | help |
+| foster | encourage |
+| harness, leverage, utilize | use |
+| invariant | rule, guarantee, unless nothing plainer is accurate |
+| journey, landscape, realm, tapestry | the actual thing |
+| land, landed (metaphorical) | merged, pushed, released, appears |
+| load-bearing and other `-bearing` words | required, or say what depends on it |
+| minted (metaphorical) | created, generated |
+| myriad, plethora | many |
+| navigate (metaphorical) | handle, work through |
+| robust | reliable, or say what it survives |
+| seamless, seamlessly | smooth, or cut it |
+| shape (structure or influence) | structure, format, or what happened: copied, adapted. A geometric or array shape is fine. |
+| streamline | simplify |
+| surface (verb) | show, report, raise |
+| testament to | shows |
+| underscore | show, stress |
 
-These are statistically overrepresented in AI output. Replace or delete on sight:
+## Format
 
-- **Kill on sight:** delve, utilize, leverage (verb), facilitate, elucidate, embark, endeavor, encompass, multifaceted, tapestry, "a testament to", paradigm, synergy, holistic, catalyze, juxtapose, nuanced (as filler), realm, landscape (metaphorical), shape/shaped (as loose jargon for structure or influence: "same shape", "the shape of the data/API/process", "your tests shaped ours"; fine as an actual geometric term, or literally referring to array/tensor dimensions; for influence say what actually happened: adapted, copied, informed), myriad, plethora, minted (metaphorical, e.g. "minted fresh ids"), land/landed/lands (metaphorical, and overused generally: "landed on main", "the fix landed", "a note lands in the output"; things do not land, so say what happened: merged, committed, pushed, released, added to the output, appears), -bearing suffixes such as load-bearing and text-bearing
-- **Suspicious in clusters** (remove most of them): robust, comprehensive, seamless, cutting-edge, innovative, streamline, empower, foster, enhance, elevate, optimize, pivotal, intricate, profound, resonate, underscore, harness, navigate (metaphorical), cultivate, bolster, cornerstone, game-changer, invariant (usually "rule" or "guarantee"; keep only when nothing plainer is accurate)
-- **Replacements are almost always simpler words:** utilize->use, leverage->use, facilitate->help, robust->strong, comprehensive->complete, seamless->smooth, empower->let/help, foster->encourage, enhance->improve, optimize->improve.
-
-The word lists above are examples of a general rule: always reach for the simplest, most normal, least jargony word that is still correct. If a plainer word says the same thing, use it.
-
-Don't hard-wrap prose. Write each paragraph as one continuous line and let the display soft-wrap it. Manual line breaks mid-paragraph make the text painful to reflow, edit, and copy.
-
-In technical prose, put code symbols in backticks: function and package names, parameters, file paths, and literal syntax (`to_html`, `{=html}`).
-
-## What Good Prose Sounds Like
-
-Good writing has a voice. You read it and someone is there. They have opinions. They're occasionally wrong. They'll make a joke in the middle of a technical explanation and it works.
-
-The sentences aren't all the same length. Most are short. An occasional longer one earns its length by carrying a single connected thought too big to split. That variation is what keeps a reader moving. AI can't do it. Every sentence comes out the same mid-length, the same mid-energy.
-
-Say what you mean. "This is broken," not "there may be some areas for potential improvement." Say "use," not "utilize." If you can swap in a different topic and the paragraph still reads fine, you haven't said anything yet. Get specific. Not "improves developer productivity" but "saves me twenty minutes every deploy."
+Don't hard-wrap prose. Write each paragraph as one line and let the display wrap it. Put code symbols in backticks: function and package names, parameters, file paths, commands, and literal syntax.

@@ -466,18 +466,6 @@ test('every role and workflow renders for both tools with matching bodies', () =
   }
 });
 
-test('the write-prose skill keeps its attribution in both tools', () => {
-  const files = render();
-  for (const path of [
-    `.claude/skills/${PREFIX}write-prose/SKILL.md`,
-    `.agents/skills/${PREFIX}write-prose/SKILL.md`,
-  ])
-    assert.match(
-      files.get(path),
-      /Based on the \[Anti-Slop Reference\]\(https:\/\/github\.com\/NousResearch\/autonovel\/blob\/master\/ANTI-SLOP\.md\)/,
-    );
-});
-
 test('the review-code skill resolves #N as a pull request in both tools', () => {
   const files = render();
   for (const path of [
