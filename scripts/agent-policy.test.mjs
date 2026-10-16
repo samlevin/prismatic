@@ -529,6 +529,55 @@ test('the review-code skill resolves #N as a pull request in both tools', () => 
   }
 });
 
+test('reports carry requested settings and no runtime model claims', () => {
+  const files = render();
+  for (const [path, text] of files) {
+    assert.doesNotMatch(text, /Runtime:|unverified/, path);
+    assert.doesNotMatch(text, /runtime (model|reports)/i, path);
+  }
+  for (const role of Object.keys(policy.roles))
+    for (const path of [
+      `.claude/agents/${PREFIX}${role}.md`,
+      `.codex/agents/${PREFIX}${role}.toml`,
+    ])
+      assert.ok(
+        files.get(path).includes('Requested settings: Policy: <as dispatched>'),
+        path,
+      );
+  for (const path of [
+    `.claude/agents/${PREFIX}implementer.md`,
+    `.codex/agents/${PREFIX}implementer.toml`,
+  ])
+    assert.match(
+      files.get(path),
+      new RegExp(
+        `one \`Requested settings: Policy: <as sent>\` line per ${PREFIX}code-reviewer or ${PREFIX}stack-manager you spawned, in spawn order`,
+      ),
+    );
+  for (const path of [
+    `.claude/agents/${PREFIX}orchestrator.md`,
+    `.codex/agents/${PREFIX}orchestrator.toml`,
+  ])
+    assert.ok(
+      files
+        .get(path)
+        .includes("the implementer's `Requested settings:` lines verbatim"),
+      path,
+    );
+  for (const skill of [
+    'implement',
+    'review-code',
+    'review-security',
+    'create-github-issue',
+  ])
+    for (const root of ['.claude/skills', '.agents/skills'])
+      assert.match(
+        files.get(`${root}/${PREFIX}${skill}/SKILL.md`),
+        /`Requested settings:` lines? verbatim|verbatim, including every `Requested settings:` line/,
+        `${root}/${skill}`,
+      );
+});
+
 test('generated definitions in the repository are current', () => {
   assert.deepEqual(check(), []);
 });

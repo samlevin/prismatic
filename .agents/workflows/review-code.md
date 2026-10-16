@@ -40,4 +40,4 @@ Use `spawn_agent` with `agent_type: {{prefix}}code-reviewer`, `model` and `reaso
 
 ## Report
 
-Print the reviewer's verdict, acceptance lines, findings, limits, and its `Policy:` and `Runtime:` lines verbatim. If the runtime model differs from the dispatched one, say so. Posting a review, replying on the PR, approving, or editing code requires a separate explicit request; this skill does none of it.
+Print the reviewer's verdict, acceptance lines, findings, limits, and its `Requested settings:` line verbatim. Posting a review, replying on the PR, approving, or editing code requires a separate explicit request; this skill does none of it.

@@ -33,4 +33,4 @@ Use the Agent tool with `subagent_type: prism-code-reviewer` and the resolver's 
 
 ## Report
 
-Print the reviewer's verdict, acceptance lines, findings, limits, and its `Policy:` and `Runtime:` lines verbatim. If the runtime model differs from the dispatched one, say so. Posting a review, replying on the PR, approving, or editing code requires a separate explicit request; this skill does none of it.
+Print the reviewer's verdict, acceptance lines, findings, limits, and its `Requested settings:` line verbatim. Posting a review, replying on the PR, approving, or editing code requires a separate explicit request; this skill does none of it.
