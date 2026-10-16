@@ -44,7 +44,7 @@ Rules 17 and 18 work at the scale of a whole document, so one paragraph can't sh
 15. **Decoration.** Emoji, bold or italics for emphasis in running text, and non-ASCII symbols such as arrows. Write `->` when you need an arrow. Bold labels at the start of list items are fine.
 16. **Splices.** Em dashes, ` - ` or ` -- ` used the same way, and semicolons or colons that join two clauses. Split the sentence or rebuild it. A colon that introduces a list or an example is fine.
 17. **Even texture.** Paragraphs that all follow one template, and sentences that all run about twenty words. Let length follow content. A section with two facts gets two sentences.
-18. **False depth.** Text that sounds thorough without adding facts: the problem restated in grander terms, considerations every reader already knows, a closing "it depends" that never says on what. Replace it with the measurement, the failing input, or the decision you made.
+18. **False depth.** Text that sounds thorough without adding facts: an "it depends" that never says on what, a list of considerations every reader already has in mind, or the problem told again in bigger words. Replace it with the measurement, the failing input, or the decision you made.
 
 ## Words
 
@@ -68,7 +68,7 @@ Use the most ordinary word that is still accurate. These come up most often:
 | minted (metaphorical) | created, generated |
 | myriad, plethora | many |
 | navigate (metaphorical) | handle, or say what you did |
-| nuanced | cut it, or show the nuance |
+| nuanced | say which distinction matters, or delete it |
 | robust | reliable, or say what it survives |
 | seamless, seamlessly | smooth, or cut it |
 | shape (structure or influence) | structure, format, or what happened: copied, adapted. A geometric or array shape is fine. |
