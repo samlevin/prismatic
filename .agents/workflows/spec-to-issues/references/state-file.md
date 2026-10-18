@@ -1,0 +1,59 @@
+# State file
+
+The state directory lives outside every repository checkout and worktree, so nothing in it can be committed:
+
+```text
+${XDG_STATE_HOME:-$HOME/.local/state}/{{prefix}}spec-to-issues/<owner>-<repo>-<spec file name without .md>/
+  state.json
+  bodies/<KEY>.md   body with @@issue:KEY@@ placeholders
+  sent/<KEY>.md     the filled body last sent to GitHub
+```
+
+Refuse a state path inside a git working tree (`git -C <dir> rev-parse --is-inside-work-tree` prints `true`). The directory holds issue numbers and IDs, never tokens or credentials.
+
+## state.json
+
+```json
+{
+  "repository": "{{repository}}",
+  "spec": "/absolute/path/to/spec.md",
+  "specSha256": "<sha256 of the specification file>",
+  "planSha256": "<sha256 of the bodies/ files concatenated in creation order>",
+  "login": "<authenticated login>",
+  "assignee": "<login or null>",
+  "startedAt": "<ISO time of the first create, or null>",
+  "mismatch": false,
+  "items": [
+    {
+      "key": "Phase 0",
+      "kind": "epic",
+      "title": "Foundation",
+      "parent": null,
+      "blockers": [],
+      "labels": ["epic", "severity: none"],
+      "priority": "P2",
+      "size": "L",
+      "predicted": null,
+      "number": null,
+      "id": null,
+      "nodeId": null,
+      "sentSha256": null,
+      "parentLinked": false,
+      "blockersLinked": [],
+      "projectItemId": null,
+      "fieldsSet": false,
+      "triaged": false,
+      "containersReconciled": false
+    }
+  ]
+}
+```
+
+`items` is in creation order: epics, then containers, then leaves, each in specification order. `id` is the issue's REST `id` (sub-issue and dependency calls need it), `nodeId` its `node_id`. `blockersLinked` lists the blocker keys already linked. `containersReconciled` applies to epics only.
+
+## Rules
+
+- Write `state.json` after every successful GitHub write, before the next one. Write to a temporary file in the same directory and rename it over `state.json`, so an interruption never leaves half a file.
+- Record `number`, `id`, `nodeId`, and `sentSha256` from the create response before doing anything else.
+- On start, if `state.json` exists, compare `specSha256` with the specification. A different hash means the specification changed after filing began: stop and ask, because the plan the user confirmed is no longer the plan on disk.
+- An item with a `number` is never created again. An item without one may still exist if an earlier run stopped between the create and the state write; the resume step in the skill finds it by title before creating anything.

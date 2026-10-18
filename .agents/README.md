@@ -14,6 +14,7 @@ This directory holds the sources of the delivery agents and skills this reposito
 | `../.claude/skills/prism-*/` | Generated Claude Code skills |
 | `../scripts/agent-policy.mjs` | Resolver (`resolve`), generator (`generate`), and drift check (`check`) |
 | `issue-creation.md` | Tool-agnostic issue filing adapter, read by `prism-create-github-issue` |
+| `spec-slicing.md` | Specification format and ownership rules that `prism-spec-to-issues` files from; changes with that skill |
 
 Edit the sources, run `npm run agents:generate`, and commit the output; `/prism-agents` (Claude Code) or `$prism-agents` (Codex) does the whole loop. Generated files carry a header saying so. `npm run agents:check` and `scripts/agent-policy.test.mjs` fail when a generated file is stale, and CI runs both for any change under `.agents/`, `.claude/`, `.codex/`, or `scripts/`.
 
