@@ -1,6 +1,6 @@
 # Body shapes
 
-Every body is built offline from the specification, with issue numbers left as placeholders. `@@issue:KEY@@` stands for the issue of item `KEY`: `Phase 0` for an epic, `Stack P0.11` for a container (the stem of its layers), and the Plan ID for a leaf. The specification itself never contains `@@issue:` (rule `reserved-text`), so filling placeholders cannot touch the specification's own text, including template syntax in double braces. Filling replaces each placeholder with `#N`: the actual number once the item exists, otherwise its predicted number.
+Every body is built offline from the specification, with issue numbers left as placeholders. `@@issue:KEY@@` stands for the issue of item `KEY`: `Plan` for the root container, `Phase 0` for an epic, `Stack P0.11` for a container (the stem of its layers), and the Plan ID for a leaf. The specification itself never contains `@@issue:` (rule `reserved-text`), so filling placeholders cannot touch the specification's own text, including template syntax in double braces. Filling replaces each placeholder with `#N`: the actual number once the item exists, otherwise its predicted number.
 
 Write each body to `bodies/<KEY>.md` in the state directory (see [state-file.md](state-file.md)), with placeholders. Write the filled copy you send to GitHub to `sent/<KEY>.md`.
 
@@ -12,6 +12,32 @@ Carried text is any text copied from the specification: a phase's Goal and Exit 
 - A Plan ID mention `Pn.m` becomes `Pn.m (@@issue:Pn.m@@)`. The item's own Plan ID stays bare.
 
 A carried section is its heading line through the line before the next heading of the same or a higher level, minus any subsection that a different item claims. Shift every heading in it two levels deeper (`##` becomes `####`), capped at `######`, and leave fenced code untouched. When an item claims a section and one of its subsections, carry the section once. Carry sections in section-number order, separated by a blank line.
+
+## Root container
+
+One per specification, keyed `Plan`. The specification title is its first `# ` heading outside fenced code, minus a trailing word `specification` in any letter case; the root is titled `<specification title> delivery plan` (`# Notes service specification` becomes `Notes service delivery plan`). A heading that is only that word leaves nothing and fails `plan-section`. Labels `enhancement` and `severity: none`, never `epic`. Priority is the highest of its epics, Size `L`. It has no blocked-by edges.
+
+```markdown
+### What
+The <specification title> delivery plan: the <count> <phase epic|phase epics> listed under How and every container and slice under them. This issue groups them and has no work of its own. It closes when the epics close.
+
+### Why
+`{{prefix}}orchestrator` plans from one issue's native sub-issue tree and the blocked-by edges on its leaves. Without a common parent, `implement` could target only one phase at a time; with this issue as the parent of every phase epic, `implement` on it delivers the whole plan in dependency order.
+
+### How
+Phases in plan order:
+
+1. P<id> <phase title>: @@issue:Phase <id>@@
+...
+<n>. P<id> <phase title>: @@issue:Phase <id>@@, deferred; blocked by <Pn.m> (@@issue:<Pn.m>@@), ...
+
+Dispatch order comes from the native blocked-by edges on the slices, <edge count> of them, not from whole phases. The phase epics carry no blocked-by edges of their own apart from <the deferred one|the deferred ones>, and this issue adds none, so a slice becomes executable as soon as its own blockers close. Each epic's How section lists its slices with their blockers.
+
+### Parent issue
+None
+```
+
+When the specification title begins with `The`, the What line does not prepend another `The`. Phases are listed in specification order, every phase including deferred ones. A deferred phase's line ends with `, deferred; blocked by` and its `Deferred until` Plan IDs, each as `Pn.m (@@issue:Pn.m@@)`, comma-separated in `Deferred until` order. `<edge count>` is the number of blocked-by entries across all leaves. Write `phase epic` when the plan has one phase and `phase epics` otherwise. Write `the deferred one` when exactly one phase is deferred and `the deferred ones` when several are, and leave out the `apart from` phrase when none is.
 
 ## Epic
 
@@ -28,7 +54,7 @@ Slices:
 ### Why
 <Exit criteria, carried>
 
-Deferred: filed now and blocked until <Pn.m> (@@issue:<Pn.m>@@) closes.
+Deferred: filed now and blocked until <Pn.m> (@@issue:<Pn.m>@@), ... <closes|close>.
 
 ### How
 Order by blocked-by, not by number:
@@ -38,14 +64,14 @@ Order by blocked-by, not by number:
 
 Definition of done for every slice: §<n> (@@issue:<owner>@@).
 
-### Parent epic
-None
+### Parent issue
+@@issue:Plan@@
 
 ### Contracts
 <each section in the phase's Contracts, carried>
 ```
 
-In the epic that owns the definition-of-done section, its pointer stays bare: `Definition of done for every slice: §<n>.` Every other epic and every leaf gets `§<n> (@@issue:<owner>@@)`, by the same rule as any carried reference. The `Deferred:` paragraph appears only for a deferred phase. The container lines appear only when the phase has a stack. Leave out the Contracts heading when the phase claims no sections. Slices are listed in specification order.
+In the epic that owns the definition-of-done section, its pointer stays bare: `Definition of done for every slice: §<n>.` Every other epic and every leaf gets `§<n> (@@issue:<owner>@@)`, by the same rule as any carried reference. The `Deferred:` paragraph appears only for a deferred phase. It lists every `Deferred until` Plan ID, comma-separated in `Deferred until` order, and ends in `closes` for one and `close` for several (`blocked until P1.2 (#11), P1.3 (#12) close`). The container lines appear only when the phase has a stack. Leave out the Contracts heading when the phase claims no sections. Slices are listed in specification order.
 
 ## Container
 
@@ -111,7 +137,7 @@ Blocked by: <Pn.m> (@@issue:<Pn.m>@@), ...
 
 ## Heading check (rule `template-headings`)
 
-Read the `label` of every non-markdown field in `.github/ISSUE_TEMPLATE/epic.yml`, `container.yml`, and `task.yml`, with its `validations.required` flag. List the body's `### ` headings outside fenced code. They must be the form's labels in form order: every required label present, optional ones (Implementation notes, Dependencies, Milestone) present or left out. The field with `id: parent` may read either `Parent issue` or `Parent epic`. The only other heading allowed is `Contracts`, last, on an epic. Carried text shifted two levels never produces a `###` heading unless the specification has a `#` heading inside a numbered section, which this check catches.
+Read the `label` of every non-markdown field in `.github/ISSUE_TEMPLATE/epic.yml`, `container.yml`, and `task.yml`, with its `validations.required` flag. List the body's `### ` headings outside fenced code. They must be the form's labels in form order: every required label present, optional ones (Implementation notes, Dependencies, Milestone) present or left out. The root uses `container.yml`. The field with `id: parent` may read either `Parent issue` or `Parent epic`; an epic's parent is the root container, so it reads `Parent issue`. The only other heading allowed is `Contracts`, last, on an epic. Carried text shifted two levels never produces a `###` heading unless the specification has a `#` heading inside a numbered section, which this check catches.
 
 ## Size check (rule `body-size`)
 

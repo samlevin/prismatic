@@ -25,12 +25,12 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/{{prefix}}spec-to-issues/<owner>-<repo>-<s
   "mismatch": false,
   "items": [
     {
-      "key": "Phase 0",
-      "kind": "epic",
-      "title": "Foundation",
+      "key": "Plan",
+      "kind": "container",
+      "title": "Notes service delivery plan",
       "parent": null,
       "blockers": [],
-      "labels": ["epic", "severity: none"],
+      "labels": ["enhancement", "severity: none"],
       "priority": "P2",
       "size": "L",
       "predicted": null,
@@ -44,12 +44,32 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/{{prefix}}spec-to-issues/<owner>-<repo>-<s
       "fieldsSet": false,
       "triaged": false,
       "containersReconciled": false
+    },
+    {
+      "key": "Phase 0",
+      "kind": "epic",
+      "title": "Foundation",
+      "parent": "Plan",
+      "blockers": [],
+      "labels": ["epic", "severity: none"],
+      "priority": "P2",
+      "size": "L",
+      "predicted": null,
+      "number": null,
+      "id": null,
+      "nodeId": null,
+      "sentSha256": null,
+      "parentLinked": false,
+      "blockersLinked": [],
+      "projectItemId": null,
+      "fieldsSet": false,
+      "triaged": false
     }
   ]
 }
 ```
 
-`items` is in creation order: epics, then containers, then leaves, each in specification order. `id` is the issue's REST `id` (sub-issue and dependency calls need it), `nodeId` its `node_id`. `blockersLinked` lists the blocker keys already linked. `containersReconciled` applies to epics only.
+`items` is in creation order: the root container keyed `Plan`, then epics, then containers, then leaves, each in specification order. `id` is the issue's REST `id` (sub-issue and dependency calls need it), `nodeId` its `node_id`. `blockersLinked` lists the blocker keys already linked. `containersReconciled` applies to the root only. The root has no parent, so stage 3 skips it and its `parentLinked` stays `false`; that is not an unfinished step.
 
 ## Rules
 
