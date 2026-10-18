@@ -48,8 +48,8 @@ gh api -X PATCH repos/R/issues/N --input /abs/state/patch.json --jq .number
 
 ## Project items
 
-- Find: `gh api 'users/{{project.owner}}/projectsV2/P/items?per_page=100' --paginate --jq '.[] | select(.content_type=="Issue") | {item: .id, issue: .content.id}'`, then match `issue` to the recorded issue `id`.
-- Add, only when the repository automation has not added the issue after 3 minutes: `gh api -X POST users/{{project.owner}}/projectsV2/P/items -f type=Issue -F id=ISSUE_ID`.
+- Find: `gh api 'users/{{project.owner}}/projectsV2/P/items?per_page=100' --paginate --jq '.[] | select(.content_type=="Issue") | {item: .id, issue: .content.id}'`, then match `issue` to every recorded issue `id`. One listing covers the whole batch; re-list, never list per issue.
+- Add, only for issues still missing after the batch's single 3-minute wait: `gh api -X POST users/{{project.owner}}/projectsV2/P/items -f type=Issue -F id=ISSUE_ID`.
 - Set Priority and Size: `gh api -X PATCH users/{{project.owner}}/projectsV2/P/items/ITEM --input fields.json`, with `fields.json` as `{"fields": [{"id": PRIORITY_FIELD_ID, "value": "OPTION_ID"}, {"id": SIZE_FIELD_ID, "value": "OPTION_ID"}]}`. Field IDs are the numeric `id` values from the fields read; option IDs are the option `id` strings.
 - Never set Status. The repository automation sets Inbox, and `scripts/issue-triage.mjs` moves an issue to Ready. An item you added yourself has no Status, so triage skips it; report it as unfinished.
 

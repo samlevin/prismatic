@@ -50,12 +50,12 @@ After confirmation, check the live repository before the first write: every labe
 2. Patch. If `mismatch` is set, or any item was created by an earlier run, refill every body with actual numbers. Patch each issue whose filled body differs from what was sent, and update `sent/` and `sentSha256`.
 3. Link parents. For each container and leaf, add it as a sub-issue of its parent unless the parent's sub-issue list already holds it.
 4. Link blockers. For each item with blockers, including a deferred epic and the leaves of its deferred table, add each blocker the issue's blocked-by list does not already hold.
-5. Project fields. Find each issue's project item, waiting for the repository automation (check every 10 seconds for up to 3 minutes), and add the issue only if it is still missing. Set Priority and Size. Never set Status.
+5. Project fields. Handle the whole batch at once, never one issue at a time. After the last create, list the project's items once and match them to the created issues. If any are missing, wait one 3-minute window for the repository automation, re-listing every 10 seconds and stopping early once every issue has an item. Then add each issue still missing with the REST project add. Set Priority and Size on every item. Never set Status.
 6. Scripts. Run `node scripts/issue-triage.mjs --apply --issue N` for each created issue, then `node scripts/issue-containers.mjs --apply --issue N` for each epic, from the repository root. Pass `--issue` every time so the scripts touch only the issues this filing created.
 
 ## Resume
 
-When `state.json` already exists for this specification, a request to file resumes it: check `specSha256` as state-file.md says, then rebuild the plan and confirm its `planSha256` matches; a mismatch means the plan changed and needs a new confirmation. Before creating anything, run the resume lookup in github-operations.md and adopt every item that an interrupted run created. Then continue from the first unfinished stage; finished steps recorded in the state are not repeated, and every linking step checks GitHub before writing, so a rerun never duplicates an issue, link, or dependency.
+When `state.json` already exists for this specification, a request to file resumes it: check the recorded `spec` path and `specSha256` as state-file.md says, then rebuild the plan and confirm its `planSha256` matches; a mismatch means the plan changed and needs a new confirmation. Before creating anything, run the resume lookup in github-operations.md and adopt every item that an interrupted run created. Then continue from the first unfinished stage; finished steps recorded in the state are not repeated, and every linking step checks GitHub before writing, so a rerun never duplicates an issue, link, or dependency.
 
 ## Verify and return
 
