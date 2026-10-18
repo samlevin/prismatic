@@ -25,10 +25,31 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/prism-spec-to-issues/<owner>-<repo>-<spec 
   "mismatch": false,
   "items": [
     {
+      "key": "Plan",
+      "kind": "container",
+      "title": "Notes service delivery plan",
+      "parent": null,
+      "blockers": [],
+      "labels": ["enhancement", "severity: none"],
+      "priority": "P2",
+      "size": "L",
+      "predicted": null,
+      "number": null,
+      "id": null,
+      "nodeId": null,
+      "sentSha256": null,
+      "parentLinked": false,
+      "blockersLinked": [],
+      "projectItemId": null,
+      "fieldsSet": false,
+      "triaged": false,
+      "containersReconciled": false
+    },
+    {
       "key": "Phase 0",
       "kind": "epic",
       "title": "Foundation",
-      "parent": null,
+      "parent": "Plan",
       "blockers": [],
       "labels": ["epic", "severity: none"],
       "priority": "P2",
@@ -49,7 +70,7 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/prism-spec-to-issues/<owner>-<repo>-<spec 
 }
 ```
 
-`items` is in creation order: epics, then containers, then leaves, each in specification order. `id` is the issue's REST `id` (sub-issue and dependency calls need it), `nodeId` its `node_id`. `blockersLinked` lists the blocker keys already linked. `containersReconciled` applies to epics only.
+`items` is in creation order: the root container keyed `Plan`, then epics, then containers, then leaves, each in specification order. `id` is the issue's REST `id` (sub-issue and dependency calls need it), `nodeId` its `node_id`. `blockersLinked` lists the blocker keys already linked. `containersReconciled` applies to the root and the epics only. The root's `parentLinked` stays `false` because it has no parent.
 
 ## Rules
 

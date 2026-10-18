@@ -1,12 +1,12 @@
 # Slicing a specification for filing
 
-The `prism-spec-to-issues` skill files the delivery plan of a specification as epics, containers, and leaf issues. It reads the format in this guide and nothing else. A specification written to it files cleanly; one that breaks it fails pre-flight, and the failure names the rule from [Pre-flight rules](#pre-flight-rules). The skill source (`.agents/workflows/spec-to-issues.md` and `.agents/workflows/spec-to-issues/`) and this guide change together in the same PR: a new field, rule, or ownership convention goes into both.
+The `prism-spec-to-issues` skill files the delivery plan of a specification as one root container, an epic per phase under it, containers, and leaf issues. It reads the format in this guide and nothing else. A specification written to it files cleanly; one that breaks it fails pre-flight, and the failure names the rule from [Pre-flight rules](#pre-flight-rules). The skill source (`.agents/workflows/spec-to-issues.md` and `.agents/workflows/spec-to-issues/`) and this guide change together in the same PR: a new field, rule, or ownership convention goes into both.
 
 `.agents/workflows/spec-to-issues/fixtures/conforming-spec.md` is a complete small example; read it next to this guide. `violating-spec.md` beside it breaks one rule.
 
 ## Numbered sections
 
-The specification is one Markdown file. Normative content sits in numbered sections: `## 1. Title`, `### 1.2 Title`, `#### 1.2.3 Title`, and deeper. The number is the section's identity. Prose refers to a section as `§1.2`, and the skill rewrites every such reference to `§1.2 (#N)`, where `#N` is the issue that owns the section. References inside code spans and fenced code stay as written.
+The specification is one Markdown file whose first `# ` heading is its title, such as `# Notes service specification`. Normative content sits in numbered sections: `## 1. Title`, `### 1.2 Title`, `#### 1.2.3 Title`, and deeper. The number is the section's identity. Prose refers to a section as `§1.2`, and the skill rewrites every such reference to `§1.2 (#N)`, where `#N` is the issue that owns the section. References inside code spans and fenced code stay as written.
 
 Every numbered section has exactly one owner, which is the issue whose body carries it verbatim. An owner carries a section's subsections too, except a subsection that another issue claims for itself. A reference to a section resolves to the owner of that section or of its nearest owned ancestor. The delivery plan section itself has no owner, so do not refer to it by number.
 
@@ -85,7 +85,7 @@ The heading is the Plan ID, the title, a middle dot, and the size: `XS`, `S`, or
 
 ### Stacked slices and containers
 
-A container exists only for slices delivered as stacked PRs. Give each layer the same `Stack` title and the same Plan ID stem with a letter suffix (`P0.11a`, `P0.11b`). Every layer after the first is blocked by the layer before it, and all layers sit in one phase. The container is titled with the `Stack` value, its parent is the phase's epic, and the layers are its sub-issues. Never use a container to group independent slices.
+Apart from the root container, a container exists only for slices delivered as stacked PRs. Give each layer the same `Stack` title and the same Plan ID stem with a letter suffix (`P0.11a`, `P0.11b`). Every layer after the first is blocked by the layer before it, and all layers sit in one phase. The container is titled with the `Stack` value, its parent is the phase's epic, and the layers are its sub-issues. Never use a container to group independent slices.
 
 ### Deferred work
 
@@ -107,15 +107,22 @@ A Plan ID is `P`, the phase id, a dot, a number, and an optional lowercase lette
 
 Every field states something the implementer needs. Leave an optional field out rather than writing `TBD`, `TODO`, `n/a`, or nothing. Acceptance items are observable conditions, not tasks. Issue titles in a plan are unique, because resuming an interrupted filing finds already-created issues by title.
 
+## Root container
+
+The skill files one container above the phase epics, so a single `implement` request on it delivers the whole plan: `prism-orchestrator` plans from one issue's native sub-issue tree and the blocked-by edges on its leaves. Its sub-issues are every phase epic, deferred ones included, and nothing else. It is titled with the specification's title minus a trailing word `specification`, followed by `delivery plan`, so `# Notes service specification` becomes `Notes service delivery plan`, and that title must be unique like any other. It is created first, before the epics.
+
+Its body follows `container.yml`. What names the specification and says the issue has no work of its own. Why says how the orchestrator plans. How lists the phases in plan order with their epics, marks each deferred phase with the slices it waits for, and states that dispatch order comes from the slice-level blocked-by edges rather than whole phases. The root has no blocked-by edges of its own, and no specification field controls it.
+
 ## What the skill files
 
 | Issue | Labels | Priority | Size | Parent |
 | --- | --- | --- | --- | --- |
-| One epic per phase | `epic` and one severity | P2, or P3 when deferred | L | none |
+| One root container per specification | `enhancement` and `severity: none` | the highest of its epics | L | none |
+| One epic per phase | `epic` and one severity | P2, or P3 when deferred | L | the root container |
 | One container per stack | `enhancement` and one severity | the highest of its layers | L | the phase's epic |
 | One leaf per slice | `enhancement`, one severity, and the slice's `risk:` and `area:` labels | from the slice | from the slice | the container, or else the phase's epic |
 
-`epic` is the only work-category label on an epic. Bodies follow `.github/ISSUE_TEMPLATE/epic.yml`, `container.yml`, and `task.yml`. A child of an epic uses the `Parent epic` heading. The skill never creates labels; every label the plan needs must already exist.
+`epic` is the only work-category label on an epic, and the root never carries `epic`. Bodies follow `.github/ISSUE_TEMPLATE/epic.yml`, `container.yml`, and `task.yml`. A child of an epic uses the `Parent epic` heading; an epic uses `Parent issue` for the root. The skill never creates labels; every label the plan needs must already exist.
 
 ## Pre-flight rules
 
@@ -124,7 +131,7 @@ The skill builds the whole plan offline and checks it before any GitHub call. It
 | Rule | Fails when |
 | --- | --- |
 | `reserved-text` | The specification contains `@@issue:`, the skill's issue-number placeholder |
-| `plan-section` | There is not exactly one `Delivery plan` section, or its definition of done or class catalog field names a missing section |
+| `plan-section` | The specification has no `# ` title heading, there is not exactly one `Delivery plan` section, or its definition of done or class catalog field names a missing section |
 | `phase-format` | A phase heading is malformed, a phase id repeats, or Goal or Exit criteria is missing |
 | `slice-format` | A slice heading is malformed, the size is not `XS`, `S`, or `M`, a required field or table column is missing, or a field is unknown |
 | `slice-unique` | A Plan ID appears in more than one slice |
@@ -137,5 +144,5 @@ The skill builds the whole plan offline and checks it before any GitHub call. It
 | `plan-id-reference` | A Plan ID mention names no slice |
 | `no-filler` | A field is empty or holds a placeholder such as `TBD` |
 | `label-exists` | A label is missing from `.github/labels.json`, or from the repository when filing |
-| `body-size` | A rendered body reaches 65,536 characters |
-| `template-headings` | A rendered body's headings do not match its issue form |
+| `body-size` | A rendered body, the root's included, reaches 65,536 characters |
+| `template-headings` | A rendered body's headings, the root's included, do not match its issue form |

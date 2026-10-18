@@ -1,6 +1,6 @@
 # Notes service specification
 
-A small specification written to `.agents/spec-slicing.md`. It files as three epics, one container, and eight leaves, and passes every pre-flight rule.
+A small specification written to `.agents/spec-slicing.md`. It files as a root container, three epics under it, one stack container, and eight leaves, and passes every pre-flight rule.
 
 ## 1. Decisions
 
