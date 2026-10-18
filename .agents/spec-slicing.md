@@ -132,7 +132,7 @@ The skill builds the whole plan offline and checks it before any GitHub call. It
 | `blocked-by-resolves` | A `Blocked by` or `Deferred until` entry names no slice, or a slice blocks itself |
 | `acyclic` | The blocked-by graph has a cycle |
 | `stack-shape` | A stack has fewer than two layers, spans phases, mixes Plan ID stems, or a layer is not blocked by the layer before it |
-| `section-owner` | A claimed section does not exist, a section is claimed twice, the delivery plan section is claimed, or a numbered section has no owner |
+| `section-owner` | A claimed section does not exist, a section is claimed twice, the delivery plan section is claimed, or a numbered section other than the delivery plan has no owner |
 | `section-reference` | A `§` reference names a missing section or one with no owner |
 | `plan-id-reference` | A Plan ID mention names no slice |
 | `no-filler` | A field is empty or holds a placeholder such as `TBD` |

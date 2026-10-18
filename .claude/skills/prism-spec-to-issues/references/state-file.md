@@ -21,7 +21,7 @@ Refuse a state path inside a git working tree (`git -C <dir> rev-parse --is-insi
   "planSha256": "<sha256 of the bodies/ files concatenated in creation order>",
   "login": "<authenticated login>",
   "assignee": "<login or null>",
-  "startedAt": "<ISO time of the first create, or null>",
+  "startedAt": "<ISO time, 5 minutes before the first create, whole seconds; or null>",
   "mismatch": false,
   "items": [
     {
@@ -54,6 +54,7 @@ Refuse a state path inside a git working tree (`git -C <dir> rev-parse --is-insi
 ## Rules
 
 - Write `state.json` after every successful GitHub write, before the next one. Write to a temporary file in the same directory and rename it over `state.json`, so an interruption never leaves half a file.
+- Write `startedAt` before the first create, not after it. It sits 5 minutes early and in whole seconds so that clock skew or GitHub's one-second `created_at` cannot exclude the first issue from the resume lookup. The lookup's protection against duplicates comes from the title, the creator, and the stop on two matches, not from exact times.
 - Record `number`, `id`, `nodeId`, and `sentSha256` from the create response before doing anything else.
 - On start, if `state.json` exists, compare `specSha256` with the specification. A different hash means the specification changed after filing began: stop and ask, because the plan the user confirmed is no longer the plan on disk.
 - An item with a `number` is never created again. An item without one may still exist if an earlier run stopped between the create and the state write; the resume step in the skill finds it by title before creating anything.

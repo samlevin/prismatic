@@ -51,7 +51,7 @@ gh api -X PATCH repos/R/issues/N --input /abs/state/patch.json --jq .number
 - Find: `gh api 'users/samlevin/projectsV2/P/items?per_page=100' --paginate --jq '.[] | select(.content_type=="Issue") | {item: .id, issue: .content.id}'`, then match `issue` to the recorded issue `id`.
 - Add, only when the repository automation has not added the issue after 3 minutes: `gh api -X POST users/samlevin/projectsV2/P/items -f type=Issue -F id=ISSUE_ID`.
 - Set Priority and Size: `gh api -X PATCH users/samlevin/projectsV2/P/items/ITEM --input fields.json`, with `fields.json` as `{"fields": [{"id": PRIORITY_FIELD_ID, "value": "OPTION_ID"}, {"id": SIZE_FIELD_ID, "value": "OPTION_ID"}]}`. Field IDs are the numeric `id` values from the fields read; option IDs are the option `id` strings.
-- Never set Status. The repository automation sets Inbox, and `scripts/issue-triage.mjs` moves an issue to Ready.
+- Never set Status. The repository automation sets Inbox, and `scripts/issue-triage.mjs` moves an issue to Ready. An item you added yourself has no Status, so triage skips it; report it as unfinished.
 
 ## Resume lookup
 
@@ -60,7 +60,7 @@ gh api 'repos/R/issues?creator=LOGIN&state=all&since=STARTED_AT&per_page=100' --
   --jq '.[] | select(.pull_request | not) | {number, id, node_id, title, created_at}'
 ```
 
-An issue in this list whose title equals an item's title, created at or after `startedAt`, is that item. Adopt it: record its number and IDs, and record `sentSha256` as the hash of its current body (`gh api repos/R/issues/N --jq .body`). Two matches for one title means a duplicate already exists; stop and report both numbers instead of choosing.
+An issue in this list whose title equals an item's title, created at or after `startedAt` (which state-file.md sets 5 minutes before the first create), is that item. Adopt it: record its number and IDs, and record `sentSha256` as the hash of its current body (`gh api repos/R/issues/N --jq .body`). Two matches for one title means a duplicate already exists; stop and report both numbers instead of choosing.
 
 ## Read back
 
