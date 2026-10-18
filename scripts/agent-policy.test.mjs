@@ -416,6 +416,7 @@ test('every role and workflow renders for both tools with matching bodies', () =
     'review-code',
     'review-security',
     'plain-language',
+    'spec-to-issues',
   ]) {
     assert.ok(
       names.includes(`.claude/skills/${PREFIX}${skill}/SKILL.md`),
