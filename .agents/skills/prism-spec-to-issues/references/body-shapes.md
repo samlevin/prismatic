@@ -15,11 +15,11 @@ A carried section is its heading line through the line before the next heading o
 
 ## Root container
 
-One per specification, keyed `Plan`. The specification title is its first `# ` heading outside fenced code, minus a trailing word `specification`; the root is titled `<specification title> delivery plan` (`# Notes service specification` becomes `Notes service delivery plan`). Labels `enhancement` and `severity: none`, never `epic`. Priority is the highest of its epics, Size `L`. It has no blocked-by edges.
+One per specification, keyed `Plan`. The specification title is its first `# ` heading outside fenced code, minus a trailing word `specification` in any letter case; the root is titled `<specification title> delivery plan` (`# Notes service specification` becomes `Notes service delivery plan`). A heading that is only that word leaves nothing and fails `plan-section`. Labels `enhancement` and `severity: none`, never `epic`. Priority is the highest of its epics, Size `L`. It has no blocked-by edges.
 
 ```markdown
 ### What
-The <specification title> delivery plan: the <count> phase epics listed under How and every container and slice under them. This issue groups them and has no work of its own. It closes when the epics close.
+The <specification title> delivery plan: the <count> <phase epic|phase epics> listed under How and every container and slice under them. This issue groups them and has no work of its own. It closes when the epics close.
 
 ### Why
 `prism-orchestrator` plans from one issue's native sub-issue tree and the blocked-by edges on its leaves. Without a common parent, `implement` could target only one phase at a time; with this issue as the parent of every phase epic, `implement` on it delivers the whole plan in dependency order.
@@ -29,15 +29,15 @@ Phases in plan order:
 
 1. P<id> <phase title>: @@issue:Phase <id>@@
 ...
-<n>. P<id> <phase title>: @@issue:Phase <id>@@, deferred; blocked by <Pn.m> (@@issue:<Pn.m>@@)
+<n>. P<id> <phase title>: @@issue:Phase <id>@@, deferred; blocked by <Pn.m> (@@issue:<Pn.m>@@), ...
 
-Dispatch order comes from the native blocked-by edges on the slices, <edge count> of them, not from whole phases. The phase epics carry no blocked-by edges of their own apart from the deferred ones, and this issue adds none, so a slice becomes executable as soon as its own blockers close. Each epic's How section lists its slices with their blockers.
+Dispatch order comes from the native blocked-by edges on the slices, <edge count> of them, not from whole phases. The phase epics carry no blocked-by edges of their own apart from <the deferred one|the deferred ones>, and this issue adds none, so a slice becomes executable as soon as its own blockers close. Each epic's How section lists its slices with their blockers.
 
 ### Parent issue
 None
 ```
 
-Phases are listed in specification order, every phase including deferred ones. A deferred phase's line ends with `, deferred; blocked by` and each of its `Deferred until` Plan IDs, written as on its epic. `<edge count>` is the number of blocked-by entries across all leaves. Leave out `apart from the deferred ones` when no phase is deferred.
+When the specification title begins with `The`, the What line does not prepend another `The`. Phases are listed in specification order, every phase including deferred ones. A deferred phase's line ends with `, deferred; blocked by` and its `Deferred until` Plan IDs, each as `Pn.m (@@issue:Pn.m@@)`, comma-separated in `Deferred until` order. `<edge count>` is the number of blocked-by entries across all leaves. Write `phase epic` when the plan has one phase and `phase epics` otherwise. Write `the deferred one` when exactly one phase is deferred and `the deferred ones` when several are, and leave out the `apart from` phrase when none is.
 
 ## Epic
 
@@ -54,7 +54,7 @@ Slices:
 ### Why
 <Exit criteria, carried>
 
-Deferred: filed now and blocked until <Pn.m> (@@issue:<Pn.m>@@) closes.
+Deferred: filed now and blocked until <Pn.m> (@@issue:<Pn.m>@@), ... <closes|close>.
 
 ### How
 Order by blocked-by, not by number:
@@ -71,7 +71,7 @@ Definition of done for every slice: §<n> (@@issue:<owner>@@).
 <each section in the phase's Contracts, carried>
 ```
 
-In the epic that owns the definition-of-done section, its pointer stays bare: `Definition of done for every slice: §<n>.` Every other epic and every leaf gets `§<n> (@@issue:<owner>@@)`, by the same rule as any carried reference. The `Deferred:` paragraph appears only for a deferred phase. The container lines appear only when the phase has a stack. Leave out the Contracts heading when the phase claims no sections. Slices are listed in specification order.
+In the epic that owns the definition-of-done section, its pointer stays bare: `Definition of done for every slice: §<n>.` Every other epic and every leaf gets `§<n> (@@issue:<owner>@@)`, by the same rule as any carried reference. The `Deferred:` paragraph appears only for a deferred phase. It lists every `Deferred until` Plan ID, comma-separated in `Deferred until` order, and ends in `closes` for one and `close` for several (`blocked until P1.2 (#11), P1.3 (#12) close`). The container lines appear only when the phase has a stack. Leave out the Contracts heading when the phase claims no sections. Slices are listed in specification order.
 
 ## Container
 

@@ -63,14 +63,13 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/{{prefix}}spec-to-issues/<owner>-<repo>-<s
       "blockersLinked": [],
       "projectItemId": null,
       "fieldsSet": false,
-      "triaged": false,
-      "containersReconciled": false
+      "triaged": false
     }
   ]
 }
 ```
 
-`items` is in creation order: the root container keyed `Plan`, then epics, then containers, then leaves, each in specification order. `id` is the issue's REST `id` (sub-issue and dependency calls need it), `nodeId` its `node_id`. `blockersLinked` lists the blocker keys already linked. `containersReconciled` applies to the root and the epics only. The root's `parentLinked` stays `false` because it has no parent.
+`items` is in creation order: the root container keyed `Plan`, then epics, then containers, then leaves, each in specification order. `id` is the issue's REST `id` (sub-issue and dependency calls need it), `nodeId` its `node_id`. `blockersLinked` lists the blocker keys already linked. `containersReconciled` applies to the root only. The root has no parent, so stage 3 skips it and its `parentLinked` stays `false`; that is not an unfinished step.
 
 ## Rules
 

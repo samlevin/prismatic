@@ -32,7 +32,7 @@ The repository ships the same delivery roles, handoffs, and checks for Claude Co
 | --- | --- | --- | --- |
 | `implement #N`, an issue URL, or a PR URL | `/prism-implement` | `$prism-implement` | `prism-orchestrator` for an issue with native sub-issues, else `prism-implementer` |
 | File or draft issues | `/prism-create-github-issue` | `$prism-create-github-issue` | `prism-issue-triager` (read-only metadata) |
-| File a specification's delivery plan as epics and leaves | `/prism-spec-to-issues` | `$prism-spec-to-issues` | none; follows `.agents/spec-slicing.md` |
+| File a specification's delivery plan as a root container, epics, and leaves | `/prism-spec-to-issues` | `$prism-spec-to-issues` | none; follows `.agents/spec-slicing.md` |
 | Review a pushed branch or PR | `/prism-review-code` | `$prism-review-code` | `prism-code-reviewer` (read-only, reports to you) |
 | Security review, only when a person asks | `/prism-review-security` | `$prism-review-security` | `prism-security-reviewer` (read-only) |
 | Write a PR body, issue body, comment, or doc | `/prism-plain-language` | `$prism-plain-language` | none |

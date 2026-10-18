@@ -6,7 +6,7 @@ The `prism-spec-to-issues` skill files the delivery plan of a specification as o
 
 ## Numbered sections
 
-The specification is one Markdown file whose first `# ` heading is its title, such as `# Notes service specification`. Normative content sits in numbered sections: `## 1. Title`, `### 1.2 Title`, `#### 1.2.3 Title`, and deeper. The number is the section's identity. Prose refers to a section as `§1.2`, and the skill rewrites every such reference to `§1.2 (#N)`, where `#N` is the issue that owns the section. References inside code spans and fenced code stay as written.
+The specification is one Markdown file whose first `# ` heading outside fenced code is its title, such as `# Notes service specification`. Normative content sits in numbered sections: `## 1. Title`, `### 1.2 Title`, `#### 1.2.3 Title`, and deeper. The number is the section's identity. Prose refers to a section as `§1.2`, and the skill rewrites every such reference to `§1.2 (#N)`, where `#N` is the issue that owns the section. References inside code spans and fenced code stay as written.
 
 Every numbered section has exactly one owner, which is the issue whose body carries it verbatim. An owner carries a section's subsections too, except a subsection that another issue claims for itself. A reference to a section resolves to the owner of that section or of its nearest owned ancestor. The delivery plan section itself has no owner, so do not refer to it by number.
 
@@ -45,7 +45,7 @@ Each phase is a heading one level below the delivery plan heading, `### Phase <i
 | `**Goal:**` | yes | What, followed by the list of slices and their issues |
 | `**Exit criteria:**` | yes | Why |
 | `**Contracts:**` | no | The listed sections, verbatim under a Contracts heading, with headings two levels deeper |
-| `**Deferred until:**` | no | Marks the phase deferred: its epic is blocked by the named slice and filed at Priority P3 |
+| `**Deferred until:**` | no | Marks the phase deferred and files its epic at Priority P3. It names one or more slices, comma-separated; each becomes a blocked-by edge on the epic, and the epic's Deferred paragraph and the root's How line list them in this order (`blocked until P1.2 (#11), P1.3 (#12) close`) |
 
 The epic's How lists every slice with its blockers, names each container, and points at the definition of done.
 
@@ -109,7 +109,7 @@ Every field states something the implementer needs. Leave an optional field out 
 
 ## Root container
 
-The skill files one container above the phase epics, so a single `implement` request on it delivers the whole plan: `prism-orchestrator` plans from one issue's native sub-issue tree and the blocked-by edges on its leaves. Its sub-issues are every phase epic, deferred ones included, and nothing else. It is titled with the specification's title minus a trailing word `specification`, followed by `delivery plan`, so `# Notes service specification` becomes `Notes service delivery plan`, and that title must be unique like any other. It is created first, before the epics.
+The skill files one container above the phase epics, so a single `implement` request on it delivers the whole plan: `prism-orchestrator` plans from one issue's native sub-issue tree and the blocked-by edges on its leaves. Its sub-issues are every phase epic, deferred ones included, and nothing else. It is titled with the specification's title minus a trailing word `specification` in any letter case, followed by `delivery plan`, so `# Notes service specification` becomes `Notes service delivery plan`, and that title must be unique like any other. A title that is only the word `specification` leaves nothing and fails `plan-section`. It is created first, before the epics.
 
 Its body follows `container.yml`. What names the specification and says the issue has no work of its own. Why says how the orchestrator plans. How lists the phases in plan order with their epics, marks each deferred phase with the slices it waits for, and states that dispatch order comes from the slice-level blocked-by edges rather than whole phases. The root has no blocked-by edges of its own, and no specification field controls it.
 
@@ -131,7 +131,7 @@ The skill builds the whole plan offline and checks it before any GitHub call. It
 | Rule | Fails when |
 | --- | --- |
 | `reserved-text` | The specification contains `@@issue:`, the skill's issue-number placeholder |
-| `plan-section` | The specification has no `# ` title heading, there is not exactly one `Delivery plan` section, or its definition of done or class catalog field names a missing section |
+| `plan-section` | The specification has no `# ` title heading outside fenced code, its title is empty after the trailing word `specification` is removed, there is not exactly one `Delivery plan` section, or its definition of done or class catalog field names a missing section |
 | `phase-format` | A phase heading is malformed, a phase id repeats, or Goal or Exit criteria is missing |
 | `slice-format` | A slice heading is malformed, the size is not `XS`, `S`, or `M`, a required field or table column is missing, or a field is unknown |
 | `slice-unique` | A Plan ID appears in more than one slice |
