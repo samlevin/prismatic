@@ -588,12 +588,8 @@ function ancestryProbe(
       ]);
       return result.status === 0;
     },
-    async historyComplete() {
-      const result = await lab.git.ok(client.dir, [
-        'rev-parse',
-        '--is-shallow-repository',
-      ]);
-      return result.stdout.toString('utf8').trim() === 'false';
+    historyComplete() {
+      return lab.historyComplete(client.dir, [head, prior]);
     },
     async deepen(commits) {
       const fetched = await lab.fetchCommits(
@@ -658,10 +654,12 @@ export async function ancestryScenario(
       ctx.server.url,
     );
     const steps: StepRecord[] = [];
+    // As in production, the store also holds the depth-1 base tip, whose
+    // shallow boundary must not stop the completeness check.
     const fetched = await lab.fetchCommits(
       client,
-      'fetch head, depth 1, blob:none',
-      [item.head],
+      'fetch head and base tip, depth 1, blob:none',
+      [item.head, ctx.commit(marks.baseTip)],
       { depth: 1 },
     );
     steps.push(fetched.record);
@@ -681,6 +679,18 @@ export async function ancestryScenario(
       blobs === 0,
       blobs,
     );
+    if (item.expected === 'rewritten') {
+      const storeShallow = await lab.git.ok(client.dir, [
+        'rev-parse',
+        '--is-shallow-repository',
+      ]);
+      s.check(
+        'rewritten is proved while the base tip keeps the store shallow',
+        storeShallow.stdout.toString('utf8').trim() === 'true' &&
+          result.ancestry === 'rewritten',
+        storeShallow.stdout.toString('utf8').trim(),
+      );
+    }
     results[item.name] = result;
   }
   s.data(results);

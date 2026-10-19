@@ -61,7 +61,7 @@ Metadata excluded, before any blob was requested: a file ignored at every revisi
 | Same as the first row with a bound of one 1-commit step | `unknown` | 1 | 0 |
 | GitHub: prior head three commits below head | `ancestor` | 1 of 25 commits | 0 |
 
-A shallow store cannot prove a negative, so `rewritten` needs the complete history of both commits. Within the 200-commit cap that is only possible for short histories. Anything else is `unknown`, which never counts as reviewed.
+A shallow store cannot prove a negative, so `rewritten` needs the complete history of both commits. Within the 200-commit cap that is only possible for short histories. Anything else is `unknown`, which never counts as reviewed. Completeness is checked per commit: no commit `git rev-list <head> <prior>` lists may be a shallow boundary. `git rev-parse --is-shallow-repository` is the wrong test, because the depth-1 base tip in the same store keeps the whole store shallow. The fixture clients hold that base tip, and the `rewritten` case was proved while the store stayed shallow.
 
 ### No failure widens the scope
 
@@ -77,14 +77,16 @@ Each PR below has the same three-line delta in one file and the same two open fi
 
 | History | Plan | Manifest paths | Blobs acquired | Blob bytes | Files parsed | Bytes parsed | Parse ms | Patch bytes | Wall ms |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2 files | union | 2 | 5 | 30,127 | 2 | 12,057 | 4 | 25,447 | 79 |
-| 2 files | narrowed | 2 | 5 | 30,127 | 2 | 12,057 | 5 | 25,447 | 90 |
-| 121 files | union | 121 | 243 | 1,460,780 | 121 | 727,857 | 33 | 1,515,613 | 167 |
-| 121 files | narrowed | 2 | 5 | 30,127 | 2 | 12,057 | 6 | 25,447 | 89 |
-| 495 files | union | 495 | 991 | 5,969,350 | 495 | 2,984,573 | 119 | 6,207,817 | 444 |
-| 495 files | narrowed | 2 | 5 | 30,127 | 2 | 12,057 | 6 | 25,447 | 91 |
+| 2 files | union | 2 | 5 | 30,127 | 2 | 12,057 | 3 | 25,447 | 62 |
+| 2 files | narrowed | 2 | 5 | 30,127 | 2 | 12,057 | 3 | 25,447 | 63 |
+| 121 files | union | 121 | 243 | 1,460,780 | 121 | 727,857 | 31 | 1,515,613 | 144 |
+| 121 files | narrowed | 2 | 5 | 30,127 | 2 | 12,057 | 3 | 25,447 | 69 |
+| 495 files | union | 495 | 991 | 5,969,350 | 495 | 2,984,573 | 114 | 6,207,817 | 372 |
+| 495 files | narrowed | 2 | 5 | 30,127 | 2 | 12,057 | 3 | 25,447 | 71 |
 
 Under the union manifest, unrelated blob acquisition, parsing and patch generation grow linearly with reviewed history, while the delta stays one file. The narrowed plan stays constant. Commit and tree metadata grew slightly with history in both plans, as expected.
+
+The narrowed rows are a lower bound for the plan decision 6 adopts. The fixture has no pending ranges or obligations, because every earlier round was fully reviewed. They also leave out the files the one-hop impact graph needs, which the bounded reference search finds. The spike did not measure either addition.
 
 Wall-clock time is not the problem: under half a second against a 22-minute deadline. The read volume is. At the cap, a one-file delta reads 2.85 MiB of unrelated source to index it, 18% of the 16 MiB context read budget, at 6 KB per file. Real files are larger, and the cost repeats on every incremental round.
 
@@ -94,8 +96,10 @@ Wall-clock time is not the problem: under half a second against a 22-minute dead
 2. Acquire blobs with the exact blob-ID fetch above, never with `git backfill`. This is the tested equivalent §5.4 allows. The plan lists object IDs from metadata, deduplicated across revisions and counted against the 100 MiB budget, and the fetch sends them in batches of `fetch.backfillBatchSize`. Because the request names objects rather than paths, no sparse pattern is written and no path needs escaping for acquisition. Pathspecs for `git diff` and `git grep` stay literal (`:(literal)<path>`).
 3. Every acquisition step verifies that the acquired blob IDs equal the planned IDs and fails otherwise.
 4. Blob sizes come from the GitHub tree API. `remote-object-info` is not used while GitHub does not offer it.
-5. Ancestry is proved by blobless deepening within `fetch.deepenCapCommits`, or by the compare API. `rewritten` requires complete history or the compare API. Everything else is `unknown`.
+5. Ancestry is proved by blobless deepening within `fetch.deepenCapCommits`, or by the compare API. `rewritten` requires complete history of both commits, checked per commit as above, or the compare API. Everything else is `unknown`.
 6. Adopt the narrowed acquisition plan for incremental and reconcile rounds. Acquisition, parsing and patches cover the incremental delta, the evidence paths of open findings, paths with pending ranges or `CoverageObligation` records, and the files the bounded reference search admits for the one-hop impact graph. The rest of the union manifest stays as metadata for eligibility, the hidden-path detector, coverage and ledger reconstruction. It narrows the union manifest and does not replace it. Full rounds still acquire the whole union manifest.
+
+   One question stays open for P3.2a (#169) and P1.0 (#147). `git grep` fails on blobs that were never acquired, as the `lazy-fetch-disabled` scenario shows, so the reference search cannot find one-hop files among bodies the narrowed plan skipped. The search therefore needs its own bounded acquisition of the blobs it scans, under the separate 64 MiB search-scan budget and nearest directories first, as §5.1 describes. If P3.2a cannot keep that acquisition well below the union manifest's cost, it measures the plan with obligations and search candidates included and revisits this decision before freezing its contract.
 
 ## Consequences
 
@@ -103,7 +107,7 @@ Wall-clock time is not the problem: under half a second against a 22-minute dead
 - P1.0 (#147) orchestrates the exact blob-ID fetch instead of `git backfill`, and plans acquisition per decision 6.
 - P1.1 (#148) allows `-c fetch.negotiationAlgorithm=noop` on fetches that name blob IDs, and keeps `protocol.file.allow=always` reachable only from the test harness.
 - P1.9 (#156) acquires admitted blobs by ID and verifies the acquired set. It needs no sparse-checkout configuration.
-- P1.4 (#151) and P3.2a (#169) build patches and indexes from the narrowed set in incremental rounds. P1.10 (#157) follows decision 5.
+- P1.4 (#151) and P3.2a (#169) build patches and indexes from the narrowed set in incremental rounds, and P3.2a owns the open question under decision 6. P1.10 (#157) follows decision 5.
 - The spec's §5.3 `RepositoryFetcher` row and §5.4 scoped-backfill paragraph still name `git backfill`. This ADR supersedes them until the spec is revised.
 - `docker/binaries.lock` notes that this contract was proved against Git 2.56.0. A Git upgrade reruns `experiments/fetch/run-in-image.sh` (`docker/runtime-policy.md`).
 - GitHub may start advertising `object-info`, or change how it answers wants by blob ID. Rerunning the spike with `--github` detects both.

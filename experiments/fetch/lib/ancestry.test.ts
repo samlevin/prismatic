@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyAncestry } from './ancestry.ts';
+import { classifyAncestry, historyCompleteFrom } from './ancestry.ts';
 import type { AncestryProbe } from './ancestry.ts';
 
 interface Script {
@@ -93,5 +93,23 @@ describe('classifyAncestry', () => {
         options,
       ),
     ).toEqual({ ancestry: 'unknown', reason: 'deepen-failed', deepenSteps: 2 });
+  });
+});
+
+describe('historyCompleteFrom', () => {
+  const a = 'a'.repeat(40);
+  const b = 'b'.repeat(40);
+  const tip = 'c'.repeat(40);
+
+  it('is complete when the store is not shallow', () => {
+    expect(historyCompleteFrom(`${a}\n${b}\n`, '')).toBe(true);
+  });
+
+  it('ignores a shallow boundary the two commits never reach', () => {
+    expect(historyCompleteFrom(`${a}\n${b}\n`, `${tip}\n`)).toBe(true);
+  });
+
+  it('is incomplete when a listed commit is a shallow boundary', () => {
+    expect(historyCompleteFrom(`${a}\n${b}\n`, `${tip}\n${b}\n`)).toBe(false);
   });
 });

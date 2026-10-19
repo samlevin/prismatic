@@ -100,12 +100,8 @@ function probe(
         ).status === 0
       );
     },
-    async historyComplete() {
-      const result = await lab.git.ok(client.dir, [
-        'rev-parse',
-        '--is-shallow-repository',
-      ]);
-      return result.stdout.toString('utf8').trim() === 'false';
+    historyComplete() {
+      return lab.historyComplete(client.dir, [head, prior]);
     },
     async deepen(commits) {
       const fetched = await lab.fetchCommits(

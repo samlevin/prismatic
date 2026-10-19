@@ -18,7 +18,7 @@ Fixture repositories are generated in the container's `/tmp` from the descriptio
 
 ## Layout
 
-- `lib/` holds the parts that become production candidates: the normative Git environment and runner, the process spawner, object accounting, `ls-tree` and raw-diff parsers, the union manifest, admission planning, the content probe, sparse patterns and literal pathspecs, ancestry classification, and the fast-import fixture writer. Unit tests sit beside each file and count toward the coverage gate.
+- `lib/` holds the parts that become production candidates: the normative Git environment and runner, the process spawner, object accounting, `ls-tree` and raw-diff parsers, the union manifest, admission planning, the stage B manifest selection and candidate sides, the hidden-reviewable rule, the content probe, sparse patterns and literal pathspecs, ancestry classification, and the fast-import fixture writer. Unit tests sit beside each file and count toward the coverage gate.
 - `spike/` holds the scenarios and the workbench they share. It runs only inside the image, so the coverage gate leaves it out. The recorded results are its evidence.
 - `results/` holds the JSON from the run ADR 0004 cites.
 

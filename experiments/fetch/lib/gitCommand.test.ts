@@ -158,6 +158,21 @@ describe('GitRunner', () => {
     expect((error as GitCommandError).status).toBe(1);
   });
 
+  it('redacts arguments in the log and in errors', async () => {
+    const { spawner } = recordingSpawner(result({ status: 128 }));
+    const runner = new GitRunner({ ...base, spawner });
+    const header = 'http.extraHeader=Authorization: Basic ghs_secret';
+    const error = await runner
+      .ok('/repo', ['-c', header, 'fetch'])
+      .catch((e: unknown) => e);
+    expect((error as Error).message).not.toContain('ghs_secret');
+    expect(runner.log[0]?.args).toEqual([
+      '-c',
+      'http.extraHeader=Authorization: Basic [REDACTED]',
+      'fetch',
+    ]);
+  });
+
   it('treats truncated output as a failure', async () => {
     const { spawner } = recordingSpawner(result({ truncated: true }));
     const runner = new GitRunner({ ...base, spawner });

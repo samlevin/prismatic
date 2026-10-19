@@ -7,7 +7,12 @@
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { planAdmission } from '../lib/admission.ts';
-import type { AdmissionPlan, Candidate } from '../lib/admission.ts';
+import type { AdmissionPlan } from '../lib/admission.ts';
+import {
+  hiddenReviewablePaths,
+  manifestCandidates,
+  selectManifest,
+} from '../lib/plan.ts';
 import { unionManifest } from '../lib/inventory.ts';
 import type {
   ChangedPath,
@@ -216,15 +221,12 @@ export async function prepare(
   const deltaPaths = new Set(
     incrementalDiff.changes.map((change) => change.path),
   );
-  const manifest =
-    options.scope === 'union'
-      ? fullManifest
-      : fullManifest.filter(
-          (entry) =>
-            deltaPaths.has(entry.path) ||
-            findingPaths.has(entry.path) ||
-            frontier === undefined,
-        );
+  const manifest = selectManifest(
+    fullManifest,
+    options.scope,
+    findingPaths,
+    frontier !== undefined,
+  );
 
   // Ignore rules from the trusted base tip and from head decide admission;
   // the merge-base rules also apply to old-side reads.
@@ -238,45 +240,22 @@ export async function prepare(
   );
   const ignoredPaths = new Set(ignored.ignoredAt.keys());
 
-  const candidates: Candidate[] = [];
-  const add = (
-    entry: string,
-    revision: string,
-    mode: string,
-    oid: string,
-  ): void => {
-    candidates.push({
-      path: entry,
-      revision,
-      mode,
-      oid,
-      advertisedSize: options.sizeOf(oid),
-    });
-  };
-  for (const entry of manifest) {
-    const change = entry.cumulative ?? entry.incremental;
-    if (change === undefined) continue;
-    if (change.status !== 'D')
-      add(entry.path, head, change.newMode, change.newOid);
-    if (entry.cumulative && entry.cumulative.status !== 'A')
-      add(
-        entry.path,
-        mergeBase,
-        entry.cumulative.oldMode,
-        entry.cumulative.oldOid,
-      );
-    if (entry.incremental && entry.incremental.status !== 'A' && frontier)
-      add(
-        entry.path,
-        frontier,
-        entry.incremental.oldMode,
-        entry.incremental.oldOid,
-      );
-  }
+  const candidates = manifestCandidates(
+    manifest,
+    { head, mergeBase, ...(frontier === undefined ? {} : { frontier }) },
+    options.sizeOf,
+  );
   // Baseline-side blobs of the paths that carry a finding's evidence.
   for (const finding of findings) {
     const blob = await blobAt(lab, client.dir, finding.baseline, finding.path);
-    if (blob) add(finding.path, finding.baseline, blob.mode, blob.oid);
+    if (blob)
+      candidates.push({
+        path: finding.path,
+        revision: finding.baseline,
+        mode: blob.mode,
+        oid: blob.oid,
+        advertisedSize: options.sizeOf(blob.oid),
+      });
   }
   const planned = planAdmission(candidates, ignoredPaths);
 
@@ -410,22 +389,12 @@ export async function prepare(
 
   // A changed path ignored only under head's rules, which would otherwise be
   // eligible, is the §5.1 hidden-reviewable condition.
-  const hiddenReviewable = [...ignored.ignoredAt.entries()]
-    .filter(
-      ([, revisions]) =>
-        revisions.includes(head) && !revisions.includes(baseTip),
-    )
-    .map(([file]) => file)
-    .filter(
-      (file) =>
-        planAdmission(
-          candidates.filter(
-            (candidate) =>
-              candidate.path === file && candidate.revision === head,
-          ),
-          new Set(),
-        ).admitted.length > 0,
-    );
+  const hiddenReviewable = hiddenReviewablePaths(
+    ignored.ignoredAt,
+    head,
+    baseTip,
+    candidates,
+  );
 
   return {
     steps,
