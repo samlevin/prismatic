@@ -27,6 +27,8 @@ export default [
       'dist/**',
       // Deliberate violations that tests lint on purpose.
       'tooling/eslint/fixtures/**',
+      // Third-party snapshots stay byte-identical to their pinned source.
+      'vendor/**',
     ],
   },
   {

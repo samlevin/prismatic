@@ -1,0 +1,3 @@
+# Vendored snapshots are checked against SHA-256 checksums of their upstream
+# bytes, so Git must never convert their line endings.
+vendor/** -text

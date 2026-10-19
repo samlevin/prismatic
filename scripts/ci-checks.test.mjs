@@ -59,6 +59,7 @@ test('tooling, manifest, and unknown paths select every check', () => {
     'tooling/CoverageGate.ts',
     'tests/security/README.md',
     'evals/README.md',
+    'vendor/anti-slop/stop-slop/references/phrases.md',
     'unexpected/file',
     'LICENSE.txt',
     'docs/LICENSE',
