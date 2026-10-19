@@ -49,9 +49,11 @@ const credentialPatterns: readonly CredentialPattern[] = [
     keep: 1,
   },
   {
+    // The password runs to the last `@` before the host, as URL parsers read
+    // it, so a raw `@` inside the password is masked too.
     kind: 'connection-string-password',
     pattern:
-      /\b([A-Za-z][A-Za-z0-9+.-]{0,31}:\/\/[^\s:@/?#]*:)(?!\[REDACTED:)[^\s@/?#]+(?=@)/g,
+      /\b([A-Za-z][A-Za-z0-9+.-]{0,31}:\/\/[^\s:@/?#]*:)(?!\[REDACTED:)[^\s/?#]+(?=@)/g,
     keep: 1,
   },
   {
@@ -68,8 +70,15 @@ const credentialPatterns: readonly CredentialPattern[] = [
     pattern: /\beyJ[A-Za-z0-9_-]{4,}\.eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]*/g,
   },
   {
-    // A value assigned to a name that ends in a secret-like word, such as
-    // `GITHUB_TOKEN=...` or `"password": "..."`.
+    // A quoted value assigned to a name that ends in a secret-like word, such
+    // as `"password": "..."`, masked up to its closing quote.
+    kind: 'secret-assignment',
+    pattern:
+      /\b([A-Za-z0-9_.-]{0,40}(?:secret|password|passwd|pwd|token|api[_-]?key)["']?[ \t]{0,5}[:=][ \t]{0,5}(["']))(?!\[REDACTED:)(?:(?!\2)[^\r\n])+(?=\2)/gi,
+    keep: 1,
+  },
+  {
+    // An unquoted value assigned to such a name, such as `GITHUB_TOKEN=...`.
     kind: 'secret-assignment',
     pattern:
       /\b([A-Za-z0-9_.-]{0,40}(?:secret|password|passwd|pwd|token|api[_-]?key)["']?[ \t]{0,5}[:=][ \t]{0,5}["']?)(?!\[REDACTED:)[^\s"'&,;]{3,}/gi,
