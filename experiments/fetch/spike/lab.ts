@@ -12,6 +12,7 @@ import {
   parseObjectInventory,
 } from '../lib/objectStore.ts';
 import type { AcquiredObjects, ObjectInventory } from '../lib/objectStore.ts';
+import { historyCompleteFrom } from '../lib/ancestry.ts';
 import { parseLsTree, parseRawDiff } from '../lib/inventory.ts';
 import type { RawDiff, TreeListing } from '../lib/inventory.ts';
 import { fastImportStream } from '../lib/fixtures.ts';
@@ -263,6 +264,18 @@ export class Lab {
       to,
     ]);
     return parseRawDiff(result.stdout);
+  }
+
+  // True when no shallow boundary is reachable from the given commits.
+  async historyComplete(
+    repo: string,
+    commits: readonly string[],
+  ): Promise<boolean> {
+    const shallow = await readFile(path.join(repo, 'shallow'), 'utf8').catch(
+      () => '',
+    );
+    const listed = await this.git.ok(repo, ['rev-list', ...commits]);
+    return historyCompleteFrom(listed.stdout.toString('utf8'), shallow);
   }
 
   // Reads admitted blobs through one `cat-file --batch`, bounded by the

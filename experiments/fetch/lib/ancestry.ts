@@ -19,7 +19,10 @@ export interface AncestryProbe {
   // Fetches the prior head's commit and trees without blobs.
   fetchPrior(): Promise<boolean>;
   isAncestor(): Promise<boolean>;
-  // True when the store holds the full history of both commits.
+  // True when the store holds the full history of both commits. The store
+  // as a whole may stay shallow elsewhere, for example at the depth-1 base
+  // tip, so this must not be `git rev-parse --is-shallow-repository`; see
+  // historyCompleteFrom.
   historyComplete(): Promise<boolean>;
   // Deepens both commits by `commits` more parents, without blobs.
   deepen(commits: number): Promise<boolean>;
@@ -66,4 +69,18 @@ export async function classifyAncestry(
         deepenSteps: steps,
       };
   }
+}
+
+// Whether the commits listed by `git rev-list <head> <prior>` are free of
+// shallow boundaries. `shallow` is the contents of the store's `shallow`
+// file, one commit ID per line, or empty when the store is not shallow. A
+// boundary elsewhere in the store, such as the depth-1 base tip, does not
+// count, because rev-list never reaches it from these two commits.
+export function historyCompleteFrom(revList: string, shallow: string): boolean {
+  const boundaries = new Set(shallow.split('\n').filter((line) => line !== ''));
+  if (boundaries.size === 0) return true;
+  return revList
+    .split('\n')
+    .filter((line) => line !== '')
+    .every((commit) => !boundaries.has(commit));
 }

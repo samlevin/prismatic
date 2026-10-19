@@ -74,6 +74,7 @@ export interface GitRunOptions {
 
 // One line per Git process, for the scenario record. The `-c` prefix is the
 // same on every line, so the log keeps only the subcommand and its options.
+// Arguments are redacted like stderr, in the log and in GitCommandError.
 export interface GitLogEntry {
   readonly cwd: string;
   readonly args: readonly string[];
@@ -140,7 +141,7 @@ export class GitRunner {
     };
     this.#log.push({
       cwd,
-      args: [...args],
+      args: args.map(this.#options.redactText),
       lazyFetch,
       status: result.status,
       elapsedMs: result.elapsedMs,
@@ -156,7 +157,11 @@ export class GitRunner {
   ): Promise<ProcessResult> {
     const result = await this.run(cwd, args, options);
     if (result.status !== 0 || result.truncated)
-      throw new GitCommandError(args, result.status, result.stderr);
+      throw new GitCommandError(
+        args.map(this.#options.redactText),
+        result.status,
+        result.stderr,
+      );
     return result;
   }
 }

@@ -4,8 +4,8 @@
   "node": "v24.22.0",
   "platform": "linux/arm64",
   "uid": 10001,
-  "startedAt": "2026-10-19T02:51:53.326Z",
-  "finishedAt": "2026-10-19T02:53:51.241Z",
+  "startedAt": "2026-10-19T03:07:59.469Z",
+  "finishedAt": "2026-10-19T03:09:44.896Z",
   "passed": true,
   "summary": [
     {
@@ -168,7 +168,7 @@
         {
           "step": "fetch head and merge-base, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 11,
+          "elapsedMs": 10,
           "acquired": {
             "objects": [
               {
@@ -274,7 +274,7 @@
         {
           "step": "remote-object-info for one blob",
           "status": 0,
-          "elapsedMs": 3,
+          "elapsedMs": 2,
           "acquired": {
             "objects": [],
             "byType": {
@@ -423,7 +423,7 @@
         {
           "step": "stage A: base tip commit and trees",
           "status": 0,
-          "elapsedMs": 8,
+          "elapsedMs": 7,
           "acquired": {
             "objects": [
               {
@@ -493,7 +493,7 @@
         {
           "step": "stage B commits and trees",
           "status": 0,
-          "elapsedMs": 7,
+          "elapsedMs": 6,
           "acquired": {
             "objects": [
               {
@@ -581,7 +581,7 @@
         {
           "step": "ignore rules at 361770bb2d88",
           "status": 0,
-          "elapsedMs": 7,
+          "elapsedMs": 5,
           "acquired": {
             "objects": [
               {
@@ -621,7 +621,7 @@
         {
           "step": "ignore rules at a9272fff70a0",
           "status": 0,
-          "elapsedMs": 7,
+          "elapsedMs": 6,
           "acquired": {
             "objects": [
               {
@@ -694,7 +694,7 @@
         {
           "step": "admitted blobs 1",
           "status": 0,
-          "elapsedMs": 13,
+          "elapsedMs": 9,
           "acquired": {
             "objects": [
               {
@@ -1139,7 +1139,7 @@
         {
           "name": "with a local ref on head, default negotiation receives nothing and the fetch fails",
           "passed": true,
-          "observed": "fatal: bad revision 'a9e42a7e1fbebb7e66ed534b0463e4c6989a6a2f'\nerror: file:///tmp/prismatic-fetch-spike-IQoeVw/001-review.server did not send all necessary objects"
+          "observed": "fatal: bad revision 'a9e42a7e1fbebb7e66ed534b0463e4c6989a6a2f'\nerror: file:///tmp/prismatic-fetch-spike-d9AOeh/001-review.server did not send all necessary objects"
         },
         {
           "name": "with the noop negotiator exactly the requested blobs arrive",
@@ -1160,7 +1160,7 @@
         {
           "step": "fetch head, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 9,
+          "elapsedMs": 8,
           "acquired": {
             "objects": [
               {
@@ -1270,7 +1270,7 @@
         {
           "step": "blob ID fetch, default negotiation, head under a local ref",
           "status": 1,
-          "elapsedMs": 10,
+          "elapsedMs": 7,
           "acquired": {
             "objects": [],
             "byType": {
@@ -1299,12 +1299,12 @@
             "diskBytes": 0
           },
           "packBytesAdded": 32,
-          "stderr": "fatal: bad revision 'a9e42a7e1fbebb7e66ed534b0463e4c6989a6a2f'\nerror: file:///tmp/prismatic-fetch-spike-IQoeVw/001-review.server did not send all necessary objects"
+          "stderr": "fatal: bad revision 'a9e42a7e1fbebb7e66ed534b0463e4c6989a6a2f'\nerror: file:///tmp/prismatic-fetch-spike-d9AOeh/001-review.server did not send all necessary objects"
         },
         {
           "step": "blob ID fetch, noop negotiation, head under a local ref",
           "status": 0,
-          "elapsedMs": 8,
+          "elapsedMs": 7,
           "acquired": {
             "objects": [
               {
@@ -1356,7 +1356,7 @@
         {
           "step": "blob ID fetch for an object the server lacks",
           "status": 128,
-          "elapsedMs": 3,
+          "elapsedMs": 2,
           "acquired": {
             "objects": [],
             "byType": {
@@ -1471,7 +1471,7 @@
         {
           "step": "backfill --sparse --no-include-edges, lazy fetch enabled for this process only",
           "status": 0,
-          "elapsedMs": 10,
+          "elapsedMs": 8,
           "acquired": {
             "objects": [
               {
@@ -1517,7 +1517,7 @@
         {
           "step": "backfill --sparse (default edges), lazy fetch enabled for this process only",
           "status": 0,
-          "elapsedMs": 8,
+          "elapsedMs": 6,
           "acquired": {
             "objects": [
               {
@@ -1569,7 +1569,7 @@
         {
           "step": "backfill --sparse --no-include-edges with escaped patterns, lazy enabled for this process only",
           "status": 0,
-          "elapsedMs": 9,
+          "elapsedMs": 7,
           "acquired": {
             "objects": [
               {
@@ -1690,7 +1690,7 @@
         {
           "step": "cat-file of an unacquired blob",
           "status": 128,
-          "elapsedMs": 1,
+          "elapsedMs": 2,
           "acquired": {
             "objects": [],
             "byType": {
@@ -1724,7 +1724,7 @@
         {
           "step": "patch over an unacquired path",
           "status": 128,
-          "elapsedMs": 2,
+          "elapsedMs": 1,
           "acquired": {
             "objects": [],
             "byType": {
@@ -1758,7 +1758,7 @@
         {
           "step": "grep over an unacquired path",
           "status": 128,
-          "elapsedMs": 4,
+          "elapsedMs": 3,
           "acquired": {
             "objects": [],
             "byType": {
@@ -1792,7 +1792,7 @@
         {
           "step": "grep over eligible paths",
           "status": 0,
-          "elapsedMs": 2,
+          "elapsedMs": 1,
           "acquired": {
             "objects": [],
             "byType": {
@@ -1859,6 +1859,11 @@
           "observed": 0
         },
         {
+          "name": "rewritten is proved while the base tip keeps the store shallow",
+          "passed": true,
+          "observed": "true"
+        },
+        {
           "name": "unknown: prior head cannot be fetched: classified unknown",
           "passed": true,
           "observed": {
@@ -1889,11 +1894,23 @@
       ],
       "steps": [
         {
-          "step": "fetch head, depth 1, blob:none",
+          "step": "fetch head and base tip, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 9,
+          "elapsedMs": 7,
           "acquired": {
             "objects": [
+              {
+                "oid": "1056edfe12a090344e4ba872f5a67b6523f5df81",
+                "type": "tree",
+                "size": 168,
+                "diskSize": 170
+              },
+              {
+                "oid": "16b0650c2483e5ac200d59e654f3b668a560dd3d",
+                "type": "tree",
+                "size": 990,
+                "diskSize": 814
+              },
               {
                 "oid": "1d315dbc72855c8aaa8995838b5902d3a27613a2",
                 "type": "tree",
@@ -1901,10 +1918,34 @@
                 "diskSize": 170
               },
               {
+                "oid": "361770bb2d88302b545e08b2455b9edec95a63c1",
+                "type": "commit",
+                "size": 240,
+                "diskSize": 158
+              },
+              {
+                "oid": "4e553abc39ab84687c53dab04fe92c1ec47fc209",
+                "type": "tree",
+                "size": 34,
+                "diskSize": 45
+              },
+              {
+                "oid": "a2cee25e07384988b388900d21dd2c9bd32ed487",
+                "type": "tree",
+                "size": 36,
+                "diskSize": 47
+              },
+              {
                 "oid": "a9272fff70a0ef2b45fd7d3e101027d2f02bf4fe",
                 "type": "commit",
                 "size": 241,
                 "diskSize": 161
+              },
+              {
+                "oid": "abb0d5d713fdd663edbd98f2d76703e96dc6a703",
+                "type": "tree",
+                "size": 31,
+                "diskSize": 22
               },
               {
                 "oid": "c0a130de01abc9f1a27fc60b93ddccc0846868d6",
@@ -1938,14 +1979,14 @@
                 "diskBytes": 0
               },
               "tree": {
-                "count": 5,
-                "bytes": 1267,
-                "diskBytes": 1107
+                "count": 10,
+                "bytes": 2526,
+                "diskBytes": 2205
               },
               "commit": {
-                "count": 1,
-                "bytes": 241,
-                "diskBytes": 161
+                "count": 2,
+                "bytes": 481,
+                "diskBytes": 319
               },
               "tag": {
                 "count": 0,
@@ -1953,15 +1994,15 @@
                 "diskBytes": 0
               }
             },
-            "bytes": 1508,
-            "diskBytes": 1268
+            "bytes": 3007,
+            "diskBytes": 2524
           },
-          "packBytesAdded": 1300
+          "packBytesAdded": 2556
         },
         {
           "step": "fetch prior head, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 10,
+          "elapsedMs": 7,
           "acquired": {
             "objects": [
               {
@@ -2035,12 +2076,6 @@
                 "diskSize": 815
               },
               {
-                "oid": "4e553abc39ab84687c53dab04fe92c1ec47fc209",
-                "type": "tree",
-                "size": 34,
-                "diskSize": 45
-              },
-              {
                 "oid": "7b811d8bb7d9b772c1bd5e62f15a13d54dfdb358",
                 "type": "commit",
                 "size": 241,
@@ -2065,18 +2100,6 @@
                 "diskSize": 170
               },
               {
-                "oid": "a2cee25e07384988b388900d21dd2c9bd32ed487",
-                "type": "tree",
-                "size": 36,
-                "diskSize": 47
-              },
-              {
-                "oid": "abb0d5d713fdd663edbd98f2d76703e96dc6a703",
-                "type": "tree",
-                "size": 31,
-                "diskSize": 22
-              },
-              {
                 "oid": "d397552179e6a1378f03b4963da998321aebca3b",
                 "type": "commit",
                 "size": 182,
@@ -2096,9 +2119,9 @@
                 "diskBytes": 0
               },
               "tree": {
-                "count": 9,
-                "bytes": 3591,
-                "diskBytes": 1351
+                "count": 6,
+                "bytes": 3490,
+                "diskBytes": 1237
               },
               "commit": {
                 "count": 3,
@@ -2111,8 +2134,8 @@
                 "diskBytes": 0
               }
             },
-            "bytes": 4255,
-            "diskBytes": 1797
+            "bytes": 4154,
+            "diskBytes": 1683
           },
           "packBytesAdded": 2824
         },
@@ -2189,7 +2212,7 @@
         {
           "step": "deepen by 2, blob:none",
           "status": 0,
-          "elapsedMs": 8,
+          "elapsedMs": 10,
           "acquired": {
             "objects": [],
             "byType": {
@@ -2220,16 +2243,34 @@
           "packBytesAdded": 3683
         },
         {
-          "step": "fetch head, depth 1, blob:none",
+          "step": "fetch head and base tip, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 6,
+          "elapsedMs": 7,
           "acquired": {
             "objects": [
+              {
+                "oid": "1056edfe12a090344e4ba872f5a67b6523f5df81",
+                "type": "tree",
+                "size": 168,
+                "diskSize": 170
+              },
+              {
+                "oid": "16b0650c2483e5ac200d59e654f3b668a560dd3d",
+                "type": "tree",
+                "size": 990,
+                "diskSize": 814
+              },
               {
                 "oid": "2c5e7618d0cf6801f30f40fa34b4a0cd517c0c8c",
                 "type": "tree",
                 "size": 168,
-                "diskSize": 170
+                "diskSize": 43
+              },
+              {
+                "oid": "361770bb2d88302b545e08b2455b9edec95a63c1",
+                "type": "commit",
+                "size": 240,
+                "diskSize": 93
               },
               {
                 "oid": "4e553abc39ab84687c53dab04fe92c1ec47fc209",
@@ -2241,7 +2282,7 @@
                 "oid": "4fb63da7579a9f226dc22d8e009f627975e5ebd5",
                 "type": "tree",
                 "size": 990,
-                "diskSize": 816
+                "diskSize": 81
               },
               {
                 "oid": "a2cee25e07384988b388900d21dd2c9bd32ed487",
@@ -2269,14 +2310,14 @@
                 "diskBytes": 0
               },
               "tree": {
-                "count": 5,
-                "bytes": 1259,
-                "diskBytes": 1100
+                "count": 7,
+                "bytes": 2417,
+                "diskBytes": 1222
               },
               "commit": {
-                "count": 1,
-                "bytes": 250,
-                "diskBytes": 167
+                "count": 2,
+                "bytes": 490,
+                "diskBytes": 260
               },
               "tag": {
                 "count": 0,
@@ -2284,10 +2325,10 @@
                 "diskBytes": 0
               }
             },
-            "bytes": 1509,
-            "diskBytes": 1267
+            "bytes": 2907,
+            "diskBytes": 1482
           },
-          "packBytesAdded": 1299
+          "packBytesAdded": 1514
         },
         {
           "step": "fetch prior head, depth 1, blob:none",
@@ -2362,7 +2403,7 @@
         {
           "step": "deepen by 4, blob:none",
           "status": 0,
-          "elapsedMs": 11,
+          "elapsedMs": 8,
           "acquired": {
             "objects": [
               {
@@ -2486,7 +2527,7 @@
         {
           "step": "deepen by 4, blob:none",
           "status": 0,
-          "elapsedMs": 10,
+          "elapsedMs": 8,
           "acquired": {
             "objects": [
               {
@@ -2536,11 +2577,23 @@
           "packBytesAdded": 3875
         },
         {
-          "step": "fetch head, depth 1, blob:none",
+          "step": "fetch head and base tip, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 8,
+          "elapsedMs": 7,
           "acquired": {
             "objects": [
+              {
+                "oid": "1056edfe12a090344e4ba872f5a67b6523f5df81",
+                "type": "tree",
+                "size": 168,
+                "diskSize": 170
+              },
+              {
+                "oid": "16b0650c2483e5ac200d59e654f3b668a560dd3d",
+                "type": "tree",
+                "size": 990,
+                "diskSize": 814
+              },
               {
                 "oid": "1d315dbc72855c8aaa8995838b5902d3a27613a2",
                 "type": "tree",
@@ -2548,10 +2601,34 @@
                 "diskSize": 170
               },
               {
+                "oid": "361770bb2d88302b545e08b2455b9edec95a63c1",
+                "type": "commit",
+                "size": 240,
+                "diskSize": 158
+              },
+              {
+                "oid": "4e553abc39ab84687c53dab04fe92c1ec47fc209",
+                "type": "tree",
+                "size": 34,
+                "diskSize": 45
+              },
+              {
+                "oid": "a2cee25e07384988b388900d21dd2c9bd32ed487",
+                "type": "tree",
+                "size": 36,
+                "diskSize": 47
+              },
+              {
                 "oid": "a9272fff70a0ef2b45fd7d3e101027d2f02bf4fe",
                 "type": "commit",
                 "size": 241,
                 "diskSize": 161
+              },
+              {
+                "oid": "abb0d5d713fdd663edbd98f2d76703e96dc6a703",
+                "type": "tree",
+                "size": 31,
+                "diskSize": 22
               },
               {
                 "oid": "c0a130de01abc9f1a27fc60b93ddccc0846868d6",
@@ -2585,14 +2662,14 @@
                 "diskBytes": 0
               },
               "tree": {
-                "count": 5,
-                "bytes": 1267,
-                "diskBytes": 1107
+                "count": 10,
+                "bytes": 2526,
+                "diskBytes": 2205
               },
               "commit": {
-                "count": 1,
-                "bytes": 241,
-                "diskBytes": 161
+                "count": 2,
+                "bytes": 481,
+                "diskBytes": 319
               },
               "tag": {
                 "count": 0,
@@ -2600,10 +2677,10 @@
                 "diskBytes": 0
               }
             },
-            "bytes": 1508,
-            "diskBytes": 1268
+            "bytes": 3007,
+            "diskBytes": 2524
           },
-          "packBytesAdded": 1300
+          "packBytesAdded": 2556
         },
         {
           "step": "fetch prior head, depth 1, blob:none",
@@ -2640,11 +2717,23 @@
           "stderr": "fatal: git upload-pack: not our ref fedcba9876543210fedcba9876543210fedcba98\nfatal: remote error: upload-pack: not our ref fedcba9876543210fedcba9876543210fedcba98"
         },
         {
-          "step": "fetch head, depth 1, blob:none",
+          "step": "fetch head and base tip, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 10,
+          "elapsedMs": 8,
           "acquired": {
             "objects": [
+              {
+                "oid": "1056edfe12a090344e4ba872f5a67b6523f5df81",
+                "type": "tree",
+                "size": 168,
+                "diskSize": 170
+              },
+              {
+                "oid": "16b0650c2483e5ac200d59e654f3b668a560dd3d",
+                "type": "tree",
+                "size": 990,
+                "diskSize": 814
+              },
               {
                 "oid": "1d315dbc72855c8aaa8995838b5902d3a27613a2",
                 "type": "tree",
@@ -2652,10 +2741,34 @@
                 "diskSize": 170
               },
               {
+                "oid": "361770bb2d88302b545e08b2455b9edec95a63c1",
+                "type": "commit",
+                "size": 240,
+                "diskSize": 158
+              },
+              {
+                "oid": "4e553abc39ab84687c53dab04fe92c1ec47fc209",
+                "type": "tree",
+                "size": 34,
+                "diskSize": 45
+              },
+              {
+                "oid": "a2cee25e07384988b388900d21dd2c9bd32ed487",
+                "type": "tree",
+                "size": 36,
+                "diskSize": 47
+              },
+              {
                 "oid": "a9272fff70a0ef2b45fd7d3e101027d2f02bf4fe",
                 "type": "commit",
                 "size": 241,
                 "diskSize": 161
+              },
+              {
+                "oid": "abb0d5d713fdd663edbd98f2d76703e96dc6a703",
+                "type": "tree",
+                "size": 31,
+                "diskSize": 22
               },
               {
                 "oid": "c0a130de01abc9f1a27fc60b93ddccc0846868d6",
@@ -2689,14 +2802,14 @@
                 "diskBytes": 0
               },
               "tree": {
-                "count": 5,
-                "bytes": 1267,
-                "diskBytes": 1107
+                "count": 10,
+                "bytes": 2526,
+                "diskBytes": 2205
               },
               "commit": {
-                "count": 1,
-                "bytes": 241,
-                "diskBytes": 161
+                "count": 2,
+                "bytes": 481,
+                "diskBytes": 319
               },
               "tag": {
                 "count": 0,
@@ -2704,10 +2817,10 @@
                 "diskBytes": 0
               }
             },
-            "bytes": 1508,
-            "diskBytes": 1268
+            "bytes": 3007,
+            "diskBytes": 2524
           },
-          "packBytesAdded": 1300
+          "packBytesAdded": 2556
         },
         {
           "step": "fetch prior head, depth 1, blob:none",
@@ -2764,7 +2877,7 @@
         {
           "step": "deepen by 1, blob:none",
           "status": 0,
-          "elapsedMs": 9,
+          "elapsedMs": 8,
           "acquired": {
             "objects": [
               {
@@ -2772,12 +2885,6 @@
                 "type": "tree",
                 "size": 990,
                 "diskSize": 815
-              },
-              {
-                "oid": "4e553abc39ab84687c53dab04fe92c1ec47fc209",
-                "type": "tree",
-                "size": 34,
-                "diskSize": 45
               },
               {
                 "oid": "7c57e0416a018295e72136112a2d530be3866376",
@@ -2796,18 +2903,6 @@
                 "type": "tree",
                 "size": 168,
                 "diskSize": 170
-              },
-              {
-                "oid": "a2cee25e07384988b388900d21dd2c9bd32ed487",
-                "type": "tree",
-                "size": 36,
-                "diskSize": 47
-              },
-              {
-                "oid": "abb0d5d713fdd663edbd98f2d76703e96dc6a703",
-                "type": "tree",
-                "size": 31,
-                "diskSize": 22
               },
               {
                 "oid": "d397552179e6a1378f03b4963da998321aebca3b",
@@ -2829,9 +2924,9 @@
                 "diskBytes": 0
               },
               "tree": {
-                "count": 7,
-                "bytes": 2425,
-                "diskBytes": 1224
+                "count": 4,
+                "bytes": 2324,
+                "diskBytes": 1110
               },
               "commit": {
                 "count": 2,
@@ -2844,8 +2939,8 @@
                 "diskBytes": 0
               }
             },
-            "bytes": 2848,
-            "diskBytes": 1508
+            "bytes": 2747,
+            "diskBytes": 1394
           },
           "packBytesAdded": 2535
         }
@@ -2898,10 +2993,10 @@
               "packBytes": 34299,
               "filesParsed": 2,
               "bytesParsed": 12057,
-              "parseMs": 4,
+              "parseMs": 3,
               "patchBytes": 25447,
-              "patchMs": 4,
-              "wallClockMs": 79
+              "patchMs": 3,
+              "wallClockMs": 62
             },
             {
               "history": "much",
@@ -2914,10 +3009,10 @@
               "packBytes": 238865,
               "filesParsed": 121,
               "bytesParsed": 727857,
-              "parseMs": 33,
+              "parseMs": 31,
               "patchBytes": 1515613,
-              "patchMs": 22,
-              "wallClockMs": 167
+              "patchMs": 20,
+              "wallClockMs": 144
             },
             {
               "history": "cap",
@@ -2930,10 +3025,10 @@
               "packBytes": 805931,
               "filesParsed": 495,
               "bytesParsed": 2984573,
-              "parseMs": 119,
+              "parseMs": 114,
               "patchBytes": 6207817,
-              "patchMs": 75,
-              "wallClockMs": 444
+              "patchMs": 74,
+              "wallClockMs": 372
             }
           ]
         },
@@ -2952,10 +3047,10 @@
               "packBytes": 34299,
               "filesParsed": 2,
               "bytesParsed": 12057,
-              "parseMs": 5,
+              "parseMs": 3,
               "patchBytes": 25447,
-              "patchMs": 5,
-              "wallClockMs": 90
+              "patchMs": 3,
+              "wallClockMs": 63
             },
             {
               "history": "much",
@@ -2968,10 +3063,10 @@
               "packBytes": 48498,
               "filesParsed": 2,
               "bytesParsed": 12057,
-              "parseMs": 6,
+              "parseMs": 3,
               "patchBytes": 25447,
-              "patchMs": 5,
-              "wallClockMs": 89
+              "patchMs": 4,
+              "wallClockMs": 69
             },
             {
               "history": "cap",
@@ -2984,10 +3079,10 @@
               "packBytes": 48512,
               "filesParsed": 2,
               "bytesParsed": 12057,
-              "parseMs": 6,
+              "parseMs": 3,
               "patchBytes": 25447,
-              "patchMs": 5,
-              "wallClockMs": 91
+              "patchMs": 4,
+              "wallClockMs": 71
             }
           ]
         }
@@ -3022,10 +3117,10 @@
             "packBytes": 34299,
             "filesParsed": 2,
             "bytesParsed": 12057,
-            "parseMs": 4,
+            "parseMs": 3,
             "patchBytes": 25447,
-            "patchMs": 4,
-            "wallClockMs": 79
+            "patchMs": 3,
+            "wallClockMs": 62
           },
           {
             "history": "little",
@@ -3038,297 +3133,7 @@
             "packBytes": 34299,
             "filesParsed": 2,
             "bytesParsed": 12057,
-            "parseMs": 5,
-            "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 90
-          },
-          {
-            "history": "much",
-            "scope": "union",
-            "cumulativePaths": 121,
-            "incrementalPaths": 1,
-            "manifestPaths": 121,
-            "acquiredBlobs": 243,
-            "acquiredBlobBytes": 1460780,
-            "packBytes": 238865,
-            "filesParsed": 121,
-            "bytesParsed": 727857,
-            "parseMs": 33,
-            "patchBytes": 1515613,
-            "patchMs": 22,
-            "wallClockMs": 167
-          },
-          {
-            "history": "much",
-            "scope": "narrowed",
-            "cumulativePaths": 121,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 48498,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 6,
-            "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 89
-          },
-          {
-            "history": "cap",
-            "scope": "union",
-            "cumulativePaths": 495,
-            "incrementalPaths": 1,
-            "manifestPaths": 495,
-            "acquiredBlobs": 991,
-            "acquiredBlobBytes": 5969350,
-            "packBytes": 805931,
-            "filesParsed": 495,
-            "bytesParsed": 2984573,
-            "parseMs": 119,
-            "patchBytes": 6207817,
-            "patchMs": 75,
-            "wallClockMs": 444
-          },
-          {
-            "history": "cap",
-            "scope": "narrowed",
-            "cumulativePaths": 495,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 48512,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 6,
-            "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 91
-          }
-        ],
-        "runs": [
-          {
-            "history": "little",
-            "scope": "union",
-            "cumulativePaths": 2,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 34299,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 8,
-            "patchBytes": 25447,
-            "patchMs": 7,
-            "wallClockMs": 77
-          },
-          {
-            "history": "little",
-            "scope": "narrowed",
-            "cumulativePaths": 2,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 34299,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 7,
-            "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 90
-          },
-          {
-            "history": "much",
-            "scope": "union",
-            "cumulativePaths": 121,
-            "incrementalPaths": 1,
-            "manifestPaths": 121,
-            "acquiredBlobs": 243,
-            "acquiredBlobBytes": 1460780,
-            "packBytes": 238865,
-            "filesParsed": 121,
-            "bytesParsed": 727857,
-            "parseMs": 35,
-            "patchBytes": 1515613,
-            "patchMs": 21,
-            "wallClockMs": 167
-          },
-          {
-            "history": "much",
-            "scope": "narrowed",
-            "cumulativePaths": 121,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 48498,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 6,
-            "patchBytes": 25447,
-            "patchMs": 6,
-            "wallClockMs": 95
-          },
-          {
-            "history": "cap",
-            "scope": "union",
-            "cumulativePaths": 495,
-            "incrementalPaths": 1,
-            "manifestPaths": 495,
-            "acquiredBlobs": 991,
-            "acquiredBlobBytes": 5969350,
-            "packBytes": 805931,
-            "filesParsed": 495,
-            "bytesParsed": 2984573,
-            "parseMs": 124,
-            "patchBytes": 6207817,
-            "patchMs": 82,
-            "wallClockMs": 422
-          },
-          {
-            "history": "cap",
-            "scope": "narrowed",
-            "cumulativePaths": 495,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 48512,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 6,
-            "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 90
-          },
-          {
-            "history": "little",
-            "scope": "union",
-            "cumulativePaths": 2,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 34299,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 4,
-            "patchBytes": 25447,
-            "patchMs": 4,
-            "wallClockMs": 79
-          },
-          {
-            "history": "little",
-            "scope": "narrowed",
-            "cumulativePaths": 2,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 34299,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 5,
-            "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 104
-          },
-          {
-            "history": "much",
-            "scope": "union",
-            "cumulativePaths": 121,
-            "incrementalPaths": 1,
-            "manifestPaths": 121,
-            "acquiredBlobs": 243,
-            "acquiredBlobBytes": 1460780,
-            "packBytes": 238865,
-            "filesParsed": 121,
-            "bytesParsed": 727857,
-            "parseMs": 33,
-            "patchBytes": 1515613,
-            "patchMs": 23,
-            "wallClockMs": 157
-          },
-          {
-            "history": "much",
-            "scope": "narrowed",
-            "cumulativePaths": 121,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 48498,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 6,
-            "patchBytes": 25447,
-            "patchMs": 7,
-            "wallClockMs": 89
-          },
-          {
-            "history": "cap",
-            "scope": "union",
-            "cumulativePaths": 495,
-            "incrementalPaths": 1,
-            "manifestPaths": 495,
-            "acquiredBlobs": 991,
-            "acquiredBlobBytes": 5969350,
-            "packBytes": 805931,
-            "filesParsed": 495,
-            "bytesParsed": 2984573,
-            "parseMs": 114,
-            "patchBytes": 6207817,
-            "patchMs": 69,
-            "wallClockMs": 403
-          },
-          {
-            "history": "cap",
-            "scope": "narrowed",
-            "cumulativePaths": 495,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 48512,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 5,
-            "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 91
-          },
-          {
-            "history": "little",
-            "scope": "union",
-            "cumulativePaths": 2,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 34299,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 4,
-            "patchBytes": 25447,
-            "patchMs": 4,
-            "wallClockMs": 87
-          },
-          {
-            "history": "little",
-            "scope": "narrowed",
-            "cumulativePaths": 2,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 34299,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 4,
+            "parseMs": 3,
             "patchBytes": 25447,
             "patchMs": 3,
             "wallClockMs": 63
@@ -3344,10 +3149,10 @@
             "packBytes": 238865,
             "filesParsed": 121,
             "bytesParsed": 727857,
-            "parseMs": 32,
+            "parseMs": 31,
             "patchBytes": 1515613,
-            "patchMs": 19,
-            "wallClockMs": 136
+            "patchMs": 20,
+            "wallClockMs": 144
           },
           {
             "history": "much",
@@ -3360,10 +3165,10 @@
             "packBytes": 48498,
             "filesParsed": 2,
             "bytesParsed": 12057,
-            "parseMs": 4,
+            "parseMs": 3,
             "patchBytes": 25447,
             "patchMs": 4,
-            "wallClockMs": 70
+            "wallClockMs": 69
           },
           {
             "history": "cap",
@@ -3376,10 +3181,10 @@
             "packBytes": 805931,
             "filesParsed": 495,
             "bytesParsed": 2984573,
-            "parseMs": 118,
+            "parseMs": 114,
             "patchBytes": 6207817,
-            "patchMs": 76,
-            "wallClockMs": 450
+            "patchMs": 74,
+            "wallClockMs": 372
           },
           {
             "history": "cap",
@@ -3392,122 +3197,28 @@
             "packBytes": 48512,
             "filesParsed": 2,
             "bytesParsed": 12057,
-            "parseMs": 6,
-            "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 90
-          },
-          {
-            "history": "little",
-            "scope": "union",
-            "cumulativePaths": 2,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 34299,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 8,
-            "patchBytes": 25447,
-            "patchMs": 24,
-            "wallClockMs": 121
-          },
-          {
-            "history": "little",
-            "scope": "narrowed",
-            "cumulativePaths": 2,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 34299,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 7,
-            "patchBytes": 25447,
-            "patchMs": 7,
-            "wallClockMs": 117
-          },
-          {
-            "history": "much",
-            "scope": "union",
-            "cumulativePaths": 121,
-            "incrementalPaths": 1,
-            "manifestPaths": 121,
-            "acquiredBlobs": 243,
-            "acquiredBlobBytes": 1460780,
-            "packBytes": 238865,
-            "filesParsed": 121,
-            "bytesParsed": 727857,
-            "parseMs": 36,
-            "patchBytes": 1515613,
-            "patchMs": 23,
-            "wallClockMs": 186
-          },
-          {
-            "history": "much",
-            "scope": "narrowed",
-            "cumulativePaths": 121,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 48498,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 6,
-            "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 92
-          },
-          {
-            "history": "cap",
-            "scope": "union",
-            "cumulativePaths": 495,
-            "incrementalPaths": 1,
-            "manifestPaths": 495,
-            "acquiredBlobs": 991,
-            "acquiredBlobBytes": 5969350,
-            "packBytes": 805931,
-            "filesParsed": 495,
-            "bytesParsed": 2984573,
-            "parseMs": 119,
-            "patchBytes": 6207817,
-            "patchMs": 72,
-            "wallClockMs": 460
-          },
-          {
-            "history": "cap",
-            "scope": "narrowed",
-            "cumulativePaths": 495,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 48512,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 5,
-            "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 100
-          },
-          {
-            "history": "little",
-            "scope": "union",
-            "cumulativePaths": 2,
-            "incrementalPaths": 1,
-            "manifestPaths": 2,
-            "acquiredBlobs": 5,
-            "acquiredBlobBytes": 30127,
-            "packBytes": 34299,
-            "filesParsed": 2,
-            "bytesParsed": 12057,
-            "parseMs": 4,
+            "parseMs": 3,
             "patchBytes": 25447,
             "patchMs": 4,
-            "wallClockMs": 73
+            "wallClockMs": 71
+          }
+        ],
+        "runs": [
+          {
+            "history": "little",
+            "scope": "union",
+            "cumulativePaths": 2,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 34299,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 20,
+            "patchBytes": 25447,
+            "patchMs": 4,
+            "wallClockMs": 101
           },
           {
             "history": "little",
@@ -3520,10 +3231,10 @@
             "packBytes": 34299,
             "filesParsed": 2,
             "bytesParsed": 12057,
-            "parseMs": 4,
+            "parseMs": 3,
             "patchBytes": 25447,
-            "patchMs": 5,
-            "wallClockMs": 77
+            "patchMs": 4,
+            "wallClockMs": 65
           },
           {
             "history": "much",
@@ -3538,8 +3249,200 @@
             "bytesParsed": 727857,
             "parseMs": 33,
             "patchBytes": 1515613,
-            "patchMs": 22,
-            "wallClockMs": 172
+            "patchMs": 21,
+            "wallClockMs": 144
+          },
+          {
+            "history": "much",
+            "scope": "narrowed",
+            "cumulativePaths": 121,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 48498,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 5,
+            "patchBytes": 25447,
+            "patchMs": 4,
+            "wallClockMs": 71
+          },
+          {
+            "history": "cap",
+            "scope": "union",
+            "cumulativePaths": 495,
+            "incrementalPaths": 1,
+            "manifestPaths": 495,
+            "acquiredBlobs": 991,
+            "acquiredBlobBytes": 5969350,
+            "packBytes": 805931,
+            "filesParsed": 495,
+            "bytesParsed": 2984573,
+            "parseMs": 114,
+            "patchBytes": 6207817,
+            "patchMs": 80,
+            "wallClockMs": 382
+          },
+          {
+            "history": "cap",
+            "scope": "narrowed",
+            "cumulativePaths": 495,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 48512,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 5,
+            "patchBytes": 25447,
+            "patchMs": 4,
+            "wallClockMs": 65
+          },
+          {
+            "history": "little",
+            "scope": "union",
+            "cumulativePaths": 2,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 34299,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 3,
+            "wallClockMs": 62
+          },
+          {
+            "history": "little",
+            "scope": "narrowed",
+            "cumulativePaths": 2,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 34299,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 3,
+            "wallClockMs": 64
+          },
+          {
+            "history": "much",
+            "scope": "union",
+            "cumulativePaths": 121,
+            "incrementalPaths": 1,
+            "manifestPaths": 121,
+            "acquiredBlobs": 243,
+            "acquiredBlobBytes": 1460780,
+            "packBytes": 238865,
+            "filesParsed": 121,
+            "bytesParsed": 727857,
+            "parseMs": 33,
+            "patchBytes": 1515613,
+            "patchMs": 20,
+            "wallClockMs": 157
+          },
+          {
+            "history": "much",
+            "scope": "narrowed",
+            "cumulativePaths": 121,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 48498,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 4,
+            "wallClockMs": 69
+          },
+          {
+            "history": "cap",
+            "scope": "union",
+            "cumulativePaths": 495,
+            "incrementalPaths": 1,
+            "manifestPaths": 495,
+            "acquiredBlobs": 991,
+            "acquiredBlobBytes": 5969350,
+            "packBytes": 805931,
+            "filesParsed": 495,
+            "bytesParsed": 2984573,
+            "parseMs": 114,
+            "patchBytes": 6207817,
+            "patchMs": 73,
+            "wallClockMs": 361
+          },
+          {
+            "history": "cap",
+            "scope": "narrowed",
+            "cumulativePaths": 495,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 48512,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 3,
+            "wallClockMs": 71
+          },
+          {
+            "history": "little",
+            "scope": "union",
+            "cumulativePaths": 2,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 34299,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 3,
+            "wallClockMs": 67
+          },
+          {
+            "history": "little",
+            "scope": "narrowed",
+            "cumulativePaths": 2,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 34299,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 3,
+            "wallClockMs": 63
+          },
+          {
+            "history": "much",
+            "scope": "union",
+            "cumulativePaths": 121,
+            "incrementalPaths": 1,
+            "manifestPaths": 121,
+            "acquiredBlobs": 243,
+            "acquiredBlobBytes": 1460780,
+            "packBytes": 238865,
+            "filesParsed": 121,
+            "bytesParsed": 727857,
+            "parseMs": 31,
+            "patchBytes": 1515613,
+            "patchMs": 23,
+            "wallClockMs": 145
           },
           {
             "history": "much",
@@ -3555,7 +3458,7 @@
             "parseMs": 4,
             "patchBytes": 25447,
             "patchMs": 4,
-            "wallClockMs": 78
+            "wallClockMs": 79
           },
           {
             "history": "cap",
@@ -3568,10 +3471,10 @@
             "packBytes": 805931,
             "filesParsed": 495,
             "bytesParsed": 2984573,
-            "parseMs": 125,
+            "parseMs": 115,
             "patchBytes": 6207817,
-            "patchMs": 75,
-            "wallClockMs": 444
+            "patchMs": 68,
+            "wallClockMs": 356
           },
           {
             "history": "cap",
@@ -3584,10 +3487,202 @@
             "packBytes": 48512,
             "filesParsed": 2,
             "bytesParsed": 12057,
-            "parseMs": 6,
+            "parseMs": 3,
             "patchBytes": 25447,
-            "patchMs": 8,
-            "wallClockMs": 124
+            "patchMs": 4,
+            "wallClockMs": 71
+          },
+          {
+            "history": "little",
+            "scope": "union",
+            "cumulativePaths": 2,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 34299,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 5,
+            "patchBytes": 25447,
+            "patchMs": 3,
+            "wallClockMs": 62
+          },
+          {
+            "history": "little",
+            "scope": "narrowed",
+            "cumulativePaths": 2,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 34299,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 3,
+            "wallClockMs": 61
+          },
+          {
+            "history": "much",
+            "scope": "union",
+            "cumulativePaths": 121,
+            "incrementalPaths": 1,
+            "manifestPaths": 121,
+            "acquiredBlobs": 243,
+            "acquiredBlobBytes": 1460780,
+            "packBytes": 238865,
+            "filesParsed": 121,
+            "bytesParsed": 727857,
+            "parseMs": 31,
+            "patchBytes": 1515613,
+            "patchMs": 18,
+            "wallClockMs": 134
+          },
+          {
+            "history": "much",
+            "scope": "narrowed",
+            "cumulativePaths": 121,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 48498,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 3,
+            "wallClockMs": 61
+          },
+          {
+            "history": "cap",
+            "scope": "union",
+            "cumulativePaths": 495,
+            "incrementalPaths": 1,
+            "manifestPaths": 495,
+            "acquiredBlobs": 991,
+            "acquiredBlobBytes": 5969350,
+            "packBytes": 805931,
+            "filesParsed": 495,
+            "bytesParsed": 2984573,
+            "parseMs": 113,
+            "patchBytes": 6207817,
+            "patchMs": 74,
+            "wallClockMs": 376
+          },
+          {
+            "history": "cap",
+            "scope": "narrowed",
+            "cumulativePaths": 495,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 48512,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 4,
+            "wallClockMs": 75
+          },
+          {
+            "history": "little",
+            "scope": "union",
+            "cumulativePaths": 2,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 34299,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 3,
+            "wallClockMs": 62
+          },
+          {
+            "history": "little",
+            "scope": "narrowed",
+            "cumulativePaths": 2,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 34299,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 4,
+            "wallClockMs": 61
+          },
+          {
+            "history": "much",
+            "scope": "union",
+            "cumulativePaths": 121,
+            "incrementalPaths": 1,
+            "manifestPaths": 121,
+            "acquiredBlobs": 243,
+            "acquiredBlobBytes": 1460780,
+            "packBytes": 238865,
+            "filesParsed": 121,
+            "bytesParsed": 727857,
+            "parseMs": 31,
+            "patchBytes": 1515613,
+            "patchMs": 17,
+            "wallClockMs": 131
+          },
+          {
+            "history": "much",
+            "scope": "narrowed",
+            "cumulativePaths": 121,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 48498,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 3,
+            "wallClockMs": 61
+          },
+          {
+            "history": "cap",
+            "scope": "union",
+            "cumulativePaths": 495,
+            "incrementalPaths": 1,
+            "manifestPaths": 495,
+            "acquiredBlobs": 991,
+            "acquiredBlobBytes": 5969350,
+            "packBytes": 805931,
+            "filesParsed": 495,
+            "bytesParsed": 2984573,
+            "parseMs": 114,
+            "patchBytes": 6207817,
+            "patchMs": 77,
+            "wallClockMs": 372
+          },
+          {
+            "history": "cap",
+            "scope": "narrowed",
+            "cumulativePaths": 495,
+            "incrementalPaths": 1,
+            "manifestPaths": 2,
+            "acquiredBlobs": 5,
+            "acquiredBlobBytes": 30127,
+            "packBytes": 48512,
+            "filesParsed": 2,
+            "bytesParsed": 12057,
+            "parseMs": 3,
+            "patchBytes": 25447,
+            "patchMs": 4,
+            "wallClockMs": 73
           }
         ]
       }
@@ -3670,7 +3765,7 @@
         {
           "step": "stage A: base tip commit and trees",
           "status": 0,
-          "elapsedMs": 13,
+          "elapsedMs": 10,
           "acquired": {
             "objects": [
               {
@@ -3728,7 +3823,7 @@
         {
           "step": "stage B commits and trees",
           "status": 0,
-          "elapsedMs": 10,
+          "elapsedMs": 7,
           "acquired": {
             "objects": [
               {
@@ -3780,7 +3875,7 @@
         {
           "step": "ignore rules at b261a780176f",
           "status": 0,
-          "elapsedMs": 12,
+          "elapsedMs": 7,
           "acquired": {
             "objects": [
               {
@@ -3853,7 +3948,7 @@
         {
           "step": "admitted blobs 1",
           "status": 0,
-          "elapsedMs": 26,
+          "elapsedMs": 12,
           "acquired": {
             "objects": [
               {
@@ -4006,12 +4101,12 @@
         }
       ],
       "data": {
-        "generationMs": 107243,
+        "generationMs": 95862,
         "treeBytes": 2148329321,
         "serverPackBytes": 2148294019,
         "packBytes": 48219,
         "blobBytes": 80780,
-        "prepareWallClockMs": 191,
+        "prepareWallClockMs": 87,
         "plannedBytes": 80774
       }
     },
@@ -4105,7 +4200,7 @@
         {
           "step": "stage A: base tip, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 257,
+          "elapsedMs": 238,
           "acquired": {
             "objects": [
               {
@@ -4571,7 +4666,7 @@
         {
           "step": "stage B: refs/pull/236/head, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 251,
+          "elapsedMs": 298,
           "acquired": {
             "objects": [
               {
@@ -4647,7 +4742,7 @@
         {
           "step": "stage B: merge-base by SHA, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 254,
+          "elapsedMs": 267,
           "acquired": {
             "objects": [],
             "byType": {
@@ -4680,7 +4775,7 @@
         {
           "step": "ignore rules at 27978a5dda89",
           "status": 0,
-          "elapsedMs": 199,
+          "elapsedMs": 220,
           "acquired": {
             "objects": [
               {
@@ -4720,7 +4815,7 @@
         {
           "step": "ignore rules at 543e549a16ad",
           "status": 0,
-          "elapsedMs": 9,
+          "elapsedMs": 12,
           "acquired": {
             "objects": [],
             "byType": {
@@ -4753,7 +4848,7 @@
         {
           "step": "admitted blobs 1",
           "status": 0,
-          "elapsedMs": 228,
+          "elapsedMs": 243,
           "acquired": {
             "objects": [
               {
@@ -4925,7 +5020,7 @@
         {
           "step": "remote-object-info against GitHub",
           "status": 128,
-          "elapsedMs": 121,
+          "elapsedMs": 145,
           "acquired": {
             "objects": [],
             "byType": {
@@ -4993,7 +5088,7 @@
         {
           "step": "fetch head, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 205,
+          "elapsedMs": 230,
           "acquired": {
             "objects": [
               {
@@ -5477,7 +5572,7 @@
         {
           "step": "fetch prior head, depth 1, blob:none",
           "status": 0,
-          "elapsedMs": 203,
+          "elapsedMs": 223,
           "acquired": {
             "objects": [
               {
@@ -5547,7 +5642,7 @@
         {
           "step": "deepen by 25, blob:none",
           "status": 0,
-          "elapsedMs": 536,
+          "elapsedMs": 286,
           "acquired": {
             "objects": [
               {
@@ -6679,7 +6774,7 @@
         {
           "step": "fetch prior head, depth 1, blob:none",
           "status": 128,
-          "elapsedMs": 185,
+          "elapsedMs": 201,
           "acquired": {
             "objects": [],
             "byType": {
