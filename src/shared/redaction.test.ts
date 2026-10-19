@@ -235,6 +235,19 @@ describe('nested values', () => {
     expect(JSON.stringify(masked)).not.toContain(token);
   });
 
+  it('copies an own __proto__ member from parsed JSON as a member', () => {
+    const value = JSON.parse(
+      `{"__proto__": {"note": "${token}"}, "plain": 1}`,
+    ) as object;
+    const masked = redactSecrets(value) as Record<string, unknown>;
+    expect(Object.getPrototypeOf(masked)).toBe(Object.prototype);
+    expect(Object.keys(masked)).toEqual(['__proto__', 'plain']);
+    expect(Object.getOwnPropertyDescriptor(masked, '__proto__')?.value).toEqual(
+      { note: '[REDACTED:github-token]' },
+    );
+    expect(JSON.stringify(masked)).not.toContain(token);
+  });
+
   it('does not change the input', () => {
     const value = { note: token, list: [token] };
     redactSecrets(value);

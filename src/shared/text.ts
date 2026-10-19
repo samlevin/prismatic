@@ -57,9 +57,12 @@ function isDisallowedControl(codePoint: number): boolean {
 // ECMA-48 sequences in their 7-bit (ESC-prefixed) and 8-bit (C1) forms:
 // string controls (OSC, DCS, SOS, PM, APC) up to their terminator, control
 // sequences (CSI) up to their final byte, and the remaining escape sequences.
+// A string body stops at the next introducer as well as at a terminator, so
+// unterminated introducers each scan only up to the next one and the whole
+// replacement stays linear.
 const escapeSequences = new RegExp(
   [
-    '(?:\\u001B[\\]PX^_]|[\\u0090\\u0098\\u009D\\u009E\\u009F])[^\\u0007\\u001B\\u009C]*(?:\\u0007|\\u001B\\\\|\\u009C)',
+    '(?:\\u001B[\\]PX^_]|[\\u0090\\u0098\\u009D\\u009E\\u009F])[^\\u0007\\u001B\\u0090\\u0098\\u009C-\\u009F]*(?:\\u0007|\\u001B\\\\|\\u009C)',
     '(?:\\u001B\\[|\\u009B)[\\u0030-\\u003F]*[\\u0020-\\u002F]*[\\u0040-\\u007E]',
     '\\u001B[\\u0020-\\u002F]*[\\u0030-\\u007E]',
   ].join('|'),

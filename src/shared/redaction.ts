@@ -66,8 +66,11 @@ const credentialPatterns: readonly CredentialPattern[] = [
   { kind: 'google-api-key', pattern: /\bAIza[0-9A-Za-z_-]{35}/g },
   { kind: 'aws-access-key-id', pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
   {
+    // Starts only where a base64url run starts, so a long run holding many
+    // `eyJ` substrings is scanned once instead of once per substring.
     kind: 'jwt',
-    pattern: /\beyJ[A-Za-z0-9_-]{4,}\.eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]*/g,
+    pattern:
+      /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{4,}\.eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]*/g,
   },
   {
     // A quoted value assigned to a name that ends in a secret-like word, such
@@ -213,7 +216,14 @@ function redactValue(
   const copy: Record<string, unknown> = {};
   copies.set(value, copy);
   for (const key of Object.keys(value)) {
-    copy[redactText(key)] = redactMember(key, readProperty(value, key), next);
+    // defineProperty, because assigning an own `__proto__` key, as JSON.parse
+    // produces, would set the copy's prototype instead of copying the member.
+    Object.defineProperty(copy, redactText(key), {
+      value: redactMember(key, readProperty(value, key), next),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return copy;
 }
