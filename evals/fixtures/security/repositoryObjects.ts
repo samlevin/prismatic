@@ -80,15 +80,24 @@ const modes = {
   submodule: '160000',
 } as const;
 
+// Called with each object a tree stores and the path it sits at.
+type ObjectRecorder = (id: string, type: 'blob' | 'tree', path: string) => void;
+
 // Stores every object a tree needs and returns the tree's ID.
-function writeTree(node: TreeNode, store: Map<string, Buffer>): string {
+function writeTree(
+  node: TreeNode,
+  store: Map<string, Buffer>,
+  record?: ObjectRecorder,
+  prefix = '',
+): string {
   const rows: { sortKey: Buffer; row: Buffer }[] = [];
   for (const [name, child] of node.entries) {
     let mode: string;
     let id: string;
+    const path = `${prefix}${name}`;
     if (isTreeNode(child)) {
       mode = modes.tree;
-      id = writeTree(child, store);
+      id = writeTree(child, store, record, `${path}/`);
     } else if (child.kind === 'submodule') {
       mode = modes.submodule;
       id = child.commit;
@@ -101,6 +110,7 @@ function writeTree(node: TreeNode, store: Map<string, Buffer>): string {
             : modes.file;
       const body = child.kind === 'symlink' ? child.target : child.content;
       id = put(store, encodeObject('blob', Buffer.from(body)));
+      record?.(id, 'blob', path);
     }
     if (!/^[0-9a-f]{40}$/.test(id)) {
       throw new Error(
@@ -118,10 +128,33 @@ function writeTree(node: TreeNode, store: Map<string, Buffer>): string {
     });
   }
   rows.sort((a, b) => Buffer.compare(a.sortKey, b.sortKey));
-  return put(
+  const id = put(
     store,
     encodeObject('tree', Buffer.concat(rows.map((item) => item.row))),
   );
+  record?.(id, 'tree', prefix.slice(0, -1));
+  return id;
+}
+
+export interface TreeObject {
+  readonly type: 'blob' | 'tree';
+  // Every path that holds the object; equal files share one blob. The root
+  // tree's path is empty.
+  readonly paths: readonly string[];
+}
+
+// The blobs and trees of one tree, by object ID, so a check can tell which
+// paths an object ID names.
+export function treeObjects(
+  tree: FixtureTree,
+): ReadonlyMap<string, TreeObject> {
+  const objects = new Map<string, { type: 'blob' | 'tree'; paths: string[] }>();
+  writeTree(nest(tree), new Map(), (id, type, path) => {
+    const existing = objects.get(id);
+    if (existing === undefined) objects.set(id, { type, paths: [path] });
+    else existing.paths.push(path);
+  });
+  return objects;
 }
 
 function put(store: Map<string, Buffer>, object: GitObject): string {

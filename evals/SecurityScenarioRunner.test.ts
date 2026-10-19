@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { treeAt } from './fixtures/security/history.ts';
+import { encodeObject } from './fixtures/security/repositoryObjects.ts';
 import { securityScenario } from './fixtures/security/scenarios.ts';
 import { InstrumentedProcessRunner } from './InstrumentedProcessRunner.ts';
 import {
@@ -380,14 +382,104 @@ describe('assertNeverExecutes', () => {
           ...normativeGit(['ls-tree', revision, '--', 'AGENTS.md']),
         );
         await processRunner.run(
-          ...normativeGit(['diff', 'release', revision, '--', ':!AGENTS.md']),
+          ...normativeGit([
+            'diff',
+            'release',
+            revision,
+            '--',
+            ':!AGENTS.md',
+            ':(exclude).github',
+          ]),
         );
+        await processRunner.run(
+          ...normativeGit(['log', '--oneline', revision]),
+        );
+        await processRunner.run(
+          ...normativeGit(['show', '--name-only', revision]),
+        );
+        await processRunner.run(...normativeGit(['rev-parse', `${revision}:`]));
         await processRunner.run('git', ['--version']);
       },
     );
     await expect(
       reads.assertNeverReads([...scenario.expectations.neverRead]),
     ).resolves.toBeUndefined();
+  });
+
+  it('counts a content command without a pathspec as reading the whole tree', async () => {
+    const scenario = securityScenario('tracked-ignored-files');
+    const reads = new SecurityScenarioRunner(
+      scenario,
+      async ({ processRunner, revision }) => {
+        await processRunner.run(...normativeGit(['diff', 'main', revision]));
+        await processRunner.run(
+          ...normativeGit(['grep', 'x', revision.slice(0, 7)]),
+        );
+        await processRunner.run(
+          ...normativeGit(['log', '-p', `${revision}~0`, 'src']),
+        );
+        await processRunner.run(
+          ...normativeGit(['diff', 'main', revision, '--', ':!secrets']),
+        );
+      },
+    );
+    expect(await violations(reads.assertNeverReads(['secrets']))).toEqual([
+      expect.stringMatching(
+        / diff main [0-9a-f]{40}" reads forbidden "\/repo\/secrets"/,
+      ),
+      expect.stringMatching(
+        / grep x [0-9a-f]{7}" reads forbidden "\/repo\/secrets"/,
+      ),
+    ]);
+    expect(
+      await violations(reads.assertNeverReads(['config/app.env'])),
+    ).toHaveLength(3);
+  });
+
+  it('counts a blob named by its ID or through a peeled revision', async () => {
+    const scenario = securityScenario('tracked-ignored-files');
+    const entry = treeAt(scenario.repository, 'head')['secrets/prod.ts'];
+    const blob =
+      entry?.kind === 'file'
+        ? encodeObject('blob', Buffer.from(entry.content)).id
+        : '';
+    const reads = new SecurityScenarioRunner(
+      scenario,
+      async ({ processRunner, revision }) => {
+        await processRunner.run(
+          ...normativeGit(['cat-file', '-p', blob.slice(0, 8)]),
+        );
+        await processRunner.run(
+          ...normativeGit([
+            'cat-file',
+            '-p',
+            `${revision}^{commit}:config/app.env`,
+          ]),
+        );
+        await processRunner.run(
+          ...normativeGit(
+            ['cat-file', '--batch-command'],
+            `info ${revision}:coverage/report.js\ncontents ${revision}:coverage/report.js\n`,
+          ),
+        );
+        await processRunner.run(...normativeGit(['cat-file', '-s', blob]));
+      },
+    );
+    expect(
+      await violations(
+        reads.assertNeverReads([...scenario.expectations.neverRead]),
+      ),
+    ).toEqual([
+      expect.stringMatching(
+        /cat-file -p [0-9a-f]{8}" reads forbidden "\/repo\/secrets"/,
+      ),
+      expect.stringMatching(
+        /cat-file -p [0-9a-f]{40}\^\{commit\}:config\/app.env" reads forbidden "\/repo\/config\/app.env"/,
+      ),
+      expect.stringMatching(
+        /cat-file --batch-command" reads forbidden "\/repo\/coverage"/,
+      ),
+    ]);
   });
 
   it('catches a shell, an untrusted executable, and option injection', async () => {

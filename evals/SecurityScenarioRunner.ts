@@ -4,8 +4,15 @@
 // hostile input by throwing is allowed, and the assertions still judge what
 // it touched before it stopped.
 import { resolveTrees } from './fixtures/security/history.ts';
-import { buildRepository } from './fixtures/security/repositoryObjects.ts';
-import type { SecurityScenario } from './fixtures/security/types.ts';
+import {
+  buildRepository,
+  treeObjects,
+  type BuiltRepository,
+} from './fixtures/security/repositoryObjects.ts';
+import type {
+  FixtureTree,
+  SecurityScenario,
+} from './fixtures/security/types.ts';
 import {
   InstrumentedFileSystem,
   lexicalPath,
@@ -16,7 +23,12 @@ import {
   type ProcessRequest,
   type ProcessResponder,
 } from './InstrumentedProcessRunner.ts';
-import { executionProblems, gitReadPaths } from './processChecks.ts';
+import {
+  executionProblems,
+  gitReadPaths,
+  type MountedObject,
+  type RevisionView,
+} from './processChecks.ts';
 
 export const repositoryRoot = '/repo';
 
@@ -72,13 +84,47 @@ export class SecurityScenarioViolation extends Error {
 
 const quote = (value: string): string => JSON.stringify(value);
 
+// Names Git resolves in a built fixture repository: commit labels, commit
+// IDs, refs in full and short forms, HEAD, and the IDs of the blobs and
+// trees in the mounted tree. Names of the mounted commit map to it; names
+// of other commits map to nothing.
+function revisionNames(
+  built: BuiltRepository,
+  mounted: string,
+  tree: FixtureTree,
+): ReadonlyMap<string, readonly MountedObject[]> {
+  const names = new Map<string, readonly MountedObject[]>();
+  const name = (key: string, id: string): void => {
+    // A name that could mean the mounted commit keeps that meaning.
+    if ((names.get(key)?.length ?? 0) > 0) return;
+    names.set(key, id === mounted ? [{ type: 'commit', path: '' }] : []);
+  };
+  for (const [label, id] of Object.entries(built.commits)) {
+    name(label, id);
+    name(id, id);
+  }
+  for (const [ref, id] of Object.entries(built.refs)) {
+    name(ref, id);
+    name(ref.slice('refs/'.length), id);
+    name(ref.replace(/^refs\/(?:heads|tags|remotes)\//, ''), id);
+  }
+  name('HEAD', built.refs[`refs/heads/${built.defaultBranch}`] ?? '');
+  for (const [id, object] of treeObjects(tree)) {
+    names.set(
+      id,
+      object.paths.map((path) => ({ type: object.type, path })),
+    );
+  }
+  return names;
+}
+
 export class SecurityScenarioRunner {
   readonly #scenario: SecurityScenario;
   readonly #subject: ScenarioSubject;
   readonly #revision: string;
-  // Every name Git accepts for the mounted revision: its label, commit ID,
-  // the refs that point at it, and HEAD when the default branch does.
-  readonly #revisionNames: ReadonlySet<string>;
+  // Every name Git accepts for a commit in the scenario, and every object
+  // ID in the mounted tree, with what each names in the mounted revision.
+  readonly #revisionView: RevisionView;
   readonly #fileSystem: InstrumentedFileSystem;
   readonly #processRunner: InstrumentedProcessRunner;
   readonly #trustedExecutables: ReadonlySet<string>;
@@ -100,14 +146,10 @@ export class SecurityScenarioRunner {
     }
     const built = buildRepository(scenario.repository);
     this.#revision = built.commits[label] ?? '';
-    const names = new Set([label, this.#revision]);
-    for (const [ref, id] of Object.entries(built.refs)) {
-      if (id !== this.#revision) continue;
-      names.add(ref);
-      names.add(ref.replace(/^refs\/(?:heads\/)?/, ''));
-      if (ref === `refs/heads/${built.defaultBranch}`) names.add('HEAD');
-    }
-    this.#revisionNames = names;
+    this.#revisionView = {
+      names: revisionNames(built, this.#revision, tree),
+      paths: new Set(Object.keys(tree)),
+    };
     this.#fileSystem = new InstrumentedFileSystem(tree, {
       root: repositoryRoot,
       hostFiles,
@@ -125,12 +167,16 @@ export class SecurityScenarioRunner {
 
   // Fails when the subject read the contents of any of these paths, or tried
   // to: through the filesystem, directly or through a symlink, or through
-  // Git at the mounted revision, as a `<rev>:<path>` argument or input line
-  // or a pathspec of a content command such as `git diff` or `git grep`.
-  // Repository paths are relative to the mounted revision; absolute paths
-  // name host files. A directory covers everything below it, and a Git
-  // pathspec covers everything below it. Metadata calls such as lstat, and
-  // Git commands limited to names, are not reads.
+  // Git in the mounted revision. Git reads count under any name Git
+  // resolves to the revision or an object in it, including abbreviated IDs,
+  // suffixes such as `~0` or `^{tree}`, and blob IDs: a `<rev>:<path>`
+  // argument or input line, and a content command such as `git diff`,
+  // `git grep`, or `git log -p`, which reads what its pathspecs cover, or
+  // the whole tree when it has no positive pathspec. Repository paths are
+  // relative to the mounted revision; absolute paths name host files. A
+  // directory covers everything below it, and so does a Git pathspec.
+  // Metadata calls such as lstat, and Git commands limited to names, are
+  // not reads.
   async assertNeverReads(paths: string[]): Promise<void> {
     const forbidden = paths.map((path) => {
       if (path.length === 0) throw new Error('A forbidden path is empty.');
@@ -157,10 +203,24 @@ export class SecurityScenarioRunner {
       );
     }
     for (const request of requests) {
-      for (const path of gitReadPaths(request, this.#revisionNames)) {
-        const absolute = lexicalPath(path, repositoryRoot);
-        const hit =
-          covered(absolute) ?? forbidden.find((item) => below(item, absolute));
+      for (const read of gitReadPaths(request, this.#revisionView)) {
+        const absolute = lexicalPath(read.path, repositoryRoot);
+        const excluded = read.excludes.map((path) =>
+          lexicalPath(path, repositoryRoot),
+        );
+        // The read and a forbidden path overlap below the deeper of the
+        // two, unless an exclusion pathspec covers that.
+        const hit = forbidden.find((item) => {
+          const overlap = below(absolute, item)
+            ? absolute
+            : below(item, absolute)
+              ? item
+              : undefined;
+          return (
+            overlap !== undefined &&
+            !excluded.some((path) => below(overlap, path))
+          );
+        });
         if (hit === undefined) continue;
         violations.push(
           `${quote(request.command)} ${quote(request.args.join(' '))} reads forbidden ${quote(hit)} at the mounted revision`,
