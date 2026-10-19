@@ -1,0 +1,13 @@
+# The image build sees only what it needs. Everything else, including local
+# worktrees, credentials, and node_modules, stays out of the build context.
+*
+!package.json
+!package-lock.json
+!.npmrc
+!tsconfig.json
+!tsconfig.build.json
+!src
+!apps
+!docker/binaries.lock
+!docker/fetch-pinned.sh
+**/*.test.ts

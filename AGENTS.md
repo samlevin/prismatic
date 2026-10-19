@@ -10,6 +10,7 @@ Run the narrowest set that covers your change, once before pushing. `npm run for
 | --- | --- |
 | Docs only | `npm run lint:md` |
 | `src/`, `apps/`, `tooling/`, `scripts/`, `.github/`, or root configuration | `npm run check` (format, lint with import boundaries, typecheck, agent definitions, every script test, and the unit tests with the 90% coverage gate) |
+| `Dockerfile`, `.dockerignore`, `docker/`, or `apps/action/` | `npm run check`, then `npm run test:container` (needs Docker) |
 | `.agents/`, `.claude/`, `.codex/`, or `scripts/agent-policy*` | `npm run agents:generate` after editing a source, then `npm run check` |
 
 CI picks its checks from the changed files, as CONTRIBUTING.md describes. Tests mock GitHub and never call it.

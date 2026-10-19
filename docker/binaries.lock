@@ -1,0 +1,17 @@
+# Native binaries in the Action image. The Dockerfile downloads each artifact
+# with docker/fetch-pinned.sh, which refuses any file whose SHA-256 differs
+# from the one recorded here. docker/runtime-policy.md says how to update an
+# entry.
+#
+# Fields, separated by spaces: name, version, platform, sha256, url.
+# `source` is a platform-independent source archive. Other platforms use
+# Docker's TARGETPLATFORM names.
+
+# Git, built from the release tarball. Checksum from
+# https://www.kernel.org/pub/software/scm/git/sha256sums.asc.
+git 2.56.0 source 26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3 https://www.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz
+
+# ast-grep release archives. Checksums from the digests GitHub records for the
+# release assets.
+ast-grep 0.51.0 linux/amd64 a7eead5552d3a8daad70f5d50d935da44bd0c138e946b5b0a96b1d38169fa639 https://github.com/ast-grep/ast-grep/releases/download/0.51.0/app-x86_64-unknown-linux-gnu.zip
+ast-grep 0.51.0 linux/arm64 73af0ebe5958acee012754a5b2826a186580ef83333092408a7a01096fc30b8b https://github.com/ast-grep/ast-grep/releases/download/0.51.0/app-aarch64-unknown-linux-gnu.zip

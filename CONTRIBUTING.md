@@ -63,6 +63,8 @@ Before you start, assign yourself, comment with your plan, and move the issue to
 
 Run `npm run check` before you push. It runs the format check, lint of JavaScript, TypeScript, and Markdown, the strict TypeScript check, the generated agent definition check, every script test, and the Vitest unit tests with the 90% coverage gate. `npm run format` and `npm run lint:fix` fix what they can in code. Fix Markdown lint problems by hand. `.tool-versions` pins the Node version that CI uses.
 
+When you change the `Dockerfile`, `.dockerignore`, `docker/`, or `apps/action/`, also run `npm run test:container`. It builds the Action image and runs the container smoke test, so it needs Docker and network access for the build. CI does not run it yet.
+
 ## Automation
 
 Workflow files are named `<area>-<name>.yml`, and each workflow is named `<Area>: <name>`. The areas are `ci` for checks on pull requests and pushes, and `tracker` for the project board. Every job and step has a name that says what it does. `scripts/workflow-names.test.mjs` enforces this.

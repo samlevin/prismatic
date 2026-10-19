@@ -12,7 +12,13 @@ export default defineConfig({
       'tooling/**/*.test.ts',
       'tests/**/*.test.ts',
     ],
-    exclude: ['**/node_modules/**', 'tooling/eslint/fixtures/**'],
+    // tests/e2e/ builds and runs the Docker image, so it needs Docker and,
+    // for the build, the network. `npm run test:container` runs it.
+    exclude: [
+      '**/node_modules/**',
+      'tooling/eslint/fixtures/**',
+      'tests/e2e/**',
+    ],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts', 'apps/**/*.ts', 'tooling/**/*.ts'],
