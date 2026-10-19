@@ -61,10 +61,8 @@ test('workflow files, workflow names, and job names match the convention', () =>
         },
       },
       'tracker-project-membership.yml': {
-        name: 'Tracker: add issues and pull requests to the project',
-        jobs: {
-          'add-to-project': 'Add the issue or pull request to the project',
-        },
+        name: 'Tracker: add issues to the project',
+        jobs: { 'add-to-project': 'Add the issue to the project' },
       },
     },
   );
@@ -278,12 +276,10 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
       },
     ],
   });
-  const eventNumber =
-    '${{ github.event.issue.number || github.event.pull_request.number }}';
+  const eventNumber = '${{ github.event.issue.number }}';
   assert.deepEqual(contract('tracker-project-membership.yml'), {
     on: {
       issues: { types: ['opened'] },
-      pull_request_target: { types: ['opened'] },
     },
     permissions: { contents: 'read' },
     concurrency: {
@@ -299,7 +295,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
         with: undefined,
         env: {
           PRISMATIC_PROJECT_TOKEN: token,
-          ISSUE_OR_PR_NUMBER: eventNumber,
+          ISSUE_NUMBER: eventNumber,
           DRY_RUN: 'false',
         },
         run: 'node scripts/issue-project-membership.mjs',

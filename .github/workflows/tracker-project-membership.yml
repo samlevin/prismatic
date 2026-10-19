@@ -1,27 +1,24 @@
-name: 'Tracker: add issues and pull requests to the project'
-run-name: "Add ${{ github.event_name == 'issues' && 'issue' || 'PR' }} #${{ github.event.issue.number || github.event.pull_request.number }} to the project"
+name: 'Tracker: add issues to the project'
+run-name: 'Add issue #${{ github.event.issue.number }} to the project'
 
 on:
   issues:
-    types: [opened]
-  pull_request_target:
     types: [opened]
 
 permissions:
   contents: read
 
 concurrency:
-  group: project-membership-${{ github.event.issue.number || github.event.pull_request.number }}
+  group: project-membership-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   add-to-project:
-    name: Add the issue or pull request to the project
+    name: Add the issue to the project
     if: github.repository == 'samlevin/prismatic'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # Always execute trusted default-branch code, including for fork PRs.
       - name: Check out default-branch scripts
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -32,9 +29,9 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.16.0'
-      - name: Add the item to Prismatic delivery
+      - name: Add the issue to Prismatic delivery
         env:
           PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
-          ISSUE_OR_PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           DRY_RUN: 'false'
         run: node scripts/issue-project-membership.mjs
