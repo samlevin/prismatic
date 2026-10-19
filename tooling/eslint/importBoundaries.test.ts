@@ -99,7 +99,16 @@ tester.run('boundaries/imports', rule, {
     // Built-ins without I/O are open to every module.
     valid({
       file: 'src/shared/digest.ts',
-      code: "import { createHash } from 'node:crypto';\nimport path from 'path';",
+      code: "import { createHash } from 'node:crypto';\nimport path from 'path';\nimport { posix } from 'node:path/posix';\nimport { setTimeout } from 'node:timers/promises';\nimport { types } from 'util/types';",
+    }),
+    // Inline type imports follow the same rules.
+    valid({
+      file: 'src/pipeline/a.ts',
+      code: "type Port = import('../core/ports.ts').Port;",
+    }),
+    valid({
+      file: 'src/model/a.ts',
+      code: "type Client = typeof import('openai');",
     }),
     // Listed pure packages are open to every module.
     valid({
@@ -122,7 +131,6 @@ tester.run('boundaries/imports', rule, {
       file: 'tooling/a.ts',
       code: "import { readFileSync } from 'node:fs';",
     }),
-    valid({ file: 'apps/README.ts', code: "import fs from 'node:fs';" }),
     {
       filename: '/elsewhere/src/shared/a.ts',
       code: "import { x } from '../core/x.ts';",
@@ -258,6 +266,44 @@ tester.run('boundaries/imports', rule, {
       { file: 'src/index.ts', code: 'export {};' },
       { messageId: 'unclassifiedFile' },
     ),
+    invalid(
+      { file: 'apps/main.ts', code: "import fs from 'node:fs';" },
+      { messageId: 'unclassifiedFile', data: { file: 'apps/main.ts' } },
+    ),
+    invalid(
+      {
+        file: 'src/core/a.ts',
+        code: "import { x } from '../../apps/main.ts';",
+      },
+      { messageId: 'unclassifiedTarget' },
+    ),
+    // Inline type imports cannot reach past the rules either.
+    invalid(
+      {
+        file: 'src/pipeline/a.ts',
+        code: "type G = import('../github/GitHubGateway.ts').GitHubGateway;",
+      },
+      { messageId: 'forbiddenModule' },
+    ),
+    invalid(
+      {
+        file: 'src/findings/a.ts',
+        code: "type Client = typeof import('openai');",
+      },
+      { messageId: 'adapterOnly', data: { specifier: 'openai' } },
+    ),
+    // Every built-in outside the pure list is adapter-only, including ones
+    // the list has never heard of.
+    invalid(
+      {
+        file: 'src/state/a.ts',
+        code: "import { DatabaseSync } from 'node:sqlite';\nimport { WASI } from 'wasi';\nimport v8 from 'node:v8';\nimport readline from 'node:readline';",
+      },
+      { messageId: 'adapterOnly', data: { specifier: 'node:sqlite' } },
+      { messageId: 'adapterOnly', data: { specifier: 'wasi' } },
+      { messageId: 'adapterOnly', data: { specifier: 'node:v8' } },
+      { messageId: 'adapterOnly', data: { specifier: 'node:readline' } },
+    ),
     // SDKs and I/O built-ins belong to adapters.
     invalid(
       { file: 'src/evidence/a.ts', code: "import { readFileSync } from 'fs';" },
@@ -343,7 +389,8 @@ test('locate classifies src modules, apps, and everything else', () => {
     module: 'toString',
     kind: undefined,
   });
-  expect(locate('apps/main.ts')).toBeUndefined();
+  expect(locate('apps/main.ts')).toEqual({ module: '', kind: undefined });
+  expect(locate('apps')).toEqual({ module: '', kind: undefined });
   expect(locate('tooling/CoverageGate.ts')).toBeUndefined();
 });
 
@@ -431,6 +478,28 @@ describe('the repository lint configuration', () => {
       { filePath: 'src/shared/a.test.ts' },
     );
     expect(result?.messages).toEqual([]);
+  });
+
+  test('fails I/O through globals outside the adapters', async () => {
+    const code =
+      "await fetch('https://example.invalid');\nprocess.getBuiltinModule('node:fs');\n";
+    const lint = async (filePath: string) => {
+      const [result] = await eslint.lintText(code, { filePath });
+      return (result?.messages ?? []).map(({ ruleId }) => ruleId);
+    };
+    expect(await lint('src/context/a.ts')).toEqual([
+      'no-restricted-globals',
+      'no-restricted-properties',
+    ]);
+    expect(await lint('apps/cli/main.ts')).toHaveLength(2);
+    expect(await lint('src/github/a.ts')).toEqual([]);
+    expect(await lint('src/context/a.test.ts')).toEqual([]);
+  });
+
+  test('ignores only the boundary fixtures, not fixtures elsewhere', async () => {
+    expect(await eslint.isPathIgnored('src/evidence/fixtures/a.ts')).toBe(
+      false,
+    );
   });
 
   test('ignores the fixtures when linting the repository', async () => {

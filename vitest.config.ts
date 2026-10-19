@@ -12,11 +12,11 @@ export default defineConfig({
       'tooling/**/*.test.ts',
       'tests/**/*.test.ts',
     ],
-    exclude: ['**/node_modules/**', '**/fixtures/**'],
+    exclude: ['**/node_modules/**', 'tooling/eslint/fixtures/**'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts', 'apps/**/*.ts', 'tooling/**/*.ts'],
-      exclude: ['**/*.test.ts', '**/fixtures/**'],
+      exclude: ['**/*.test.ts', 'tooling/eslint/fixtures/**'],
       reporter: ['text', 'json-summary'],
       reportsDirectory: 'coverage',
     },

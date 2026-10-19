@@ -25,13 +25,14 @@ An ESLint rule, `boundaries/imports` in `tooling/eslint/importBoundaries.ts`, en
 
 A file may always import from its own module. The rule also enforces these:
 
-- Only adapters import SDKs or the Node.js built-ins that reach the filesystem, processes, the network, or the module loader (`fs`, `child_process`, `net`, `http`, `https`, `module`, `vm`, `worker_threads`, and similar). Any third-party package counts as an SDK unless the rule's `packages` option lists it as a pure library. Built-ins without I/O, such as `node:crypto` and `node:path`, are open to every module.
+- Only adapters import SDKs or Node.js built-ins with I/O. Any third-party package counts as an SDK unless the rule's `packages` option lists it as a pure library. Built-ins work the same way: `pureBuiltins` lists the ones open to every module (`assert`, `buffer`, `crypto`, `events`, `path`, `querystring`, `stream`, `string_decoder`, `timers`, `url`, and `util`, with their subpaths), and every other built-in, including any that a later Node.js release adds, is adapter-only.
+- Outside the adapters, production code also may not use the `fetch`, `WebSocket`, or `EventSource` globals, or `process.getBuiltinModule`, `process.binding`, or `process.dlopen`. ESLint's `no-restricted-globals` and `no-restricted-properties` rules enforce this, because these reach I/O without an import.
 - Production code never imports anything outside `src/` and `apps/`, so `experiments/`, `evals/`, `tests/`, and `tooling/` stay out of the shipped code.
-- A directory under `src/` that the rule does not classify fails lint, and so does an import of one. A new module needs an entry in `sourceModules` first.
+- A file that is not inside a known module fails lint, and so does an import of one. That covers a directory under `src/` missing from `sourceModules`, and a file directly in `src/` or `apps/`. A new module needs an entry in `sourceModules` first.
 - A dynamic `import()` or `require()` with a computed specifier fails, because the rule cannot check it.
 - The rule's `exceptions` option allows one exact specifier in one exact file, for cases such as a bootstrap descriptor or privilege operation in `apps/action/main.ts`. The list is empty today.
 
-The import rules cover type-only imports too. Adapters do not import each other; one adapter that needs another goes through a port.
+The import rules cover type-only imports too, including inline ones such as `typeof import('openai')`. Adapters do not import each other; one adapter that needs another goes through a port.
 
 ## Consequences
 

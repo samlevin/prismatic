@@ -26,7 +26,7 @@ export default [
       'coverage/**',
       'dist/**',
       // Deliberate violations that tests lint on purpose.
-      '**/fixtures/**',
+      'tooling/eslint/fixtures/**',
     ],
   },
   {
@@ -56,6 +56,35 @@ export default [
           packages: [],
           exceptions: [],
         },
+      ],
+    },
+  },
+  // Outside the adapters, production code also may not reach the network,
+  // the filesystem, or native code through globals that need no import.
+  {
+    files: ['src/**/*.ts', 'apps/**/*.ts'],
+    ignores: [
+      '**/*.test.ts',
+      'src/github/**',
+      'src/repository/**',
+      'src/model/**',
+    ],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        ...['fetch', 'WebSocket', 'EventSource'].map((name) => ({
+          name,
+          message: 'Only the github, repository, and model adapters do I/O.',
+        })),
+      ],
+      'no-restricted-properties': [
+        'error',
+        ...['getBuiltinModule', 'binding', 'dlopen'].map((property) => ({
+          object: 'process',
+          property,
+          message:
+            'Only the github, repository, and model adapters load built-in or native modules.',
+        })),
       ],
     },
   },
