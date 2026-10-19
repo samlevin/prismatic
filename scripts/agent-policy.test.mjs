@@ -608,6 +608,42 @@ test("the implementer sends each handoff that handoff's own Policy line", () => 
   }
 });
 
+test('Codex issue filing states its policy as advisory; Claude pins it', () => {
+  const files = render();
+  for (const skill of ['create-github-issue', 'spec-to-issues']) {
+    const codex = files.get(`.agents/skills/${PREFIX}${skill}/SKILL.md`);
+    assert.ok(
+      codex.includes(
+        'Codex skills cannot set the session model, and nothing dispatched this session, so the `issue-creation` policy is advisory: the session keeps whatever model and effort Codex started with.',
+      ),
+      skill,
+    );
+    assert.ok(
+      codex.includes(
+        'state it in your first message as `Advisory policy: tool=codex capability=issue-creation model=<model> effort=<effort>`. Never present it as `Requested settings:`, because no dispatcher requested it.',
+      ),
+      skill,
+    );
+    assert.doesNotMatch(codex, /^model:/m, skill);
+    const claude = files.get(`.claude/skills/${PREFIX}${skill}/SKILL.md`);
+    assert.doesNotMatch(claude, /Advisory policy|advisory/, skill);
+    assert.match(
+      claude,
+      new RegExp(
+        `^model: ${policy.capabilities['issue-creation'].claude.model}$`,
+        'm',
+      ),
+      skill,
+    );
+    assert.ok(
+      claude.includes(
+        'This skill pins the main-thread model and effort for the turn from `.agents/policy.json` (`issue-creation`).',
+      ),
+      skill,
+    );
+  }
+});
+
 test('only automation moves an issue to In review', () => {
   const files = render();
   for (const path of [
