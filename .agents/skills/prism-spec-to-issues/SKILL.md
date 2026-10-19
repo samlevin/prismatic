@@ -10,7 +10,7 @@ Files a specification written to `.agents/spec-slicing.md` as issues in `samlevi
 
 References, read when the step needs them: [references/body-shapes.md](references/body-shapes.md) (bodies, reference rewriting, heading check), [references/state-file.md](references/state-file.md) (resumable state), [references/github-operations.md](references/github-operations.md) (REST calls, pacing, resume lookup). `fixtures/conforming-spec.md` and `fixtures/violating-spec.md` show a specification that files cleanly and one that fails pre-flight.
 
-Codex skills cannot set the session model. The repository policy for `issue-creation` is `node scripts/agent-policy.mjs resolve --tool codex --capability issue-creation`; state it in your first message. Start Codex with `codex -m <model> -c model_reasoning_effort=<effort>` to run the session at that policy, or at an explicit override.
+Codex skills cannot set the session model, and nothing dispatched this session, so the `issue-creation` policy is advisory: the session keeps whatever model and effort Codex started with. Resolve it with `node scripts/agent-policy.mjs resolve --tool codex --capability issue-creation` and state it in your first message as `Advisory policy: tool=codex capability=issue-creation model=<model> effort=<effort>`. Never present it as `Requested settings:`, because no dispatcher requested it. Start Codex with `codex -m <model> -c model_reasoning_effort=<effort>` to run the session at that policy, or at an explicit override.
 
 ## Authority
 
