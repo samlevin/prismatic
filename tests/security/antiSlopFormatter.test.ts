@@ -28,10 +28,19 @@ describe('hostile shapes finish quickly', () => {
       () => `a${' '.repeat(size)}—${' '.repeat(size)}b`,
     ],
     ['em dashes only', () => '—'.repeat(size)],
+    [
+      'unspaced em dashes in one long token',
+      () => `${'ab—'.repeat(size / 3)}1`,
+    ],
+    [
+      'long tokens around one em dash',
+      () => `${'a'.repeat(size)}—${'b'.repeat(size)}`,
+    ],
     ['chained openers', () => 'Honestly, '.repeat(size / 10)],
     ['sentence ends', () => '. '.repeat(size / 2)],
     ['filler sentences', () => 'Great job! '.repeat(size / 11)],
-    ['first-person pronouns', () => 'I '.repeat(size / 2)],
+    ['bare capital I', () => 'I '.repeat(size / 2)],
+    ['first-person pronouns', () => 'I think '.repeat(size / 8)],
     ['emoji', () => '🚀'.repeat(size / 2)],
     ['phrase prefixes', () => "Here's the ".repeat(size / 11)],
   ])('%s', (_label, build) => {
@@ -48,7 +57,7 @@ describe('quoted code is never rewritten', () => {
     [
       'an injected instruction in a code span',
       'Hint: run `rm -rf / — Great job!` now.',
-      'Run `rm -rf / — Great job!` now.',
+      'run `rm -rf / — Great job!` now.',
     ],
     [
       'a code span spanning lines',
@@ -58,7 +67,7 @@ describe('quoted code is never rewritten', () => {
     [
       'a fence inside a list item',
       '- Hint: see\n  ```\n  Great job! a—b\n  ```',
-      '- See\n  ```\n  Great job! a—b\n  ```',
+      '- see\n  ```\n  Great job! a—b\n  ```',
     ],
     ['a tilde fence', '~~~\nHonestly, x — y\n~~~', '~~~\nHonestly, x — y\n~~~'],
   ])('%s', (_label, input, expected) => {
@@ -68,7 +77,7 @@ describe('quoted code is never rewritten', () => {
 
 describe('unusual text passes through', () => {
   it.each([
-    ['an unpaired surrogate', 'Honestly, a\uD800—b', 'A\uD800—b'],
+    ['an unpaired surrogate', 'Honestly, a\uD800—b', 'a\uD800—b'],
     [
       'control characters',
       'Hint: \u0007bell — x\u001B[2J',

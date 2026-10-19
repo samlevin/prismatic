@@ -19,10 +19,9 @@ export type VendoredRuleFile =
   'references/phrases.md' | 'references/structures.md';
 
 // opener: removed at a sentence start with its `,` or `:` and the space after.
-// that-opener: also removed when `that` follows it.
 // adverb: removed at a sentence start only when a comma follows it.
 // sentence: removed when it is a whole sentence ending in `.` or `!`.
-export type StyleFix = 'opener' | 'that-opener' | 'adverb' | 'sentence';
+export type StyleFix = 'opener' | 'adverb' | 'sentence';
 
 export interface StylePhrase {
   readonly rule: StyleRule;
@@ -60,8 +59,8 @@ const adverbs = [
 
 export const stylePhrases: readonly StylePhrase[] = [
   filler("Here's the thing:", phrasesMd, 'opener'),
-  filler('The uncomfortable truth is', phrasesMd, 'that-opener'),
-  filler('It turns out', phrasesMd, 'that-opener'),
+  filler('The uncomfortable truth is', phrasesMd, 'opener'),
+  filler('It turns out', phrasesMd, 'opener'),
   filler('Let me be clear', phrasesMd, 'opener'),
   filler('The truth is,', phrasesMd, 'opener'),
   filler("I'll say it again:", phrasesMd, 'opener'),
@@ -76,11 +75,12 @@ export const stylePhrases: readonly StylePhrase[] = [
   filler("Here's why that matters", phrasesMd, 'opener'),
   ...adverbs.map((adverb) => filler(adverb, phrasesMd, 'adverb')),
   filler('At its core', phrasesMd, 'opener'),
-  filler("It's worth noting", phrasesMd, 'that-opener'),
-  filler('At the end of the day', phrasesMd, 'opener'),
+  filler("It's worth noting", phrasesMd, 'opener'),
+  // Often literal in code review: "At the end of the day, the job runs."
+  filler('At the end of the day', phrasesMd),
   filler('When it comes to', phrasesMd),
   filler('In a world where', phrasesMd),
-  filler('The reality is', phrasesMd, 'that-opener'),
+  filler('The reality is', phrasesMd, 'opener'),
   filler('Hint:', phrasesMd, 'opener'),
   filler('Plot twist:', phrasesMd, 'opener'),
   filler('Spoiler:', phrasesMd, 'opener'),
@@ -112,17 +112,16 @@ export const stylePhrases: readonly StylePhrase[] = [
   { rule: 'self-reference', text: 'As an AI language model', fix: 'opener' },
   { rule: 'self-reference', text: 'As an AI assistant', fix: 'opener' },
   { rule: 'self-reference', text: 'As an AI', fix: 'opener' },
-  // `navigate`, `unpack`, and `landscape` are left out: code review uses them
-  // literally (browser navigation, tuple unpacking, page orientation).
+  // `navigate`, `unpack`, `landscape`, `moving forward`, and `on the same
+  // page` are left out: code review uses them literally (browser navigation,
+  // tuple unpacking, page orientation, a cursor, two modals).
   ...[
     'Lean into',
     'Game-changer',
     'Double down',
     'Deep dive',
     'Take a step back',
-    'Moving forward',
     'Circle back',
-    'On the same page',
   ].map((text): StylePhrase => ({ rule: 'jargon', text, source: phrasesMd })),
   ...[
     'The reasons are structural',
@@ -145,23 +144,122 @@ const wordCharacter = /[\p{L}\p{N}_]/u;
 const emDashBefore = /[\p{L}\p{N}`)"'\u2019\u201D]/u;
 const emDashAfter = /[\p{L}\p{N}`("'\u2018\u201C]/u;
 const digit = /\p{N}/u;
+const capital = /\p{Lu}/u;
+const tokenEdge = /[\s\u2014]/;
 const horizontalSpace = /[ \t]/;
 const emoji = /\p{Emoji_Presentation}|\p{Extended_Pictographic}\u{FE0F}/gu;
-const firstPerson =
-  /(?<![\p{L}\p{N}_/-])I(?:['\u2019](?:m|ve|d|ll))?(?![\p{L}\p{N}_/-])/gu;
-// A plain lowercase word. An identifier such as `npm_config`, `i18n`, or
-// `os.path` keeps its case.
-const plainWord = /[a-z][a-z'\u2019]*(?![\p{L}\p{N}_$/(-]|\.[\p{L}\p{N}_])/uy;
+// A contraction, or a bare `I` before a verb, so `Type I` and `the I in SOLID`
+// pass.
+const firstPerson = new RegExp(
+  `(?<![\\p{L}\\p{N}_/-])I(?:['\u2019](?:m|ve|d|ll)(?![\\p{L}\\p{N}_/-])|(?=\\s+(?:${[
+    'am',
+    'was',
+    'have',
+    'had',
+    'think',
+    'thought',
+    'believe',
+    'noticed',
+    'found',
+    'see',
+    'saw',
+    'would',
+    'will',
+    'can',
+    'could',
+    'should',
+    'might',
+    'may',
+    'must',
+    'recommend',
+    'suggest',
+    'feel',
+    'want',
+    'hope',
+    'need',
+    'agree',
+    'assume',
+    'guess',
+    'looked',
+    'checked',
+    'reviewed',
+    'ran',
+    'tested',
+    'tried',
+    'missed',
+    'also',
+    'just',
+    'did',
+    'do',
+    'don',
+  ].join('|')})(?![\\p{L}\\p{N}_])))`,
+  'gu',
+);
+// An English function word left at a sentence start is capitalized. Any other
+// word, which may be an identifier such as `npm` or `x`, keeps its case.
+const functionWord = new RegExp(
+  `(?:${[
+    'the',
+    'an',
+    'this',
+    'that',
+    'these',
+    'those',
+    'it',
+    'its',
+    'each',
+    'every',
+    'all',
+    'both',
+    'some',
+    'any',
+    'no',
+    'none',
+    'there',
+    'here',
+    'when',
+    'if',
+    'after',
+    'before',
+    'because',
+    'since',
+    'so',
+    'for',
+    'in',
+    'on',
+    'at',
+    'with',
+    'without',
+    'to',
+    'from',
+    'by',
+    'as',
+    'once',
+    'unless',
+    'while',
+    'we',
+    'you',
+    'they',
+    'only',
+    'most',
+    'many',
+    'other',
+    'another',
+  ].join('|')})(?![\\p{L}\\p{N}_$/(-]|\\.[\\p{L}\\p{N}_])`,
+  'uy',
+);
 // The end of each match is a sentence start: the text start or a line start,
 // past any list, quote, or heading marker, or the space after `.`, `!`, `?`.
 const sentenceBoundary =
   /(?:^|\n)[ \t]*(?:(?:[-*+>]|\d{1,9}[.)]|#{1,6})[ \t]+)?|[.!?]["'\u2019\u201D)\]]*[ \t]+/g;
 const sentenceEnd = /[.!]+/y;
-const thatClause = /[ \t]+that(?=[ \t])/iy;
 const clauseMark = /[,:]/y;
 const comma = /,/y;
 const trailingSpace = /[ \t]+|(?=\n|$)/y;
-const fenceOpen = /^ {0,3}(`{3,}|~{3,})[^\n]*$/gm;
+// Fences at any indent, and lines indented like code blocks, count as code. A
+// list item's indented prose is then left alone, which is the safe side.
+const fenceOpen = /^[ \t]*(`{3,}|~{3,})[^\n]*$/gm;
+const indentedLine = /^(?: {4}|\t)[^\n]*$/gm;
 
 interface CompiledPhrase {
   readonly phrase: StylePhrase;
@@ -182,10 +280,12 @@ function phrasePattern(text: string): string {
 
 const compiled: readonly CompiledPhrase[] = stylePhrases.map((phrase) => {
   const pattern = phrasePattern(phrase.text);
+  // `As an AI` matches only as written, so "runs as an AI agent" passes.
+  const flags = phrase.rule === 'self-reference' ? 'u' : 'iu';
   return {
     phrase,
-    anywhere: new RegExp(pattern, 'giu'),
-    sticky: new RegExp(pattern, 'iuy'),
+    anywhere: new RegExp(pattern, `g${flags}`),
+    sticky: new RegExp(pattern, `y${flags}`),
   };
 });
 
@@ -256,7 +356,7 @@ function proseMask(text: string): Uint8Array {
   for (let open = fenceOpen.exec(text); open; open = fenceOpen.exec(text)) {
     const marker = open[1] ?? '';
     const closing = new RegExp(
-      `^ {0,3}${marker.startsWith('~') ? '~' : '`'}{${marker.length},}[ \\t]*$`,
+      `^[ \\t]*${marker.startsWith('~') ? '~' : '`'}{${marker.length},}[ \\t]*$`,
       'gm',
     );
     closing.lastIndex = fenceOpen.lastIndex;
@@ -264,6 +364,9 @@ function proseMask(text: string): Uint8Array {
     const end = close ? close.index + close[0].length : text.length;
     prose.fill(0, open.index, end);
     fenceOpen.lastIndex = end;
+  }
+  for (const line of text.matchAll(indentedLine)) {
+    prose.fill(0, line.index, line.index + line[0].length);
   }
   const fencedBefore = new Uint32Array(text.length + 1);
   let fenced = 0;
@@ -334,7 +437,7 @@ function openerEdits(text: string, prose: Uint8Array): Edit[] {
     }
     const capitalize =
       prose[position] === 1 &&
-      stickyEnd(plainWord, text, position) !== undefined;
+      stickyEnd(functionWord, text, position) !== undefined;
     edits.push(
       capitalize
         ? {
@@ -378,10 +481,6 @@ function separatorEnd(
         : stickyEnd(sentenceEnd, text, index);
     case 'adverb':
       return stickyEnd(comma, text, index);
-    case 'that-opener':
-      return (
-        stickyEnd(thatClause, text, index) ?? stickyEnd(clauseMark, text, index)
-      );
     default:
       return /[,:]$/.test(phrase.text)
         ? index
@@ -389,8 +488,10 @@ function separatorEnd(
   }
 }
 
-// An em dash between two words becomes a comma. One at a line edge, beside
-// punctuation, or between digits, where it may mean a range, stays.
+// An em dash between two words becomes a comma. One at a line edge or beside
+// punctuation stays. So does one that may mark a range: between digits, or
+// unspaced beside a token with a digit or before a capital (`v1—v3`,
+// `Monday—Friday`).
 function emDashEdits(text: string, prose: Uint8Array): Edit[] {
   const edits: Edit[] = [];
   for (let index = text.indexOf(emDash); index !== -1;) {
@@ -401,15 +502,37 @@ function emDashEdits(text: string, prose: Uint8Array): Edit[] {
     while (horizontalSpace.test(text.charAt(end))) end += 1;
     const before = text.charAt(start - 1);
     const after = text.charAt(end);
+    const unspaced = start === index && end === index + 1;
     if (
       isProse(prose, start, end) &&
       emDashBefore.test(before) &&
       emDashAfter.test(after) &&
-      !(digit.test(before) && digit.test(after))
+      !(digit.test(before) && digit.test(after)) &&
+      !(unspaced && (rangeLike(text, index) || capital.test(after)))
     ) {
       edits.push({ start, end, replacement: ', ' });
     }
     index = text.indexOf(emDash, index + 1);
   }
   return edits;
+}
+
+// Whether the token on either side of the em dash at `index` holds a number.
+// Tokens end at whitespace or another em dash, so each scan stays local.
+function rangeLike(text: string, index: number): boolean {
+  for (
+    let at = index - 1;
+    at >= 0 && !tokenEdge.test(text.charAt(at));
+    at -= 1
+  ) {
+    if (digit.test(text.charAt(at))) return true;
+  }
+  for (
+    let at = index + 1;
+    at < text.length && !tokenEdge.test(text.charAt(at));
+    at += 1
+  ) {
+    if (digit.test(text.charAt(at))) return true;
+  }
+  return false;
 }

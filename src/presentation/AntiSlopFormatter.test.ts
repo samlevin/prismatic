@@ -31,6 +31,9 @@ describe('format: em dashes', () => {
 
   it.each([
     ['between digits, where it may mean a range', 'pages 10—20'],
+    ['between versions', 'v1—v3'],
+    ['between dotted versions', '3.x—4.x'],
+    ['before a capital', 'Monday—Friday'],
     ['at a line start', '— the author'],
     ['at a line end', 'the end —\nnext'],
     ['beside punctuation', 'one,— two'],
@@ -40,6 +43,17 @@ describe('format: em dashes', () => {
   ])('leaves one %s', (_label, input) => {
     expect(format(input)).toBe(input);
     expect(rules(format(input)).includes('em-dash')).toBe(!input.includes('`'));
+  });
+
+  it.each([
+    [
+      'after a phrase with no separator',
+      'It turns out that — x',
+      'It turns out that, x',
+    ],
+    ['after a removed opener', 'Hint: — x', '— x'],
+  ])('never leaves a stray comma %s', (_label, input, expected) => {
+    expect(format(input)).toBe(expected);
   });
 });
 
@@ -56,12 +70,12 @@ describe('format: filler at a sentence start', () => {
       'The lock leaks.',
     ],
     [
-      'a that-clause',
-      "It's worth noting that the key is reused.",
+      'a vendored opener with a colon',
+      "It's worth noting: the key is reused.",
       'The key is reused.',
     ],
     [
-      'a that-opener with a comma',
+      'a vendored opener with a comma',
       'It turns out, the key is reused.',
       'The key is reused.',
     ],
@@ -81,16 +95,16 @@ describe('format: filler at a sentence start', () => {
       'It fails. Honestly, the key is reused.',
       'It fails. The key is reused.',
     ],
-    ['in a list item', '- Hint: reuse the key.', '- Reuse the key.'],
-    ['in a numbered item', '1. Hint: reuse the key.', '1. Reuse the key.'],
-    ['in a quote', '> Hint: reuse the key.', '> Reuse the key.'],
+    ['in a list item', '- Hint: the key leaks.', '- The key leaks.'],
+    ['in a numbered item', '1. Hint: the key leaks.', '1. The key leaks.'],
+    ['in a quote', '> Hint: the key leaks.', '> The key leaks.'],
     [
       'on a later line',
-      'Line one\nHint: reuse the key.',
-      'Line one\nReuse the key.',
+      'Line one\nHint: the key leaks.',
+      'Line one\nThe key leaks.',
     ],
     ['one after another', "Honestly, here's the thing: it leaks.", 'It leaks.'],
-    ['before a sentence end', 'Hint: done.', 'Done.'],
+    ['before a function word at a sentence end', 'Hint: it.', 'It.'],
     ['in any letter case', "HERE'S THE THING: it leaks.", 'It leaks.'],
   ])('removes %s', (_label, input, expected) => {
     expect(format(input)).toBe(expected);
@@ -99,9 +113,13 @@ describe('format: filler at a sentence start', () => {
   it.each([
     [
       'an identifier',
-      "It's worth noting that npm_config is unset.",
+      "It's worth noting, npm_config is unset.",
       'npm_config is unset.',
     ],
+    ['a one-letter name', 'Hint: x is null.', 'x is null.'],
+    ['a plain word', 'Hint: null is returned.', 'null is returned.'],
+    ['a verb', 'Hint: reuse the key.', 'reuse the key.'],
+    ['a function word glued to a name', 'Hint: the.x field.', 'the.x field.'],
     ['a dotted name', 'Hint: os.path is wrong.', 'os.path is wrong.'],
     ['a call', 'Hint: retry() loops.', 'retry() loops.'],
     ['a code span', 'Hint: `retry` loops.', '`retry` loops.'],
@@ -120,7 +138,16 @@ describe('format: filler at a sentence start', () => {
     ['in a fenced block', '```\nHint: x\n```'],
     ['after a code span', '`x` Hint: y'],
     ['a filler sentence with more words', 'Great job fixing the leak.'],
-    ['that followed by no space', 'It turns out thatx.'],
+    ['followed by that', "It's worth noting that the key is reused."],
+    [
+      'where that is not a conjunction',
+      'It turns out that way because the cache is cold.',
+    ],
+    [
+      'that is often literal',
+      'At the end of the day, the cron job deletes stale sessions.',
+    ],
+    ['as an AI phrase in lower case', 'As an ai, it leaks.'],
   ])('keeps a phrase %s', (_label, input) => {
     expect(format(input)).toBe(input);
   });
@@ -176,7 +203,7 @@ describe('format: factual content', () => {
 describe('assertStyle', () => {
   it('reports each violation with its rule and offsets', () => {
     const text =
-      'The key—as I said—is a game-changer 🚀. You might want to consider a lock.';
+      'The key—as I think—is a game-changer 🚀. You might want to consider a lock.';
     expect(
       formatter
         .assertStyle(text)
@@ -215,6 +242,16 @@ describe('assertStyle', () => {
     ['a code span', 'Call `I` and `honestly` and `🚀`.'],
     ['a fenced block', '~~~\nI really — 🚀\n~~~'],
     ['a fence with a longer close', '```\nI\n````\nok'],
+    [
+      'an indented fence in a list item',
+      '- a\n    ```\n    Foo — Bar 🚀\n    ```',
+    ],
+    ['an indented code block', 'Run:\n\n    really — I think'],
+    ['AI in a sentence', 'It runs as an AI agent.'],
+    ['literal motion', 'The cursor keeps moving forward.'],
+    ['literal layout', 'Two modals open on the same page.'],
+    ['a Roman numeral', 'Type I errors rise.'],
+    ['a letter', 'The I in SOLID stands for interfaces.'],
   ])('ignores %s', (_label, text) => {
     expect(formatter.assertStyle(text)).toEqual([]);
   });
@@ -222,6 +259,7 @@ describe('assertStyle', () => {
   it.each([
     ["I'm", "I'm sure it leaks."],
     ['I’ve', 'I’ve seen it leak.'],
+    ['I before a verb', 'I think it leaks.'],
   ])('reports the contraction %s', (_label, text) => {
     expect(rules(text)).toEqual(['self-reference']);
   });
