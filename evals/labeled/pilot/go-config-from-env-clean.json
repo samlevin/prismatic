@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "id": "go-config-from-env-clean",
+  "title": "Configuration read from the environment, no defects",
+  "language": "go",
+  "provenance": {
+    "origin": "synthetic",
+    "author": "agent:prism-implementer",
+    "createdOn": "2026-10-19",
+    "license": "MIT",
+    "notes": "Synthetic code written for the pilot; no third-party or private source."
+  },
+  "scenarios": ["clean-pr"],
+  "pullRequest": {
+    "title": "Read server settings from the environment",
+    "body": "Replaces the hard-coded port and timeout with PORT and READ_TIMEOUT_MS. Defaults are unchanged."
+  },
+  "source": {
+    "base": {
+      "cmd/server/main.go": [
+        "package main",
+        "",
+        "import (",
+        "\t\"log\"",
+        "\t\"net/http\"",
+        "\t\"time\"",
+        ")",
+        "",
+        "func main() {",
+        "\tserver := &http.Server{Addr: \":8080\", ReadTimeout: 5 * time.Second}",
+        "\tlog.Fatal(server.ListenAndServe())",
+        "}"
+      ]
+    },
+    "rounds": [
+      {
+        "number": 1,
+        "trigger": "opened",
+        "message": "Read settings from the environment",
+        "actions": [],
+        "changes": {
+          "internal/config/config.go": [
+            "package config",
+            "",
+            "import (",
+            "\t\"fmt\"",
+            "\t\"os\"",
+            "\t\"strconv\"",
+            "\t\"time\"",
+            ")",
+            "",
+            "// Settings holds the server settings read from the environment.",
+            "type Settings struct {",
+            "\tPort        int",
+            "\tReadTimeout time.Duration",
+            "}",
+            "",
+            "func defaults() Settings {",
+            "\treturn Settings{Port: 8080, ReadTimeout: 5 * time.Second}",
+            "}",
+            "",
+            "// FromEnv reads PORT and READ_TIMEOUT_MS, falling back to the defaults",
+            "// when a variable is unset. A set but invalid value is an error.",
+            "func FromEnv(lookup func(string) (string, bool)) (Settings, error) {",
+            "\tsettings := defaults()",
+            "\tif raw, ok := lookup(\"PORT\"); ok {",
+            "\t\tport, err := strconv.Atoi(raw)",
+            "\t\tif err != nil || port < 1 || port > 65535 {",
+            "\t\t\treturn Settings{}, fmt.Errorf(\"invalid PORT %q\", raw)",
+            "\t\t}",
+            "\t\tsettings.Port = port",
+            "\t}",
+            "\tif raw, ok := lookup(\"READ_TIMEOUT_MS\"); ok {",
+            "\t\tms, err := strconv.Atoi(raw)",
+            "\t\tif err != nil || ms < 1 {",
+            "\t\t\treturn Settings{}, fmt.Errorf(\"invalid READ_TIMEOUT_MS %q\", raw)",
+            "\t\t}",
+            "\t\tsettings.ReadTimeout = time.Duration(ms) * time.Millisecond",
+            "\t}",
+            "\treturn settings, nil",
+            "}",
+            "",
+            "// FromProcess reads the settings from the process environment.",
+            "func FromProcess() (Settings, error) {",
+            "\treturn FromEnv(os.LookupEnv)",
+            "}"
+          ],
+          "cmd/server/main.go": [
+            "package main",
+            "",
+            "import (",
+            "\t\"fmt\"",
+            "\t\"log\"",
+            "\t\"net/http\"",
+            "",
+            "\t\"example.test/server/internal/config\"",
+            ")",
+            "",
+            "func main() {",
+            "\tsettings, err := config.FromProcess()",
+            "\tif err != nil {",
+            "\t\tlog.Fatal(err)",
+            "\t}",
+            "\tserver := &http.Server{",
+            "\t\tAddr:        fmt.Sprintf(\":%d\", settings.Port),",
+            "\t\tReadTimeout: settings.ReadTimeout,",
+            "\t}",
+            "\tlog.Fatal(server.ListenAndServe())",
+            "}"
+          ]
+        }
+      },
+      {
+        "number": 2,
+        "trigger": "synchronize",
+        "message": "Test the settings parser",
+        "actions": [],
+        "changes": {
+          "internal/config/config_test.go": [
+            "package config",
+            "",
+            "import (",
+            "\t\"testing\"",
+            "\t\"time\"",
+            ")",
+            "",
+            "func lookupFrom(values map[string]string) func(string) (string, bool) {",
+            "\treturn func(key string) (string, bool) {",
+            "\t\tvalue, ok := values[key]",
+            "\t\treturn value, ok",
+            "\t}",
+            "}",
+            "",
+            "func TestFromEnvDefaults(t *testing.T) {",
+            "\tgot, err := FromEnv(lookupFrom(nil))",
+            "\tif err != nil || got.Port != 8080 || got.ReadTimeout != 5*time.Second {",
+            "\t\tt.Fatalf(\"FromEnv(empty) = %+v, %v\", got, err)",
+            "\t}",
+            "}",
+            "",
+            "func TestFromEnvRejectsInvalidPort(t *testing.T) {",
+            "\tfor _, raw := range []string{\"0\", \"65536\", \"http\"} {",
+            "\t\tif _, err := FromEnv(lookupFrom(map[string]string{\"PORT\": raw})); err == nil {",
+            "\t\t\tt.Errorf(\"PORT=%q: expected an error\", raw)",
+            "\t\t}",
+            "\t}",
+            "}"
+          ]
+        }
+      }
+    ]
+  },
+  "labels": {
+    "labeledBy": "agent:prism-implementer",
+    "labeledOn": "2026-10-19",
+    "check": {
+      "status": "pending"
+    },
+    "defects": [],
+    "decoys": []
+  },
+  "expected": [
+    {
+      "round": 1,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": [],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": [],
+      "transitions": []
+    }
+  ]
+}
