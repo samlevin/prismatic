@@ -5,7 +5,8 @@
 // and refuses unsupported values instead of letting a runtime substitute one.
 // `generate` writes the Claude Code and Codex definitions from the shared
 // sources under .agents/; `check` fails when a generated file is stale so
-// the two tools cannot drift apart.
+// the two tools cannot drift apart. `publish-review` is the one GitHub write
+// the review-code skill makes.
 //
 // The sources name no repository. `policy.json` carries a `binding` (the
 // namespace prefix, repository, project, tracker documents, and feature
@@ -24,6 +25,7 @@ import {
 import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ghRest } from './github-api.mjs';
 
 export const TOOLS = ['claude', 'codex'];
 // Matches the repository Prettier style so generated YAML passes format:check.
@@ -442,6 +444,103 @@ function argument(args, name) {
   return index === -1 ? undefined : args[index + 1];
 }
 
+const SHA = /^[0-9a-f]{40}$/;
+
+// Posts a code review report to an open pull request as one review pinned to
+// the reviewed head, after checking that the PR still has the reviewed pair.
+export function publishReview(args, { base = root, run } = {}) {
+  try {
+    const { repository } = loadPolicy(base).binding;
+    const pr = argument(args, 'pr');
+    const reviewedBase = argument(args, 'base');
+    const head = argument(args, 'head');
+    const reportPath = argument(args, 'report');
+    if (
+      !/^[1-9]\d*$/.test(pr ?? '') ||
+      !SHA.test(reviewedBase ?? '') ||
+      !SHA.test(head ?? '') ||
+      !reportPath
+    )
+      throw new Error(
+        'usage: publish-review --pr <N> --base <40-character sha> --head <40-character sha> --report <file>',
+      );
+    let report;
+    try {
+      report = readFileSync(reportPath, 'utf8');
+    } catch (error) {
+      throw new Error(`cannot read the report ${reportPath}: ${error.code}`, {
+        cause: error,
+      });
+    }
+    const verdict = report.match(
+      /^Verdict: (APPROVE|REQUEST CHANGES|BLOCKED)\s*$/m,
+    )?.[1];
+    if (!verdict) throw new Error('the report has no readable Verdict line');
+    const pair = report.match(/^Base\/Head: (\S+?)\.\.(\S+)\s*$/m);
+    if (!pair) throw new Error('the report has no readable Base/Head line');
+    if (pair[1] !== reviewedBase || pair[2] !== head)
+      throw new Error(
+        `the report names ${pair[1]}..${pair[2]}, not the reviewed ${reviewedBase}..${head}`,
+      );
+    const api = (request) => JSON.parse(ghRest(request, { run }));
+    const pull = api([`repos/${repository}/pulls/${pr}`]);
+    if (pull.state !== 'open')
+      throw new Error(
+        `pull request #${pr} is ${pull.merged_at ? 'merged' : 'closed'}; reviews post only to open pull requests`,
+      );
+    if (pull.head.sha !== head)
+      throw new Error(
+        `pull request #${pr} head is now ${pull.head.sha}, not the reviewed ${head}`,
+      );
+    // The skill's `git merge-base <baseRefOid> <headRefOid>`; --jq drops the file patches.
+    const mergeBase = api([
+      `repos/${repository}/compare/${pull.base.sha}...${head}?per_page=1`,
+      '--jq',
+      '{sha: .merge_base_commit.sha}',
+    ]).sha;
+    if (mergeBase !== reviewedBase)
+      throw new Error(
+        `pull request #${pr} now has merge base ${mergeBase} with ${pull.base.ref}, not the reviewed ${reviewedBase}`,
+      );
+    let login;
+    try {
+      login = api(['user']).login;
+    } catch {
+      login = undefined;
+    }
+    const author = pull.user.login;
+    const event =
+      verdict === 'REQUEST CHANGES' && login && login !== author
+        ? 'REQUEST_CHANGES'
+        : 'COMMENT';
+    const reason = {
+      APPROVE: 'agent reviews never approve',
+      BLOCKED: 'it is not a review decision',
+      'REQUEST CHANGES': login
+        ? `GitHub does not let ${author} request changes on their own pull request`
+        : 'the posting account could not be identified and may be the pull request author',
+    }[verdict];
+    const body =
+      event === 'REQUEST_CHANGES'
+        ? report
+        : `Verdict ${verdict} is posted as a comment because ${reason}.\n\n${report}`;
+    const review = api([
+      '--method',
+      'POST',
+      `repos/${repository}/pulls/${pr}/reviews`,
+      '-f',
+      `commit_id=${head}`,
+      '-f',
+      `event=${event}`,
+      '-f',
+      `body=${body}`,
+    ]);
+    return { status: 0, line: `Posted: ${event} ${review.html_url}` };
+  } catch (error) {
+    return { status: 1, line: `Review not posted: ${error.message}` };
+  }
+}
+
 function main(args) {
   const [command, ...rest] = args;
   if (command === 'resolve') {
@@ -459,6 +558,11 @@ function main(args) {
     for (const path of generate()) console.log(path);
     return 0;
   }
+  if (command === 'publish-review') {
+    const { status, line } = publishReview(rest);
+    (status ? console.error : console.log)(line);
+    return status;
+  }
   if (command === 'check') {
     const stale = check();
     if (!stale.length) return 0;
@@ -470,7 +574,8 @@ function main(args) {
   console.error(
     'Usage: node scripts/agent-policy.mjs resolve --tool <claude|codex> (--role <role> | --capability <capability>) [--model <model>] [--effort <effort>]\n' +
       '       node scripts/agent-policy.mjs generate\n' +
-      '       node scripts/agent-policy.mjs check',
+      '       node scripts/agent-policy.mjs check\n' +
+      '       node scripts/agent-policy.mjs publish-review --pr <N> --base <sha> --head <sha> --report <file>',
   );
   return 2;
 }
