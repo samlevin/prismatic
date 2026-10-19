@@ -139,6 +139,42 @@ describe('auditSource', () => {
     expect(rules("import fs = require('fs');")).toEqual(['commonjs-require']);
   });
 
+  test('refuses the Function constructor reached through constructor', () => {
+    expect(rules('(async () => {}).constructor(code)();')).toEqual([
+      'dynamic-code',
+    ]);
+    expect(rules("new (function () {})['constructor'](code)();")).toEqual([
+      'dynamic-code',
+    ]);
+    expect(rules('const F = Object.getPrototypeOf(f)?.constructor;')).toEqual([
+      'dynamic-code',
+    ]);
+    expect(rules('const { constructor: F } = f;')).toEqual(['dynamic-code']);
+    expect(rules("const { 'constructor': F } = f;")).toEqual(['dynamic-code']);
+    expect(rules('const { constructor } = f;')).toEqual(['dynamic-code']);
+    expect(rules("Reflect.get(f, 'constructor')(code);")).toEqual([
+      'dynamic-code',
+    ]);
+    expect(rules("Reflect.get(globalThis, 'Function')(code);")).toEqual([
+      'dynamic-code',
+    ]);
+    expect(rules("Reflect.get(globalThis, 'require')('fs');")).toEqual([
+      'commonjs-require',
+    ]);
+  });
+
+  test('allows the constructor name and constructor declarations', () => {
+    expect(rules('const kind = error.constructor.name;')).toEqual([]);
+    expect(rules('class A { constructor() {} }')).toEqual([]);
+    expect(rules('const a = { constructor: 1 };')).toEqual([]);
+    expect(rules('const [constructor] = list;')).toEqual([]);
+    expect(rules("const keys = new Set(['constructor']);")).toEqual([]);
+    expect(rules("log('constructor', 'eval');")).toEqual([
+      'dynamic-code',
+      'dynamic-code',
+    ]);
+  });
+
   test('ignores names that only label a property, declaration, or type', () => {
     expect(rules('const options = { eval: false, require: true };')).toEqual(
       [],
@@ -238,10 +274,12 @@ describe('main', () => {
     error: vi.fn<(message: string) => void>(),
   });
 
-  test('audits shipped .ts files only and passes clean code', () => {
+  test('audits shipped script files only and passes clean code', () => {
     const root = tree({
       'src/core/a.ts': "import path from 'node:path';",
       'src/core/a.test.ts': "import { exec } from 'node:child_process';",
+      'src/core/b.test.mts': "import { exec } from 'node:child_process';",
+      'src/core/data.json': '{"eval": 1}',
       'apps/action/main.ts': "import { spawnSync } from 'node:child_process';",
       'src/core/notes.md': 'eval(x)',
       'tooling/x.ts': "import { exec } from 'node:child_process';",
@@ -256,6 +294,42 @@ describe('main', () => {
     expect(output.log).toHaveBeenCalledWith(
       'No dangerous process patterns in 2 shipped files.',
     );
+  });
+
+  test('audits every script extension the build could ship', () => {
+    const extensions = [
+      'cjs',
+      'cts',
+      'd.ts',
+      'js',
+      'jsx',
+      'mjs',
+      'mts',
+      'ts',
+      'tsx',
+    ];
+    const root = tree(
+      Object.fromEntries(
+        extensions.map((extension) => [`src/core/a.${extension}`, 'eval(x);']),
+      ),
+    );
+    expect(shippedFiles(root, [])).toEqual(
+      extensions.map((extension) => `src/core/a.${extension}`),
+    );
+    const output = io(root);
+    expect(main(output)).toBe(1);
+    expect(output.error).toHaveBeenCalledTimes(extensions.length + 1);
+    expect(
+      auditSource(
+        'src/a.tsx',
+        'const view = <div>{run}</div>;\nnew Function(code);',
+      ).map((finding) => finding.rule),
+    ).toEqual(['dynamic-code']);
+    expect(
+      auditSource('src/a.jsx', "const view = <div />;\nrequire('fs');").map(
+        (finding) => finding.rule,
+      ),
+    ).toEqual(['commonjs-require']);
   });
 
   test('skips a missing shipped root', () => {

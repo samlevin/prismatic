@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  allowedGhsas,
   defaultTriagePath,
   main,
   maxTriageDays,
@@ -214,6 +215,23 @@ describe('triage', () => {
   });
 });
 
+describe('allowedGhsas', () => {
+  test('lists each unexpired ID once, sorted, whatever the package', () => {
+    expect(
+      allowedGhsas(
+        [
+          entry({ id: 'GHSA-xxxx-xxxx-xxxx' }),
+          entry(),
+          entry({ packageName: 'other' }),
+          entry({ id: 'GHSA-2222-2222-2222', expires: '2026-10-19' }),
+        ],
+        now,
+      ),
+    ).toEqual(['GHSA-238p-pmpm-9mq7', 'GHSA-xxxx-xxxx-xxxx']);
+    expect(allowedGhsas([], now)).toEqual([]);
+  });
+});
+
 describe('main', () => {
   const directories: string[] = [];
   afterEach(() => {
@@ -304,7 +322,7 @@ describe('main', () => {
     const output = io({});
     expect(main([], output)).toBe(1);
     expect(output.error).toHaveBeenCalledWith(
-      'Usage: NpmAuditTriage.ts <audit.json> [triage.json]',
+      'Usage: NpmAuditTriage.ts <audit.json> [triage.json] | --allow-ghsas [triage.json]',
     );
     expect(main(['missing.json'], output)).toBe(1);
     expect(output.error).toHaveBeenLastCalledWith('no such file missing.json');
@@ -316,6 +334,22 @@ describe('main', () => {
     };
     expect(main(['a'], thrower)).toBe(1);
     expect(output.error).toHaveBeenLastCalledWith('unreadable');
+  });
+
+  test('prints the triaged GHSA IDs for dependency review', () => {
+    const output = io({
+      [defaultTriagePath]: triageJson(),
+      'empty.json': { advisories: [] },
+      'far.json': triageJson({ expires: '2099-01-01' }),
+    });
+    expect(main(['--allow-ghsas'], output)).toBe(0);
+    expect(output.log).toHaveBeenLastCalledWith('GHSA-238p-pmpm-9mq7');
+    expect(main(['--allow-ghsas', 'empty.json'], output)).toBe(0);
+    expect(output.log).toHaveBeenLastCalledWith('');
+    expect(main(['--allow-ghsas', 'far.json'], output)).toBe(1);
+    expect(output.error).toHaveBeenLastCalledWith(
+      `Triage entry 1 expires more than ${maxTriageDays} days from now`,
+    );
   });
 
   test('accepts the repository triage file and fails on untriaged advisories from the command line', () => {

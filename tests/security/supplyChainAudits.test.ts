@@ -56,6 +56,12 @@ describe('ProcessPatternAudit evasion attempts', () => {
     ['spawn(file, args, { shell: !0 });', 'shell-option'],
     ["spawn(file, args, { shell: 'false' });", 'shell-option'],
     ['spawn(file, args, { ...options, shell: undefined });', 'shell-option'],
+    ['(async () => {}).constructor(code)();', 'dynamic-code'],
+    ["new (function* () {})['constructor'](code);", 'dynamic-code'],
+    ['const F = (() => {}).constructor;\nF(code)();', 'dynamic-code'],
+    ['const { constructor: F } = () => {};', 'dynamic-code'],
+    ["Reflect.get(Reflect.getPrototypeOf(f), 'constructor');", 'dynamic-code'],
+    ["Reflect.get(globalThis, 'Fun\\u0063tion')(code);", 'dynamic-code'],
   ])('flags %s', (source, rule) => {
     expect(flagged(source)).toContain(rule);
   });

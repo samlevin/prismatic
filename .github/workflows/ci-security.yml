@@ -23,10 +23,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .tool-versions
+      # The advisories `npm audit` accepts until their triage entry expires.
+      - name: Read the triaged npm advisories
+        id: triage
+        run: |
+          ghsas="$(node tooling/security/NpmAuditTriage.ts --allow-ghsas)"
+          echo "ghsas=$ghsas" >> "$GITHUB_OUTPUT"
       - name: Fail on added dependencies with known advisories
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: low
+          allow-ghsas: ${{ steps.triage.outputs.ghsas }}
           comment-summary-in-pr: never
 
   audit-npm:
@@ -96,7 +111,6 @@ jobs:
     timeout-minutes: 30
     env:
       IMAGE: prismatic-security-scan:ci
-      TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
       TRIVY_NO_PROGRESS: 'true'
     steps:
       - name: Check out repository
@@ -122,7 +136,7 @@ jobs:
         run: |
           mkdir "$RUNNER_TEMP/sbom"
           npm sbom --sbom-format cyclonedx --package-lock-only > "$RUNNER_TEMP/sbom/npm.cdx.json"
-          trivy image --format cyclonedx --output "$RUNNER_TEMP/sbom/image.cdx.json" "$IMAGE"
+          trivy image --cache-dir "$RUNNER_TEMP/trivy-cache" --format cyclonedx --output "$RUNNER_TEMP/sbom/image.cdx.json" "$IMAGE"
           node tooling/security/LockedBinariesSbom.ts "$RUNNER_TEMP/sbom/image.cdx.json" linux/amd64
       - name: Upload the SBOMs
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -132,7 +146,10 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Scan the image for secrets
-        run: trivy image --scanners secret --exit-code 1 "$IMAGE"
+        if: ${{ !cancelled() }}
+        run: trivy image --cache-dir "$RUNNER_TEMP/trivy-cache" --scanners secret --exit-code 1 "$IMAGE"
+      # tooling/security/trivy-ignore.yaml holds expiring entries for fixed
+      # vulnerabilities that no base image update has picked up yet.
       - name: Scan the image for fixable high and critical vulnerabilities
         if: ${{ !cancelled() }}
-        run: trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
+        run: trivy image --cache-dir "$RUNNER_TEMP/trivy-cache" --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --ignorefile tooling/security/trivy-ignore.yaml --exit-code 1 "$IMAGE"

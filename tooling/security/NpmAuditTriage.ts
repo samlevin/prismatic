@@ -1,7 +1,8 @@
 // Fails unless every advisory `npm audit --json` reports is fixed or has an
 // unexpired entry in tooling/security/npm-audit-triage.json. The
 // `CI: supply-chain security` workflow runs it as
-// `node tooling/security/NpmAuditTriage.ts <audit.json>`.
+// `node tooling/security/NpmAuditTriage.ts <audit.json>`, and with
+// `--allow-ghsas` to give dependency review the same triaged advisories.
 import { readFileSync } from 'node:fs';
 
 export const defaultTriagePath = 'tooling/security/npm-audit-triage.json';
@@ -142,6 +143,19 @@ export function triage(
   return { errors, accepted, unused };
 }
 
+// The GHSA IDs of the unexpired entries, sorted and without repeats, for the
+// dependency review action's `allow-ghsas` input. That input cannot name a
+// package, so it allows the advisory in any package.
+export function allowedGhsas(
+  entries: readonly TriageEntry[],
+  now: Date,
+): string[] {
+  const ids = entries
+    .filter((entry) => Date.parse(`${entry.expires}T00:00:00Z`) > now.getTime())
+    .map((entry) => entry.id);
+  return [...new Set(ids)].sort();
+}
+
 export interface NpmAuditTriageIo {
   readonly readFile: (file: string) => string;
   readonly log: (message: string) => void;
@@ -158,17 +172,30 @@ const processIo: NpmAuditTriageIo = {
   now: () => new Date(),
 };
 
-// Command line entry: `<audit.json> [triage.json]`. Returns the process exit
-// code.
+const usage =
+  'Usage: NpmAuditTriage.ts <audit.json> [triage.json] | --allow-ghsas [triage.json]';
+
+// Command line entry: `<audit.json> [triage.json]` checks a report, and
+// `--allow-ghsas [triage.json]` prints the unexpired triaged GHSA IDs joined
+// by commas. Returns the process exit code.
 export function main(
   args: readonly string[],
   io: NpmAuditTriageIo = processIo,
 ): number {
-  const [auditPath, triagePath = defaultTriagePath] = args;
   try {
-    if (auditPath === undefined)
-      throw new Error('Usage: NpmAuditTriage.ts <audit.json> [triage.json]');
     const now = io.now();
+    if (args[0] === '--allow-ghsas') {
+      const [, triagePath = defaultTriagePath] = args;
+      io.log(
+        allowedGhsas(
+          parseTriage(JSON.parse(io.readFile(triagePath)), now),
+          now,
+        ).join(','),
+      );
+      return 0;
+    }
+    const [auditPath, triagePath = defaultTriagePath] = args;
+    if (auditPath === undefined) throw new Error(usage);
     const result = triage(
       parseAuditReport(JSON.parse(io.readFile(auditPath))),
       parseTriage(JSON.parse(io.readFile(triagePath)), now),

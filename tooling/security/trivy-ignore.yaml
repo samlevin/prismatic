@@ -1,0 +1,12 @@
+# Vulnerabilities the `CI: supply-chain security` image scan accepts for now,
+# in Trivy's YAML ignore format. Add an entry only for a high or critical
+# vulnerability that has a fix upstream but no Dependabot base image update
+# that carries it yet. CONTRIBUTING.md describes when and how.
+#
+# Each entry needs exactly these fields:
+#   id: the CVE or GHSA ID Trivy reports.
+#   statement: why the vulnerability does not reach the Action, or what
+#     update will remove it.
+#   expired_at: a YYYY-MM-DD date at most 30 days away. Trivy stops ignoring
+#     the entry on that date, so the scan fails again until someone looks.
+vulnerabilities: []

@@ -25,6 +25,24 @@ test('every workflow pins each action to a full commit SHA', () => {
           );
 });
 
+test('no workflow reads the runner context in a workflow or job env', () => {
+  // GitHub rejects the whole workflow file, so none of its jobs run.
+  for (const file of readdirSync(workflowDirectory)) {
+    const parsed = workflow(file);
+    const scopes = [
+      ['env', parsed.env],
+      ...Object.entries(parsed.jobs).map(([id, job]) => [id, job.env]),
+    ];
+    for (const [where, env] of scopes)
+      for (const [name, value] of Object.entries(env ?? {}))
+        assert.doesNotMatch(
+          String(value),
+          /\$\{\{[^}]*\brunner\./,
+          `${file} ${where} ${name}`,
+        );
+  }
+});
+
 test('the supply-chain workflow runs on pull requests, main, a schedule, and by hand', () => {
   assert.deepEqual(Object.keys(security.on).sort(), [
     'pull_request',
@@ -49,9 +67,21 @@ test('dependency review fails pull requests that add a dependency with any advis
     security.jobs['review-dependencies'].if,
     "${{ github.event_name == 'pull_request' }}",
   );
-  const [review] = steps('review-dependencies');
+  const review = steps('review-dependencies').at(-1);
   assert.match(review.uses, /^actions\/dependency-review-action@/);
   assert.equal(review.with['fail-on-severity'], 'low');
+});
+
+test('dependency review allows only the advisories npm audit triage accepts', () => {
+  const triage = steps('review-dependencies').find(
+    (step) => step.id === 'triage',
+  );
+  assert.match(
+    triage.run,
+    /^ghsas="\$\(node tooling\/security\/NpmAuditTriage\.ts --allow-ghsas\)"\necho "ghsas=\$ghsas" >> "\$GITHUB_OUTPUT"$/m,
+  );
+  const review = steps('review-dependencies').at(-1);
+  assert.equal(review.with['allow-ghsas'], '${{ steps.triage.outputs.ghsas }}');
 });
 
 test('the npm job gates advisories on the triage list and licenses on the policy', () => {
@@ -96,24 +126,55 @@ test('the image job installs a checksum-pinned scanner and fails on secrets and 
     script,
     /^npm sbom --sbom-format cyclonedx --package-lock-only > /m,
   );
-  assert.match(script, /^trivy image --format cyclonedx --output /m);
+  assert.match(
+    script,
+    /^trivy image --cache-dir "\$RUNNER_TEMP\/trivy-cache" --format cyclonedx --output /m,
+  );
   assert.match(
     script,
     /^node tooling\/security\/LockedBinariesSbom\.ts "\$RUNNER_TEMP\/sbom\/image\.cdx\.json" linux\/amd64$/m,
   );
   assert.match(
     script,
-    /^trivy image --scanners secret --exit-code 1 "\$IMAGE"$/m,
+    /^trivy image --cache-dir "\$RUNNER_TEMP\/trivy-cache" --scanners secret --exit-code 1 "\$IMAGE"$/m,
   );
   assert.match(
     script,
-    /^trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "\$IMAGE"$/m,
+    /^trivy image --cache-dir "\$RUNNER_TEMP\/trivy-cache" --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --ignorefile tooling\/security\/trivy-ignore\.yaml --exit-code 1 "\$IMAGE"$/m,
   );
+  for (const line of script.split('\n'))
+    if (line.startsWith('trivy image '))
+      assert.match(line, / --cache-dir "\$RUNNER_TEMP\/trivy-cache" /, line);
+  for (const name of [
+    'Scan the image for secrets',
+    'Scan the image for fixable high and critical vulnerabilities',
+  ])
+    assert.equal(
+      steps('scan-image').find((step) => step.name === name).if,
+      '${{ !cancelled() }}',
+      name,
+    );
   assert.doesNotMatch(script, /npm (?:install|i) /);
   const upload = steps('scan-image').find((step) =>
     step.uses?.startsWith('actions/upload-artifact@'),
   );
   assert.equal(upload.with['if-no-files-found'], 'error');
+});
+
+test('every image vulnerability ignore explains itself and expires', () => {
+  const ignores = parse(repositoryFile('tooling/security/trivy-ignore.yaml'));
+  assert.deepEqual(Object.keys(ignores), ['vulnerabilities']);
+  assert.ok(Array.isArray(ignores.vulnerabilities));
+  for (const entry of ignores.vulnerabilities) {
+    assert.deepEqual(
+      Object.keys(entry).sort(),
+      ['expired_at', 'id', 'statement'],
+      JSON.stringify(entry),
+    );
+    assert.match(entry.id, /^(?:CVE-\d{4}-\d+|GHSA(?:-[a-z0-9]{4}){3})$/);
+    assert.ok(entry.statement.trim().length > 0, entry.id);
+    assert.match(String(entry.expired_at), /^\d{4}-\d{2}-\d{2}$/, entry.id);
+  }
 });
 
 test('tools.lock entries are pinned the way fetch-pinned.sh requires', () => {

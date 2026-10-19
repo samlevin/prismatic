@@ -1,4 +1,4 @@
-// Static audit of the code the Action image ships (every non-test .ts file
+// Static audit of the code the Action image ships (every non-test script file
 // under src/ and apps/) for ways to start a process or run code that
 // docker/runtime-policy.md does not allow. The `CI: supply-chain security`
 // workflow runs it as `node tooling/security/ProcessPatternAudit.ts`.
@@ -32,6 +32,32 @@ const codeLoadingNames: Readonly<Record<string, ProcessPatternRule>> = {
   Function: 'dynamic-code',
   require: 'commonjs-require',
 };
+
+// Every function's `constructor` is a Function constructor, so reading it is
+// another way to reach Function. Only `x.constructor.name` is allowed.
+const constructorMessage =
+  'reads constructor, which reaches the Function constructor';
+
+// Strings that name code-loading functions when passed to a call such as
+// Reflect.get(globalThis, 'Function').
+const reflectedNames: ReadonlyMap<string, ProcessPatternRule> = new Map([
+  ...Object.entries(codeLoadingNames),
+  ['constructor', 'dynamic-code'],
+]);
+
+// Script files the build may ship, and the kind TypeScript parses each as.
+const scriptKinds: Readonly<Record<string, ts.ScriptKind>> = {
+  '.ts': ts.ScriptKind.TS,
+  '.mts': ts.ScriptKind.TS,
+  '.cts': ts.ScriptKind.TS,
+  '.tsx': ts.ScriptKind.TSX,
+  '.js': ts.ScriptKind.JS,
+  '.mjs': ts.ScriptKind.JS,
+  '.cjs': ts.ScriptKind.JS,
+  '.jsx': ts.ScriptKind.JSX,
+};
+
+const testFile = /\.test\.[^./]+$/;
 
 const processLoaders = new Set([
   'binding',
@@ -123,7 +149,7 @@ export function auditSource(
     text,
     ts.ScriptTarget.Latest,
     true,
-    ts.ScriptKind.TS,
+    scriptKinds[path.posix.extname(file)] ?? ts.ScriptKind.TS,
   );
   const findings: ProcessPatternFinding[] = [];
   const report = (node: ts.Node, rule: ProcessPatternRule, message: string) => {
@@ -243,6 +269,15 @@ export function auditSource(
       } else if (name !== undefined && Object.hasOwn(codeLoadingNames, name))
         report(node, codeLoadingNames[name]!, `refers to ${name}`);
       else if (
+        name === 'constructor' &&
+        !(
+          ts.isPropertyAccessExpression(node.parent) &&
+          node.parent.expression === node &&
+          node.parent.name.text === 'name'
+        )
+      )
+        report(node, 'dynamic-code', constructorMessage);
+      else if (
         name !== undefined &&
         processLoaders.has(name) &&
         isProcessObject(node.expression)
@@ -264,6 +299,14 @@ export function auditSource(
         if (name !== undefined && processLoaders.has(name))
           report(element, 'process-loader', `uses process.${name}`);
       }
+    } else if (
+      ts.isBindingElement(node) &&
+      ts.isObjectBindingPattern(node.parent) &&
+      (node.propertyName === undefined
+        ? ts.isIdentifier(node.name) && node.name.text === 'constructor'
+        : propertyName(node.propertyName) === 'constructor')
+    ) {
+      report(node, 'dynamic-code', constructorMessage);
     } else if (ts.isPropertyAssignment(node)) {
       if (
         propertyName(node.name) === 'shell' &&
@@ -279,6 +322,17 @@ export function auditSource(
       node.name.text === 'shell'
     ) {
       report(node, 'shell-option', 'sets shell from a variable');
+    } else if (
+      ts.isStringLiteralLike(node) &&
+      reflectedNames.has(node.text) &&
+      ts.isCallExpression(node.parent) &&
+      node.parent.arguments.some((argument) => argument === node)
+    ) {
+      report(
+        node,
+        reflectedNames.get(node.text)!,
+        `names ${node.text} in a call`,
+      );
     } else if (
       ts.isStringLiteralLike(node) &&
       processModules.has(node.text) &&
@@ -298,7 +352,7 @@ export interface ProcessPatternAuditIo {
   readonly error: (message: string) => void;
 }
 
-// Every non-test .ts file under the shipped roots, as sorted repository-
+// Every non-test script file under the shipped roots, as sorted repository-
 // relative POSIX paths. A symbolic link is reported instead of followed.
 export function shippedFiles(
   root: string,
@@ -322,8 +376,8 @@ export function shippedFiles(
       else if (entry.isDirectory()) walk(child);
       else if (
         entry.isFile() &&
-        child.endsWith('.ts') &&
-        !child.endsWith('.test.ts')
+        Object.hasOwn(scriptKinds, path.posix.extname(child)) &&
+        !testFile.test(child)
       )
         files.push(child);
     }
