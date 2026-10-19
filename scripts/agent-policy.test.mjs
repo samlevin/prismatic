@@ -571,6 +571,43 @@ test('reports carry requested settings and no runtime model claims', () => {
       );
 });
 
+test("the implementer sends each handoff that handoff's own Policy line", () => {
+  const files = render();
+  for (const path of [
+    `.claude/agents/${PREFIX}implementer.md`,
+    `.codex/agents/${PREFIX}implementer.toml`,
+  ]) {
+    const implementer = files.get(path);
+    assert.ok(
+      implementer.includes(
+        `\`review_mode=pre_pr\`, and the reviewer's own \`Policy:\` line composed from that resolver output (\`Policy: tool=<tool> role=${PREFIX}code-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)\`), never your own.`,
+      ),
+      path,
+    );
+    assert.doesNotMatch(
+      implementer,
+      /`review_mode=pre_pr`, and the `Policy:` line\./,
+      path,
+    );
+    assert.ok(
+      implementer.includes(
+        `End each ${PREFIX}stack-manager line with the operation you sent it in parentheses, such as \`Requested settings: Policy: <as sent> (link)\`.`,
+      ),
+      path,
+    );
+    assert.match(
+      implementer,
+      /You need APPROVE for that exact base\/head pair\. On REQUEST CHANGES: fix, rerun the affected gates, push, and re-review\. After two rejected rounds, return BLOCKED with the open findings instead of looping\. Any base\/head change before the PR opens invalidates the approval\. Never self-approve\./,
+      path,
+    );
+    assert.match(
+      implementer,
+      /Echo it in your result as `Requested settings: Policy: <as dispatched>`\./,
+      path,
+    );
+  }
+});
+
 test('only automation moves an issue to In review', () => {
   const files = render();
   for (const path of [
