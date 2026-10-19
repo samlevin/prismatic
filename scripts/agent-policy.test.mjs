@@ -609,6 +609,36 @@ test('only automation moves an issue to In review', () => {
     assert.doesNotMatch(files.get(path), /move [^\n.]*In review/i, path);
 });
 
+test('the issue triager uses reported facts and writes no label-evidence report', () => {
+  const files = render();
+  for (const path of [
+    `.claude/agents/${PREFIX}issue-triager.md`,
+    `.codex/agents/${PREFIX}issue-triager.toml`,
+  ]) {
+    const triager = files.get(path);
+    assert.match(
+      triager,
+      /classify from reported facts only, meaning the drafts, the accepted decisions, and what you read in the repository\./,
+      path,
+    );
+    assert.match(
+      triager,
+      /Do not invent impact, affected users, repro steps, or causes\./,
+      path,
+    );
+    assert.match(
+      triager,
+      /When a missing fact would change severity, Priority, Size, or scope, name it in the unknowns field instead of assuming it\./,
+      path,
+    );
+    assert.match(
+      triager,
+      /Do not write a separate label-evidence report: the labels field and the rationale are the only justification you return\./,
+      path,
+    );
+  }
+});
+
 test('generated definitions in the repository are current', () => {
   assert.deepEqual(check(), []);
 });
