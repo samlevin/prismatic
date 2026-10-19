@@ -62,6 +62,7 @@
             "export function deleteInvoice(id: string): void {",
             "  invoices.delete(id);",
             "}",
+            "",
             "export function archiveInvoice(id: string): void {",
             "  const invoice = invoices.get(id);",
             "  if (invoice !== undefined) {",

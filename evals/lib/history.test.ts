@@ -267,6 +267,28 @@ describe('parseHistory', () => {
       'checker must not be the labeler',
     ],
     [
+      'an agent as checker',
+      (h) =>
+        void (h.labels['check'] = {
+          status: 'confirmed',
+          by: 'Agent:prism-code-reviewer',
+          on: '2026-10-19',
+          notes: 'Looked fine.',
+        }),
+      'the checker must be a person',
+    ],
+    [
+      'the labeler as checker in another case',
+      (h) =>
+        void (h.labels['check'] = {
+          status: 'confirmed',
+          by: 'LABELER-A',
+          on: '2026-10-19',
+          notes: 'Looked fine.',
+        }),
+      'checker must not be the labeler',
+    ],
+    [
       'eligible not boolean',
       (h) => void (defect(h, 0)['eligible'] = 'yes'),
       'true or false',

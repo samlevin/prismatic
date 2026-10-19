@@ -78,6 +78,8 @@
             "",
             "def find_order(order_id: str) -> Optional[Order]:",
             "    return _ORDERS.get(order_id)",
+            "",
+            "",
             "def _line_total(order: Order) -> int:",
             "    return sum(line.quantity * line.unit_price_cents for line in order.lines)",
             "",
@@ -105,8 +107,8 @@
         "location": {
           "path": "app/orders.py",
           "round": 1,
-          "startLine": 27,
-          "endLine": 27,
+          "startLine": 29,
+          "endLine": 29,
           "marker": "for line in order.lines"
         },
         "summary": "_line_total reads order.lines without a None check, but its parameter is typed Order and its only caller raises OrderNotFound first. A finding here is false."

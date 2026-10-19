@@ -95,6 +95,8 @@ export interface RunScore {
   readonly precision: Ratio;
   readonly severePrecision: Ratio;
   readonly severeRecall: Ratio;
+  // Over every severe defect, including ineligible and unavailable ones.
+  readonly severeRecallEndToEnd: Ratio;
   readonly retrievalMiss: Ratio;
   readonly bucketRecall: ReadonlyMap<number, Ratio>;
   readonly falseFindings: number;
@@ -106,6 +108,7 @@ export interface RunScore {
   // Where each labeled defect left the funnel; null when it was published.
   readonly funnel: ReadonlyMap<string, FunnelStage | null>;
   readonly cost: CostLedger;
+  readonly rounds: number;
   readonly latencyMs: number;
 }
 
@@ -150,6 +153,9 @@ export function scoreRun(
   let unexpectedInference = 0;
   let latencyMs = 0;
   const requests: RequestRecord[] = [];
+  // Round of the first causally supported finding per defect, and the round
+  // in which the author dismissed a defect this run had published.
+  const firstSupported = new Map<string, number>();
   const dismissedAt = new Map<string, number>();
 
   run.rounds.forEach((observed, index) => {
@@ -161,8 +167,10 @@ export function scoreRun(
     latencyMs += observed.latencyMs;
     requests.push(...observed.requests);
     for (const action of (rounds[index] as SourceRound).actions) {
-      if (!dismissedAt.has(action.defect))
+      const published = firstSupported.get(action.defect);
+      if (published !== undefined && !dismissedAt.has(action.defect)) {
         dismissedAt.set(action.defect, number);
+      }
     }
     const expected = history.expected[index] as ExpectedRound;
     const sent = observed.requests.filter(
@@ -184,11 +192,15 @@ export function scoreRun(
           `finding ${finding.id} names unknown defect ${finding.defect}`,
         );
       }
-      if (defect !== undefined) {
-        const dismissed = dismissedAt.get(defect.id);
-        if (dismissed !== undefined && number >= dismissed) {
-          dismissedResurfaced += 1;
-        }
+      if (defect !== undefined && dismissedAt.has(defect.id)) {
+        dismissedResurfaced += 1;
+      }
+      if (
+        defect !== undefined &&
+        finding.causality === 'supported' &&
+        !firstSupported.has(defect.id)
+      ) {
+        firstSupported.set(defect.id, number);
       }
       const matches =
         defect !== undefined &&
@@ -234,12 +246,17 @@ export function scoreRun(
   }
   const funnel = new Map<string, FunnelStage | null>();
   const severeRecall: Ratio = { successes: 0, trials: 0 };
+  const severeRecallEndToEnd: Ratio = { successes: 0, trials: 0 };
   const retrievalMiss: Ratio = { successes: 0, trials: 0 };
   const bucketRecall = new Map<number, Ratio>(
     roundBuckets.map((bucket) => [bucket, { successes: 0, trials: 0 }]),
   );
   for (const defect of defects.values()) {
     const found = credited.has(defect.id);
+    if (severe(defect.severity)) {
+      severeRecallEndToEnd.trials += 1;
+      if (found) severeRecallEndToEnd.successes += 1;
+    }
     if (!counted(defect)) {
       funnel.set(defect.id, defect.eligible ? 'available' : 'eligible');
       continue;
@@ -278,6 +295,7 @@ export function scoreRun(
     precision,
     severePrecision,
     severeRecall,
+    severeRecallEndToEnd,
     retrievalMiss,
     bucketRecall,
     falseFindings,
@@ -288,6 +306,7 @@ export function scoreRun(
     defectsFound: credited.size,
     funnel,
     cost: costLedger(requests, rates),
+    rounds: rounds.length,
     latencyMs,
   };
 }
@@ -306,6 +325,21 @@ export interface ProportionEstimate {
   readonly histories: number;
 }
 
+export interface RateEstimate {
+  readonly histories: number;
+  readonly value: number | null;
+  // Union of the exact Poisson interval on the averaged total, rounded
+  // outward, and the history-cluster bootstrap. null with no histories.
+  readonly interval: Interval | null;
+}
+
+export interface ScoreOptions extends BootstrapOptions {
+  // Score histories whose second-person label check is still pending. Only
+  // for runs that find implementation problems, such as the P0.12 pilot;
+  // never for a reported quality result.
+  readonly allowPendingChecks?: boolean;
+}
+
 export interface Distribution {
   readonly mean: number;
   readonly meanInterval: Interval | null;
@@ -320,13 +354,12 @@ export interface VariantReport {
   readonly precision: ProportionEstimate;
   readonly severePrecision: ProportionEstimate;
   readonly severeRecall: ProportionEstimate;
+  readonly severeRecallEndToEnd: ProportionEstimate;
   readonly retrievalMiss: ProportionEstimate;
   readonly bucketRecall: ReadonlyMap<number, ProportionEstimate>;
-  readonly cleanFalseFindingsPerPr: {
-    readonly cleanHistories: number;
-    readonly value: number | null;
-    readonly interval: Interval | null;
-  };
+  // False findings per PR over every history, and over clean histories.
+  readonly falseFindingsPerPr: RateEstimate;
+  readonly cleanFalseFindingsPerPr: RateEstimate;
   // Totals over every run; each is gated at zero.
   readonly falseFixed: number;
   readonly dismissedResurfaced: number;
@@ -336,6 +369,7 @@ export interface VariantReport {
   // the last step, and `found` reached it.
   readonly funnel: Readonly<Record<FunnelStage | 'found', number>>;
   readonly costPerPrUsd: Distribution;
+  readonly costPerRoundUsd: Distribution;
   readonly latencyPerPrMs: Distribution;
   readonly reviewerUsd: number;
   readonly failedAttemptUsd: number;
@@ -392,6 +426,29 @@ function proportion(
   };
 }
 
+// Mean events per history, such as false findings per PR.
+function rate(
+  perHistory: readonly number[],
+  options: BootstrapOptions,
+): RateEstimate {
+  if (perHistory.length === 0) {
+    return { histories: 0, value: null, interval: null };
+  }
+  const total = perHistory.reduce((sum, value) => sum + value, 0);
+  const n = perHistory.length;
+  return {
+    histories: n,
+    value: total / n,
+    interval: union(
+      {
+        lower: poissonRateInterval(Math.floor(total + 1e-9), n).lower,
+        upper: poissonRateInterval(Math.ceil(total - 1e-9), n).upper,
+      },
+      clusterBootstrap(perHistory, average, options),
+    ),
+  };
+}
+
 function distribution(
   values: readonly number[],
   options: BootstrapOptions,
@@ -424,9 +481,19 @@ export function scoreVariant(
   runs: readonly RunObservation[],
   variant: string,
   rates: Rates,
-  options: BootstrapOptions = {},
+  options: ScoreOptions = {},
 ): VariantReport {
   if (histories.length === 0) throw new RangeError('The corpus is empty.');
+  if (!options.allowPendingChecks) {
+    const pending = histories.filter(
+      (history) => history.labels.check.status === 'pending',
+    );
+    if (pending.length > 0) {
+      throw new RangeError(
+        `Labels are not checked yet: ${pending.map((h) => h.id).join(', ')}.`,
+      );
+    }
+  }
   const selected = runs.filter((run) => run.variant === variant);
   const seen = new Set<string>();
   for (const run of selected) {
@@ -457,30 +524,12 @@ export function scoreVariant(
   const sum = (pick: (score: RunScore) => number): number =>
     byHistory.flat().reduce((total, score) => total + pick(score), 0);
 
-  const clean = byHistory
-    .filter((scores) => (scores[0] as RunScore).clean)
-    .map((scores) => average(scores.map((score) => score.falseFindings)));
-  const cleanTotal = clean.reduce((total, value) => total + value, 0);
-  const cleanFalseFindingsPerPr =
-    clean.length === 0
-      ? { cleanHistories: 0, value: null, interval: null }
-      : {
-          cleanHistories: clean.length,
-          value: cleanTotal / clean.length,
-          interval: union(
-            {
-              lower: poissonRateInterval(
-                Math.floor(cleanTotal + 1e-9),
-                clean.length,
-              ).lower,
-              upper: poissonRateInterval(
-                Math.ceil(cleanTotal - 1e-9),
-                clean.length,
-              ).upper,
-            },
-            clusterBootstrap(clean, average, options),
-          ),
-        };
+  const falseFindings = byHistory.map((scores) =>
+    average(scores.map((score) => score.falseFindings)),
+  );
+  const cleanFalseFindings = falseFindings.filter(
+    (_, index) => (byHistory[index]?.[0] as RunScore).clean,
+  );
 
   const funnel: Record<FunnelStage | 'found', number> = {
     eligible: 0,
@@ -508,6 +557,7 @@ export function scoreVariant(
     precision: ratio((score) => score.precision),
     severePrecision: ratio((score) => score.severePrecision),
     severeRecall: ratio((score) => score.severeRecall),
+    severeRecallEndToEnd: ratio((score) => score.severeRecallEndToEnd),
     retrievalMiss: ratio((score) => score.retrievalMiss),
     bucketRecall: new Map(
       roundBuckets.map((bucket) => [
@@ -515,7 +565,8 @@ export function scoreVariant(
         ratio((score) => score.bucketRecall.get(bucket) as Ratio),
       ]),
     ),
-    cleanFalseFindingsPerPr,
+    falseFindingsPerPr: rate(falseFindings, options),
+    cleanFalseFindingsPerPr: rate(cleanFalseFindings, options),
     falseFixed: sum((score) => score.falseFixed),
     dismissedResurfaced: sum((score) => score.dismissedResurfaced),
     duplicates: sum((score) => score.duplicates),
@@ -523,6 +574,12 @@ export function scoreVariant(
     funnel,
     costPerPrUsd: distribution(
       byHistory.map((scores) => average(scores.map((s) => s.cost.reviewerUsd))),
+      options,
+    ),
+    costPerRoundUsd: distribution(
+      byHistory.map((scores) =>
+        average(scores.map((s) => s.cost.reviewerUsd / s.rounds)),
+      ),
       options,
     ),
     latencyPerPrMs: distribution(

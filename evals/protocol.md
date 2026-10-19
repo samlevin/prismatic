@@ -1,6 +1,6 @@
 # Evaluation protocol
 
-Protocol version 1. This page defines the labeled history format, how histories are labeled and checked, every quality and lifecycle metric, the interval method, and the cost accounting. The pilot corpus (P0.11a), the release corpus (P0.11b) and the release gates (P8.1) all use these definitions. Changing a definition after a run has been scored makes a new protocol version, and every variant is scored again under it.
+Protocol version 1. This page defines the labeled history format, how histories are labeled and checked, the quality and lifecycle metrics that labeled runs are scored on, the interval method, and the cost accounting. [Not yet defined](#not-yet-defined) lists the §16.2 measures this version leaves to later slices. The pilot corpus (P0.11a), the release corpus (P0.11b) and the release gates (P8.1) all use these definitions. Changing a definition after a run has been scored makes a new protocol version, and every variant is scored again under it.
 
 The code in `evals/lib/` implements each definition, so a metric here and its computation cannot disagree:
 
@@ -38,9 +38,10 @@ Every history records its origin, author, creation date, license and notes. The 
 ## Labeling and checking
 
 1. One person labels a history: defects, decoys, eligibility and availability, introduction and fix rounds, and the expected behavior per round. The labeler is recorded in `labels.labeledBy`.
-2. A second person checks the labels and records `confirmed` or `amended` in `labels.check` with their name, the date and notes. The checker cannot be the labeler. Until then the check is `pending`.
-3. Labels are frozen before the variant they score is run. Nobody who labels or checks a history sees that variant's output first.
-4. After a run, a person adjudicates each published finding: which labeled defect it matches, if any, and whether its `introducedBy` supports the causal claim. The scorer never matches findings itself.
+2. A second person checks the labels and records `confirmed` or `amended` in `labels.check` with their GitHub login, the date and notes. The checker cannot be the labeler (compared without case), and cannot be an agent: the parser refuses a checker that starts with `agent:`. Until then the check is `pending`.
+3. Scoring refuses a history whose check is pending. A run that only looks for implementation problems, such as the P0.12 pilot, may pass `allowPendingChecks`; its numbers are never reported as quality results.
+4. Labels are frozen before the variant they score is run. Nobody who labels or checks a history sees that variant's output first.
+5. After a run, a person adjudicates each published finding: which labeled defect it matches, if any, and whether its `introducedBy` supports the causal claim. The scorer never matches findings itself.
 
 The pilot (P0.11a) uses one labeler and one checker. The release corpus (P0.11b) needs two independent labelers per history and adjudication of their disagreements before any variant is scored.
 
@@ -57,15 +58,21 @@ A published finding is **true** when it matches a labeled defect, its causality 
 | Precision | True published findings | All published findings | Gate: at least 90% |
 | Severe precision | True findings published as severe | Findings published as severe | Gate: at least 95% |
 | Severe recall | Severe defects found | Severe defects that are eligible and available | Gate: at least 85% |
+| End-to-end severe recall | Severe defects found | Every severe defect, including ineligible and unavailable ones | Reported next to severe recall, so policy and cap omissions stay visible |
 | Retrieval miss | Defects in the severe recall denominator whose evidence was not retrieved | Same denominator | Gate: at most 10%, preregistered |
 | R2+, R6+, R12+ severe recall | Severe recall restricted to defects introduced at or after that round | Per bucket | R2+ feeds the convergence gate; R6+ and R12+ are reported with counts and intervals, never gated and never folded into R2+ |
+| False findings per PR | False published findings | All histories | Reported |
 | Clean-PR false findings | False published findings on histories with no defects | Clean histories | Gate: at most 0.2 per PR |
 | False `fixed` | `fixed` transitions on a causally supported finding whose defect is still present | Count | Gate: zero |
-| Dismissed resurfacing | Findings matching a defect, published in or after the round its dismissal was recorded | Count | Gate: zero |
+| Dismissed resurfacing | Findings matching a defect, published in or after the round the author dismissed it, when the run had already published a causally supported finding for that defect before the dismissal | Count | Gate: zero |
 | Duplicates | Duplicate findings | Count | Gate: zero |
 | Unneeded inference | Rounds the labels mark as needing no model call in which a reviewer request was sent | Count | Gate: zero |
 
 The thresholds are the §16.2 release thresholds. They apply to the release corpus under P8.1. The pilot has no thresholds.
+
+A defect the run never published before the author's dismissal cannot resurface; finding it later is an ordinary find. §16.2 allows a dismissed finding back when new causal evidence arrives. The labels encode that case: a history may not expect a dismissed defect to be published again, so a labeled dismissal asserts that no later round brings new causal evidence for it.
+
+**Strata.** Per-language and per-severity results are the same metrics scored on the histories of one language, or restricted to defects of one severity. Each is reported with its counts and interval.
 
 Every labeled defect is reported along the funnel with the first stage it failed:
 
@@ -99,7 +106,16 @@ Every inference request a run sends is billed: discovery, finding assessment and
 - A request refused for budget before sending costs nothing and is counted separately.
 - Judge and curation requests go to a separate research ledger. They never count as reviewer cost.
 
-Reports give the reviewer dollars per PR and per round, the failed-attempt spend inside that total, the research spend, and whether usage was complete. Cache economics are reported as cached read tokens over cache-written tokens. Caching pays for its write premium once that share exceeds `(write rate - input rate) / (input rate - cached rate)`, 26.3% at the §9.5 rates. Dollars per found defect is undefined when nothing was found. A saving claimed against a control needs lower total measured cost on histories with equivalent coverage and lifecycle outcomes. Fewer tokens alone are not a saving.
+Reports give the reviewer dollars per PR and per round (a history's reviewer dollars divided by its number of rounds, averaged over runs), the failed-attempt spend inside that total, the research spend, and whether usage was complete. Cache economics are reported as cached read tokens over cache-written tokens. Caching pays for its write premium once that share exceeds `(write rate - input rate) / (input rate - cached rate)`, 26.3% at the §9.5 rates. Dollars per found defect is undefined when nothing was found. A saving claimed against a control needs lower total measured cost on histories with equivalent coverage and lifecycle outcomes. Fewer tokens alone are not a saving.
+
+## Not yet defined
+
+These §16.2 measures need labels or run records that version 1 does not have. P0.11b and P8.1 add them, as a new protocol version where a definition changes:
+
+- Unauthorized suppression, and missed discovery in a seeded deletion-only case. Both need a deletion-only scenario and suppression records in the run observation.
+- Strata by PR size, dependency depth and change type, and the weighted target-workload result. The history format has no fields for them yet.
+- The deterministic-replay checks in the convergence table, such as repeated paid assessment on an unchanged baseline and pending work lost after truncation. They run in the offline lifecycle fixtures, not on labeled runs.
+- Developer burden per history: repeated findings, stale open findings after an evidenced fix, manual commands needed, and time from a valid fix to its acknowledgement.
 
 ## Live runs
 
