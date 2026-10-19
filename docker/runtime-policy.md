@@ -65,5 +65,6 @@ The unit tests in `apps/action/main.test.ts` and the cases in `tests/security/ac
 2. Compare each file's SHA-256 with the checksum the project publishes: `sha256sums.asc` on kernel.org for Git, and the digests GitHub shows for the ast-grep release assets.
 3. Update the version, checksums, and URLs in `docker/binaries.lock`.
 4. Run `npm run test:container`.
+5. For a Git update, also run `experiments/fetch/run-in-image.sh`. The fetch contract in `docs/adr/0004-blobless-fetch.md` depends on Git behavior that only that spike checks.
 
 To move the base image, update the tag and the index digest on the first `FROM` line together.
