@@ -979,7 +979,7 @@ function fakeGh(overrides = {}) {
       user: { login: 'author' },
     },
     [`repos/${REPO}/compare/${'c'.repeat(40)}...${HEAD}?per_page=1`]: {
-      merge_base_commit: { sha: BASE },
+      sha: BASE,
     },
     user: { login: 'reviewer' },
     [`repos/${REPO}/pulls/7/reviews`]: {
@@ -1056,6 +1056,11 @@ test('publish-review requests changes only when the poster is not the PR author'
       `repos/${REPO}/pulls/7/reviews`,
     ],
   );
+  // gh filters the compare response so its file patches never reach the buffer.
+  assert.deepEqual(run.calls[1].slice(1), [
+    '--jq',
+    '{sha: .merge_base_commit.sha}',
+  ]);
   assert.deepEqual(submitted(run), {
     commit_id: HEAD,
     event: 'REQUEST_CHANGES',
@@ -1145,7 +1150,7 @@ test('publish-review posts nothing when the head or merge base moved', () => {
   assert.equal(headMoved.calls.length, 1);
   const baseMoved = fakeGh({
     [`repos/${REPO}/compare/${'c'.repeat(40)}...${HEAD}?per_page=1`]: {
-      merge_base_commit: { sha: 'e'.repeat(40) },
+      sha: 'e'.repeat(40),
     },
   });
   assert.deepEqual(publish(reviewReport('APPROVE'), baseMoved), {

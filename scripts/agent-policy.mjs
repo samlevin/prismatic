@@ -492,10 +492,12 @@ export function publishReview(args, { base = root, run } = {}) {
       throw new Error(
         `pull request #${pr} head is now ${pull.head.sha}, not the reviewed ${head}`,
       );
-    // The skill reviews from `git merge-base <baseRefOid> <headRefOid>`.
+    // The skill's `git merge-base <baseRefOid> <headRefOid>`; --jq drops the file patches.
     const mergeBase = api([
       `repos/${repository}/compare/${pull.base.sha}...${head}?per_page=1`,
-    ]).merge_base_commit.sha;
+      '--jq',
+      '{sha: .merge_base_commit.sha}',
+    ]).sha;
     if (mergeBase !== reviewedBase)
       throw new Error(
         `pull request #${pr} now has merge base ${mergeBase} with ${pull.base.ref}, not the reviewed ${reviewedBase}`,
