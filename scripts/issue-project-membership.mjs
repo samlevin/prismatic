@@ -1,13 +1,16 @@
-// Adds one issue in this repository to the Prismatic delivery project. The
+// Adds issues in this repository to the Prismatic delivery project. The
 // project's built-in auto-add cannot be enabled through the API, so
-// tracker-project-membership.yml runs this when an issue opens. An issue whose
-// item has no Status gets Inbox, so issue-triage.mjs picks it up, and an
-// existing Status never changes. Pull requests never go on the board, so the
-// board counts only issues.
+// tracker-project-membership.yml runs this for one issue when it opens, and
+// with --sweep on a schedule for every open issue missing from the project,
+// in case GitHub dropped an `opened` run. An issue whose item has no Status
+// gets Inbox, so issue-triage.mjs picks it up, and an existing Status never
+// changes. Pull requests never go on the board, so the board counts only
+// issues.
 import { pathToFileURL } from 'node:url';
 import { failureMessage, ghGraphql } from './github-api.mjs';
 import {
   discover,
+  paginate,
   readItem,
   REPOSITORY,
   updateProjectStatus,
@@ -91,7 +94,68 @@ export async function addToProject({
   return item;
 }
 
-export function configuration(env) {
+// Lists open issues a page at a time with their project items, so a sweep that
+// finds nothing missing costs one query per 100 open issues and no writes.
+export async function addMissingIssues({
+  api,
+  dryRun = true,
+  log = console.log,
+}) {
+  const [owner, name] = REPOSITORY.split('/');
+  let project;
+  const issues = await paginate(async (cursor) => {
+    const data = await api(
+      `query($owner: String!, $name: String!, $login: String!, $project: Int!, $cursor: String) {
+        repository(owner: $owner, name: $name) {
+          issues(first: 100, after: $cursor, states: [OPEN]) {
+            nodes { number projectItems(first: 100) { nodes { project { id } } } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+        user(login: $login) { projectV2(number: $project) { id closed } }
+      }`,
+      {
+        owner,
+        name,
+        login: PROJECT.owner,
+        project: PROJECT.number,
+        cursor,
+      },
+    );
+    project = data.user?.projectV2;
+    if (!project?.id || project.closed)
+      throw new Error('Prismatic delivery project is unavailable');
+    return data.repository?.issues;
+  });
+  const missing = issues
+    .filter(
+      (issue) =>
+        !issue.projectItems?.nodes?.some(
+          (node) => node?.project?.id === project.id,
+        ),
+    )
+    .map((issue) => issue.number);
+  let added = 0;
+  const failed = [];
+  for (const number of missing) {
+    try {
+      if ((await addToProject({ api, number, dryRun, log })) !== null) added++;
+    } catch (error) {
+      failed.push(number);
+      log(`Could not add issue #${number}: ${failureMessage(error)}`);
+    }
+  }
+  log(
+    `Project membership sweep: ${issues.length} open, ${missing.length} missing, ${added} added, ${failed.length} failed; DRY_RUN=${dryRun}`,
+  );
+  if (failed.length)
+    throw new Error(
+      `Could not add ${failed.map((number) => `#${number}`).join(', ')} to Prismatic delivery`,
+    );
+  return { missing, added, failed };
+}
+
+export function configuration(env, args = []) {
   if (env.GITHUB_ACTIONS === 'true') {
     if (!env.PRISMATIC_PROJECT_TOKEN)
       throw new Error(
@@ -103,6 +167,9 @@ export function configuration(env) {
   const mode = env.DRY_RUN ?? 'true';
   if (!['true', 'false'].includes(mode))
     throw new Error('DRY_RUN must be true or false');
+  if (args.length === 1 && args[0] === '--sweep')
+    return { sweep: true, dryRun: mode === 'true' };
+  if (args.length) throw new Error('The only option is --sweep');
   const number = env.ISSUE_NUMBER ?? '';
   if (!/^[1-9]\d*$/.test(number) || !Number.isSafeInteger(Number(number)))
     throw new Error('ISSUE_NUMBER must be a positive integer');
@@ -114,10 +181,16 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   try {
-    const config = configuration(process.env);
+    const { sweep, ...config } = configuration(
+      process.env,
+      process.argv.slice(2),
+    );
     if (process.env.GITHUB_ACTIONS === 'true')
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
-    await addToProject({ api: ghGraphql, ...config });
+    await (sweep ? addMissingIssues : addToProject)({
+      api: ghGraphql,
+      ...config,
+    });
   } catch (error) {
     console.error(failureMessage(error));
     process.exitCode = 1;
