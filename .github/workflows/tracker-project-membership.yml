@@ -5,7 +5,7 @@ on:
   issues:
     types: [opened]
   schedule:
-    - cron: '12,27,42,57 * * * *'
+    - cron: '37 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:

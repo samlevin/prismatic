@@ -3,9 +3,9 @@ run-name: "Reconcile issue states (${{ github.event_name == 'issues' && format('
 
 on:
   issues:
-    types: [opened, reopened, closed, edited, labeled, unlabeled]
+    types: [opened, reopened, closed, labeled, unlabeled]
   schedule:
-    - cron: '7,22,37,52 * * * *'
+    - cron: '7 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -16,8 +16,10 @@ on:
 permissions:
   contents: read
 
+# One group per issue, so a burst of events on one issue collapses to the
+# latest and an event on another issue is never dropped from the queue.
 concurrency:
-  group: prismatic-issue-triage
+  group: prismatic-issue-triage-${{ github.event.issue.number || 'sweep' }}
   cancel-in-progress: false
 
 jobs:
@@ -41,6 +43,10 @@ jobs:
         env:
           PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        # An issue event reconciles only that issue; the schedule and manual
+        # runs sweep the whole project.
         run: |
-          node scripts/issue-triage.mjs
-          node scripts/issue-containers.mjs
+          if [ "$GITHUB_EVENT_NAME" = issues ]; then set -- --issue "$ISSUE_NUMBER"; fi
+          node scripts/issue-triage.mjs "$@"
+          node scripts/issue-containers.mjs "$@"

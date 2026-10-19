@@ -175,16 +175,9 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   assert.deepEqual(contract('tracker-issue-states.yml'), {
     on: {
       issues: {
-        types: [
-          'opened',
-          'reopened',
-          'closed',
-          'edited',
-          'labeled',
-          'unlabeled',
-        ],
+        types: ['opened', 'reopened', 'closed', 'labeled', 'unlabeled'],
       },
-      schedule: [{ cron: '7,22,37,52 * * * *' }],
+      schedule: [{ cron: '7 * * * *' }],
       workflow_dispatch: {
         inputs: {
           dry_run: {
@@ -198,7 +191,8 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
     },
     permissions: { contents: 'read' },
     concurrency: {
-      group: 'prismatic-issue-triage',
+      group:
+        "prismatic-issue-triage-${{ github.event.issue.number || 'sweep' }}",
       'cancel-in-progress': false,
     },
     if: "github.repository == 'samlevin/prismatic' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)",
@@ -208,8 +202,17 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
       {
         uses: undefined,
         with: undefined,
-        env: { PRISMATIC_PROJECT_TOKEN: token, DRY_RUN: dispatchDryRun },
-        run: 'node scripts/issue-triage.mjs\nnode scripts/issue-containers.mjs\n',
+        env: {
+          PRISMATIC_PROJECT_TOKEN: token,
+          DRY_RUN: dispatchDryRun,
+          ISSUE_NUMBER: '${{ github.event.issue.number }}',
+        },
+        run: [
+          'if [ "$GITHUB_EVENT_NAME" = issues ]; then set -- --issue "$ISSUE_NUMBER"; fi',
+          'node scripts/issue-triage.mjs "$@"',
+          'node scripts/issue-containers.mjs "$@"',
+          '',
+        ].join('\n'),
       },
     ],
   });
@@ -287,7 +290,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   assert.deepEqual(contract('tracker-project-membership.yml'), {
     on: {
       issues: { types: ['opened'] },
-      schedule: [{ cron: '12,27,42,57 * * * *' }],
+      schedule: [{ cron: '37 * * * *' }],
       workflow_dispatch: {
         inputs: {
           dry_run: {
