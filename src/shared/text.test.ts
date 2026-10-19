@@ -100,4 +100,11 @@ describe('stripAnsi', () => {
   it('leaves no escape character behind in an unterminated OSC', () => {
     expect(stripAnsi('\u001B]0;title')).not.toContain('\u001B');
   });
+
+  it('ends a string body at the next introducer', () => {
+    expect(stripAnsi('\u009Dkept\u009Ddropped\u009Cafter')).toBe('keptafter');
+    expect(stripAnsi('\u001B]kept\u0090dropped\u001B\\after')).toBe(
+      'keptafter',
+    );
+  });
 });

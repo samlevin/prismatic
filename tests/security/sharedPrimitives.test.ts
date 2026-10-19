@@ -80,6 +80,25 @@ describe('hostile text', () => {
     expect(() => boundedUtf8(terminalBomb, 1000)).toThrow();
   });
 
+  // Each input takes minutes against a backtracking pattern and milliseconds
+  // against a linear one, so the budget leaves wide room for a slow machine.
+  it.each([
+    ['unterminated 8-bit string introducers', char(0x9d).repeat(200_000)],
+    [
+      'an OSC followed by unterminated introducers',
+      `\u001B]${char(0x9d).repeat(200_000)}`,
+    ],
+    ['a base64url run full of JWT prefixes', 'eyJ-'.repeat(100_000)],
+  ])('cleans %s in linear time', (_label, input) => {
+    const redactor = createSecretRedactor([]);
+    const started = performance.now();
+    stripAnsi(input);
+    escapeMarkdown(input);
+    redactSecrets(input);
+    normalizeError(new Error(input), redactor);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
   it('renders hostile metadata as inert Markdown', () => {
     const branch =
       'fix</summary><img src=x onerror=alert(1)> [click](javascript:alert(1)) @admins\n# Approved';
