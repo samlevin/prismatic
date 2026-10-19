@@ -218,6 +218,7 @@ describe('main', () => {
   const directories: string[] = [];
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     for (const directory of directories.splice(0))
       rmSync(directory, { recursive: true, force: true });
   });
@@ -231,6 +232,8 @@ describe('main', () => {
   };
 
   test('reads files and writes to the console by default', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now);
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const directory = files({

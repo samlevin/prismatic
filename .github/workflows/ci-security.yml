@@ -123,6 +123,7 @@ jobs:
           mkdir "$RUNNER_TEMP/sbom"
           npm sbom --sbom-format cyclonedx --package-lock-only > "$RUNNER_TEMP/sbom/npm.cdx.json"
           trivy image --format cyclonedx --output "$RUNNER_TEMP/sbom/image.cdx.json" "$IMAGE"
+          node tooling/security/LockedBinariesSbom.ts "$RUNNER_TEMP/sbom/image.cdx.json" linux/amd64
       - name: Upload the SBOMs
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

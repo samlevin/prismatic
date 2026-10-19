@@ -4,8 +4,12 @@
 # image.
 #
 # Fields, separated by spaces: name, version, platform, sha256, url.
+#
+# Pin a release that has been public for at least a week, the same wait
+# .github/dependabot.yml applies, so a compromised release has time to be
+# caught first.
 
 # Trivy, the image vulnerability, secret, and SBOM scanner. Checksum from the
 # digest GitHub records for the release asset, which matches the release's
 # trivy_<version>_checksums.txt.
-trivy 0.76.0 linux/amd64 e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7 https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.tar.gz
+trivy 0.75.0 linux/amd64 c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz

@@ -67,10 +67,11 @@ The unit tests in `apps/action/main.test.ts` and the cases in `tests/security/ac
 
 ## Updating a pinned binary
 
-1. Pick the release and download each artifact the lock lists for it.
-2. Compare each file's SHA-256 with the checksum the project publishes: `sha256sums.asc` on kernel.org for Git, and the digests GitHub shows for the ast-grep release assets.
-3. Update the version, checksums, and URLs in `docker/binaries.lock`.
-4. Run `npm run test:container`.
-5. For a Git update, also run `experiments/fetch/run-in-image.sh`. The fetch contract in `docs/adr/0004-blobless-fetch.md` depends on Git behavior that only that spike checks.
+1. Pick the release and check its security advisories. The image vulnerability scan in CI cannot see Git or ast-grep, so nothing else checks them.
+2. Download each artifact the lock lists for the release.
+3. Compare each file's SHA-256 with the checksum the project publishes: `sha256sums.asc` on kernel.org for Git, and the digests GitHub shows for the ast-grep release assets.
+4. Update the version, checksums, and URLs in `docker/binaries.lock`.
+5. Run `npm run test:container`.
+6. For a Git update, also run `experiments/fetch/run-in-image.sh`. The fetch contract in `docs/adr/0004-blobless-fetch.md` depends on Git behavior that only that spike checks.
 
 To move the base image, update the tag and the index digest on the first `FROM` line together.

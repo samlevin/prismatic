@@ -99,6 +99,10 @@ test('the image job installs a checksum-pinned scanner and fails on secrets and 
   assert.match(script, /^trivy image --format cyclonedx --output /m);
   assert.match(
     script,
+    /^node tooling\/security\/LockedBinariesSbom\.ts "\$RUNNER_TEMP\/sbom\/image\.cdx\.json" linux\/amd64$/m,
+  );
+  assert.match(
+    script,
     /^trivy image --scanners secret --exit-code 1 "\$IMAGE"$/m,
   );
   assert.match(
