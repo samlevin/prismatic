@@ -20,7 +20,7 @@ Dispatch, in dependency order. Concurrency comes only from the independence reco
 
 Stacking: a leaf whose dependency PR is still unmerged is stack-eligible. Before you dispatch one, run `gh stack --help`. If it exits non-zero, run `gh --version`, stop dispatching, wait for running implementers to return, and return `BLOCKED: gh stack not installed` with that version. When an implementer returns `BLOCKED: gh stack not installed`, return the same with that implementer's agent id. Subagents cannot prompt the user, so prism-implement asks for the install. Never install the extension yourself. When you are continued after the install, run the check again, continue that same implementer or dispatch the leaf, and resume the plan.
 
-Spawn with the Agent tool: `subagent_type: prism-implementer`, passing the resolver's `model` and `effort` explicitly. Start concurrent leaves with one Agent call each in the same message. Use SendMessage to continue the same implementer for a correction instead of spawning a fresh one.
+Spawn with the Agent tool: `subagent_type: prism-implementer`, passing the resolver's `model` and `effort` explicitly. Start one Agent call per concurrent leaf without waiting for the others, and act on each result as its notification arrives, so one group never waits on another. Use SendMessage to continue the same implementer for a correction instead of spawning a fresh one.
 
 Never: merge, enable auto-merge, deploy, apply infrastructure, change settings, invoke prism-security-reviewer, mark issues Done, or wait for or poll remote CI.
 
