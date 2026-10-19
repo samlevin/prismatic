@@ -61,6 +61,15 @@ describe('credential patterns', () => {
     );
   });
 
+  it('masks a connection-string password that contains a raw @', () => {
+    const password = `p@${randomText(12, 33)}`;
+    const masked = redactText(`postgres://app:${password}@db:5432/main`);
+    expect(masked).toBe(
+      'postgres://app:[REDACTED:connection-string-password]@db:5432/main',
+    );
+    expect(redactText(masked)).toBe(masked);
+  });
+
   it('leaves a URL with a port and no credentials alone', () => {
     const url = 'https://host:8080/path@v2';
     expect(redactText(url)).toBe(url);
@@ -94,6 +103,18 @@ describe('credential patterns', () => {
     expect(redactText(`api-key: ${value}`)).toBe(
       'api-key: [REDACTED:secret-assignment]',
     );
+  });
+
+  it('masks a quoted secret value up to its closing quote', () => {
+    expect(redactText('{"password": "ab cd ef", "user": "x"}')).toBe(
+      '{"password": "[REDACTED:secret-assignment]", "user": "x"}',
+    );
+    expect(redactText(`token='it"s a, secret'`)).toBe(
+      `token='[REDACTED:secret-assignment]'`,
+    );
+    const once = redactText('password="a b"');
+    expect(once).toBe('password="[REDACTED:secret-assignment]"');
+    expect(redactText(once)).toBe(once);
   });
 
   it.each([
