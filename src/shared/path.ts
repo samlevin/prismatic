@@ -10,10 +10,11 @@ export const maxRepoPathBytes = 4096;
 
 // C0 and C1 controls (including NUL, newline, and DEL), the backslash, which
 // Windows tools and some parsers treat as a separator, and the bidirectional
-// formatting characters that make a name display differently from its bytes.
+// formatting characters that make a name display differently from its bytes,
+// and the zero-width code points HFS+ ignores when it compares names.
 const forbiddenCharacters =
   // eslint-disable-next-line no-control-regex -- control characters are the point
-  /[\u0000-\u001F\u007F-\u009F\\\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+  /[\u0000-\u001F\u007F-\u009F\\\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069\u200C\u206A-\u206F\uFEFF]|\u200D/u;
 
 // `C:` at the start reads as a drive-relative path on Windows.
 const drivePrefix = /^[A-Za-z]:/;
@@ -22,11 +23,14 @@ function invalid(reason: string): never {
   throw new ValidationError('invalid-path', `Repository path ${reason}.`);
 }
 
-// `.git` in any case, with the trailing dots and spaces Windows ignores, and
-// its NTFS short name, all reach the repository metadata directory on some
-// file system.
+// `.git` in any case, with the trailing dots and spaces Windows ignores or an
+// NTFS stream suffix such as `::$INDEX_ALLOCATION`, and its NTFS short name,
+// all reach the repository metadata directory on some file system.
 function isGitDirectoryName(segment: string): boolean {
-  const name = segment.toLowerCase().replace(/[. ]+$/, '');
+  const name = (segment.toLowerCase().split(':')[0] ?? '').replace(
+    /[. ]+$/,
+    '',
+  );
   return name === '.git' || name === 'git~1';
 }
 

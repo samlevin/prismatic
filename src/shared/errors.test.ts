@@ -7,12 +7,21 @@ import {
 import {
   maxNormalizedCauseDepth,
   maxNormalizedMessageLength,
-  normalizeError,
+  normalizeError as normalizeWith,
 } from './errors.ts';
-import { createSecretRedactor } from './redaction.ts';
+import {
+  createSecretRedactor,
+  patternSecretRedactor,
+  type SecretRedactor,
+} from './redaction.ts';
 import { ValidationError } from './validation.ts';
 
 const token = credentialExamples['github-token'] ?? '';
+
+const normalizeError = (
+  error: unknown,
+  redactor: SecretRedactor = patternSecretRedactor,
+) => normalizeWith(error, redactor);
 
 describe('normalizeError', () => {
   it('keeps the name, code, and message of an operational error', () => {
@@ -93,6 +102,19 @@ describe('normalizeError', () => {
     const error = new Error('x');
     error.name = `Bad\u001B[31m ${token}`;
     expect(normalizeError(error).name).toBe('Error');
+  });
+
+  it('replaces a name that is a credential or a seeded secret', () => {
+    const tokenName = new Error('x');
+    tokenName.name = token;
+    expect(normalizeError(tokenName).name).toBe('Error');
+    const secret = `S${randomText(31, 42)}`;
+    const secretName = new Error('x');
+    secretName.name = secret;
+    expect(normalizeError(secretName).name).toBe(secret);
+    expect(
+      normalizeError(secretName, createSecretRedactor([secret])).name,
+    ).toBe('Error');
   });
 
   it('strips terminal escapes and keeps the message on one line', () => {

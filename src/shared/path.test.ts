@@ -73,6 +73,12 @@ describe('normalizeRepoPath', () => {
     ['.git with a trailing dot', '.git./config'],
     ['.git with a trailing space', '.git /config'],
     ['the NTFS short name of .git', 'GIT~1/config'],
+    ['.git with an NTFS stream suffix', '.git::$INDEX_ALLOCATION/config'],
+    ['.git with a named stream', 'sub/.GIT:stream/config'],
+    ['a zero-width non-joiner HFS+ ignores', `.${char(0x200c)}git/config`],
+    ['a zero-width joiner', `src/a${char(0x200d)}.ts`],
+    ['a deprecated format character', `src/a${char(0x206a)}.ts`],
+    ['a byte order mark', `${char(0xfeff)}src/a.ts`],
   ])('refuses %s', (_label, path) => {
     expect(rejection(path).code).toBe('invalid-path');
   });

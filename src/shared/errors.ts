@@ -1,7 +1,7 @@
 // Operational errors in a form that is safe to log, publish, or return as an
 // Action output: a name, a code, and a one-line message, with secrets masked
 // and stack traces, terminal escapes, and control characters removed.
-import { patternSecretRedactor, type SecretRedactor } from './redaction.ts';
+import type { SecretRedactor } from './redaction.ts';
 import { stripAnsi } from './text.ts';
 
 export interface NormalizedError {
@@ -24,11 +24,12 @@ const stackFrame = /^\s*at\s/;
 // eslint-disable-next-line no-control-regex -- control characters are the point
 const controlCharacters = /[\u0000-\u001F\u007F]/g;
 
-// Never throws. Pass the run's redactor, seeded with its secrets at
-// bootstrap; the default masks credential patterns only.
+// Never throws. The redactor is required so that no caller forgets the
+// run's secrets: pass the one built at bootstrap with createSecretRedactor,
+// or patternSecretRedactor where the run holds no secrets yet.
 export function normalizeError(
   error: unknown,
-  redactor: SecretRedactor = patternSecretRedactor,
+  redactor: SecretRedactor,
 ): NormalizedError {
   return normalize(error, redactor, 0);
 }
@@ -50,7 +51,8 @@ function normalize(
   }
   const name = readString(error, 'name');
   const normalized = {
-    name: name !== undefined && identifier.test(name) ? name : 'Error',
+    name:
+      name !== undefined && isSafeIdentifier(name, redactor) ? name : 'Error',
     code: readCode(error, redactor),
     message: cleanMessage(readString(error, 'message') ?? '', redactor),
   };
@@ -81,9 +83,14 @@ function readCode(error: Error, redactor: SecretRedactor): string {
   if (typeof code === 'number' && Number.isSafeInteger(code)) {
     return String(code);
   }
-  if (typeof code !== 'string') return 'unknown';
-  const masked = redactor.redactText(code);
-  return masked === code && identifier.test(code) ? code : 'unknown';
+  return typeof code === 'string' && isSafeIdentifier(code, redactor)
+    ? code
+    : 'unknown';
+}
+
+// A short identifier that holds nothing the redactor would mask.
+function isSafeIdentifier(value: string, redactor: SecretRedactor): boolean {
+  return identifier.test(value) && redactor.redactText(value) === value;
 }
 
 function readString(error: Error, key: string): string | undefined {

@@ -51,7 +51,7 @@ const credentialPatterns: readonly CredentialPattern[] = [
   {
     kind: 'connection-string-password',
     pattern:
-      /\b([A-Za-z][A-Za-z0-9+.-]{0,31}:\/\/[^\s:@/?#]+:)(?!\[REDACTED:)[^\s@/?#]+(?=@)/g,
+      /\b([A-Za-z][A-Za-z0-9+.-]{0,31}:\/\/[^\s:@/?#]*:)(?!\[REDACTED:)[^\s@/?#]+(?=@)/g,
     keep: 1,
   },
   {
