@@ -153,9 +153,10 @@ export function scoreRun(
   let unexpectedInference = 0;
   let latencyMs = 0;
   const requests: RequestRecord[] = [];
-  // Round of the first causally supported finding per defect, and the round
-  // in which the author dismissed a defect this run had published.
-  const firstSupported = new Map<string, number>();
+  // Round of the first finding matched to each defect, whatever its
+  // causality, and the round in which the author dismissed a defect this run
+  // had published. The author dismisses whatever finding they were shown.
+  const firstPublished = new Map<string, number>();
   const dismissedAt = new Map<string, number>();
 
   run.rounds.forEach((observed, index) => {
@@ -167,7 +168,7 @@ export function scoreRun(
     latencyMs += observed.latencyMs;
     requests.push(...observed.requests);
     for (const action of (rounds[index] as SourceRound).actions) {
-      const published = firstSupported.get(action.defect);
+      const published = firstPublished.get(action.defect);
       if (published !== undefined && !dismissedAt.has(action.defect)) {
         dismissedAt.set(action.defect, number);
       }
@@ -195,12 +196,8 @@ export function scoreRun(
       if (defect !== undefined && dismissedAt.has(defect.id)) {
         dismissedResurfaced += 1;
       }
-      if (
-        defect !== undefined &&
-        finding.causality === 'supported' &&
-        !firstSupported.has(defect.id)
-      ) {
-        firstSupported.set(defect.id, number);
+      if (defect !== undefined && !firstPublished.has(defect.id)) {
+        firstPublished.set(defect.id, number);
       }
       const matches =
         defect !== undefined &&

@@ -64,15 +64,15 @@ A published finding is **true** when it matches a labeled defect, its causality 
 | False findings per PR | False published findings | All histories | Reported |
 | Clean-PR false findings | False published findings on histories with no defects | Clean histories | Gate: at most 0.2 per PR |
 | False `fixed` | `fixed` transitions on a causally supported finding whose defect is still present | Count | Gate: zero |
-| Dismissed resurfacing | Findings matching a defect, published in or after the round the author dismissed it, when the run had already published a causally supported finding for that defect before the dismissal | Count | Gate: zero |
+| Dismissed resurfacing | Findings matching a defect, published in or after the round the author dismissed it, when the run had already published a finding matched to that defect, whatever its causality, before the dismissal | Count | Gate: zero |
 | Duplicates | Duplicate findings | Count | Gate: zero |
 | Unneeded inference | Rounds the labels mark as needing no model call in which a reviewer request was sent | Count | Gate: zero |
 
 The thresholds are the §16.2 release thresholds. They apply to the release corpus under P8.1. The pilot has no thresholds.
 
-A defect the run never published before the author's dismissal cannot resurface; finding it later is an ordinary find. §16.2 allows a dismissed finding back when new causal evidence arrives. The labels encode that case: a history may not expect a dismissed defect to be published again, so a labeled dismissal asserts that no later round brings new causal evidence for it.
+A defect the run never published before the author's dismissal cannot resurface; finding it later is an ordinary find. Causality does not matter here: the author dismisses whatever finding they were shown. §16.2 allows a dismissed finding back when new causal evidence arrives. The labels encode that case: a history may not expect a dismissed defect to be published again, so a labeled dismissal asserts that no later round brings new causal evidence for it.
 
-**Strata.** Per-language and per-severity results are the same metrics scored on the histories of one language, or restricted to defects of one severity. Each is reported with its counts and interval.
+**Strata.** Per-language results are the same metrics scored on the histories of one language, with the runs filtered to those histories. Each is reported with its counts and interval.
 
 Every labeled defect is reported along the funnel with the first stage it failed:
 
@@ -114,6 +114,8 @@ These §16.2 measures need labels or run records that version 1 does not have. P
 
 - Unauthorized suppression, and missed discovery in a seeded deletion-only case. Both need a deletion-only scenario and suppression records in the run observation.
 - Strata by PR size, dependency depth and change type, and the weighted target-workload result. The history format has no fields for them yet.
+- Per-severity strata for low and medium defects. The scorer computes recall only for high and critical defects.
+- Deriving paired cases from repeated runs. The loss bound takes whole counts of losses and pairs; the rule that turns several runs of the variant and of the control into those counts (per-run pairing or a majority rule, rounded outward) is for P8.1 to fix before its first paired run.
 - The deterministic-replay checks in the convergence table, such as repeated paid assessment on an unchanged baseline and pending work lost after truncation. They run in the offline lifecycle fixtures, not on labeled runs.
 - Developer burden per history: repeated findings, stale open findings after an evidenced fix, manual commands needed, and time from a valid fix to its acknowledgement.
 
