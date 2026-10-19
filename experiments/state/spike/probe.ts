@@ -91,20 +91,23 @@ async function main(): Promise<Record<string, unknown>> {
     const nonce = `${Date.now().toString(36)}`;
     const body = `Prismatic identity probe ${nonce}. This comment is removed by the probe.`;
     const created = await github.createComment('issue', body);
-    result.createAuthorMatches = isAuthentic(created, publisher);
-    const edited = await github.updateComment(
-      'issue',
-      created.id,
-      `${body} (edited)`,
-    );
-    result.editAuthorMatches = isAuthentic(edited, publisher);
-    const listed = (await github.listComments('issue')).find(
-      (c) => c.id === created.id,
-    );
-    result.listAuthorMatches =
-      listed !== undefined && isAuthentic(listed, publisher);
-    await github.deleteComment('issue', created.id);
-    result.deleted = true;
+    try {
+      result.createAuthorMatches = isAuthentic(created, publisher);
+      const edited = await github.updateComment(
+        'issue',
+        created.id,
+        `${body} (edited)`,
+      );
+      result.editAuthorMatches = isAuthentic(edited, publisher);
+      const listed = (await github.listComments('issue')).find(
+        (c) => c.id === created.id,
+      );
+      result.listAuthorMatches =
+        listed !== undefined && isAuthentic(listed, publisher);
+    } finally {
+      await github.deleteComment('issue', created.id);
+      result.deleted = true;
+    }
   }
   return result;
 }

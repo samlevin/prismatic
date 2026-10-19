@@ -473,6 +473,64 @@ describe('interruptions (criterion 3)', () => {
     expect(h.github.writes).toBe(0);
   });
 
+  test('a response the record cannot hold settles as a definitive failure', async () => {
+    const response = completed(1);
+    if (response.kind !== 'completed') throw new Error('unreachable');
+    const invalid = {
+      ...response,
+      findings: [{ title: 'Empty body', body: '', anchor: null }],
+    };
+    const h = harness(allOn, new FakeModel(invalid));
+    await expect(runAttempt(h.context(), attempt())).resolves.toMatchObject({
+      kind: 'inference-failed',
+    });
+    await expect(runAttempt(h.context(), attempt())).resolves.toMatchObject({
+      kind: 'attempt-closed',
+    });
+    expect(h.model.calls).toBe(1);
+    expect((await loadState(h.context())).ledger.spend).toEqual({
+      heldMicroUsd: 0,
+      settledMicroUsd: usage.costMicroUsd,
+    });
+  });
+
+  test('two findings with the same title and anchor stay distinct', async () => {
+    const response = completed(1);
+    if (response.kind !== 'completed') throw new Error('unreachable');
+    const [draft] = response.findings;
+    const h = harness(
+      allOn,
+      new FakeModel({ ...response, findings: [draft, draft] as never }),
+    );
+    await expect(runAttempt(h.context(), attempt())).resolves.toMatchObject({
+      kind: 'published',
+    });
+    expect(h.github.comments('review')).toHaveLength(2);
+  });
+
+  test('a run on a new head abandons a record a crash left pending', async () => {
+    const h = harness(allOn, new FakeModel(completed(2), completed(1)));
+    await expect(
+      runAttempt(
+        h.context({ interrupt: crashAt('after-effect:inline:0') }),
+        attempt(),
+      ),
+    ).rejects.toThrow(Crash);
+    h.github.setHead(headB);
+    await expect(
+      runAttempt(h.context(), attempt(headB)),
+    ).resolves.toMatchObject({ kind: 'published', resumed: false });
+    const { ledger, snapshot } = await loadState(h.context());
+    expect(ledger.abandoned.size).toBe(1);
+    expect(snapshot?.value.round?.headSha).toBe(headB);
+    // One inline comment from the abandoned record, one from the new round.
+    expect(h.github.comments('review')).toHaveLength(2);
+    h.github.setHead(headA);
+    await expect(runAttempt(h.context(), attempt())).resolves.toMatchObject({
+      kind: 'abandoned',
+    });
+  });
+
   test('a push during publication abandons the rest of the record', async () => {
     const h = harness(allOn, new FakeModel(completed(2), completed(1)));
     const interrupt = (point: string): void => {
@@ -561,6 +619,37 @@ describe('deletion and corruption limits (criterion 4)', () => {
     await expectStopped(h, 'missing-publication-record', false);
   });
 
+  test('records written after the last status write can be lost unnoticed', async () => {
+    const h = harness(allOff, new FakeModel(completed(0)));
+    await runAttempt(h.context(), attempt());
+    h.github.setHead(headB);
+    await expect(
+      runAttempt(
+        h.context({ interrupt: crashAt('after-inference-response') }),
+        attempt(headB),
+      ),
+    ).rejects.toThrow(Crash);
+    // A maintainer rewrites the newest shard without the records the
+    // snapshot has not seen, here the second round's reservation.
+    const { view, snapshot } = await loadState(h.context());
+    const tip = view.chain.at(-1);
+    if (tip === undefined || snapshot === undefined)
+      throw new Error('No state.');
+    const seen = tip.records.slice(0, snapshot.value.journal.recordCount);
+    h.github.edit(
+      tip.commentId,
+      shardBody(identity, tip.seq, tip.prev, seen).body,
+    );
+    await expect(
+      runAttempt(h.context(), attempt(headB)),
+    ).resolves.toMatchObject({
+      kind: 'published',
+      resumed: false,
+    });
+    // The second round was paid twice.
+    expect(h.model.calls).toBe(3);
+  });
+
   test('when every copy is deleted, the next run cannot know and reviews again', async () => {
     const h = harness(allOff, new FakeModel(completed(0)));
     await runAttempt(h.context(), attempt());
@@ -583,6 +672,18 @@ describe('deletion and corruption limits (criterion 4)', () => {
       kind: 'duplicate',
     });
     expect(h.github.comments('review')).toHaveLength(1);
+  });
+
+  test('a snapshot with a malformed cursor is treated as unreadable', async () => {
+    const h = harness(allOn, new FakeModel(completed(1)));
+    await runAttempt(h.context(), attempt());
+    const [status] = statusComments(h.github);
+    const { snapshot } = await loadState(h.context());
+    const broken = encodeMarker('state', { ...snapshot?.value, journal: null });
+    h.github.edit(status?.id as number, broken.marker);
+    await expect(runAttempt(h.context(), attempt())).resolves.toMatchObject({
+      kind: 'status-restored',
+    });
   });
 
   test('an unreadable status snapshot is rebuilt from the journal', async () => {

@@ -63,14 +63,14 @@ Keys hash the canonical JSON array of their parts instead of the parts joined wi
 
 ## Interruption and replay
 
-A run checks the head, loads authenticated state, and then does the first of these that applies:
+A run checks the head and loads authenticated state. It then marks as abandoned any complete record for another head that still has effects without receipts, since those effects would publish stale conclusions. After that it does the first of these that applies:
 
 1. A complete record for its round with every receipt and a status snapshot: `duplicate`, nothing written.
 2. A complete record with every receipt but no readable snapshot: rebuild the status comment from the journal (`status-restored`), with no inference.
 3. A complete record with missing receipts: publish the missing effects in order (`published`, `resumed: true`), with no inference. Before each effect it reads; a comment already carrying that effect's marker gets its receipt without a second write. Before each effect it also rechecks the head, and on a new head it records the round as abandoned and publishes nothing more.
 4. A reservation with no record and no settlement: `inference-uncertain`. Nothing is spent again until an authorized manual attempt, which has its own attempt id.
 5. A reservation with a settlement and no record, or a round a reset acknowledged: `attempt-closed`.
-6. Otherwise reserve, infer once, write the chunks, then the manifest with the settlement, then publish.
+6. Otherwise reserve, infer once, write the chunks, then the manifest with the settlement, then publish. A response that cannot form a valid record, such as a finding with an empty body or a record over 64 chunks, is settled with its known usage and returns `inference-failed`.
 
 | Interrupted | Next run of the same attempt | Inference calls in total |
 | --- | --- | --- |
@@ -78,10 +78,11 @@ A run checks the head, loads authenticated state, and then does the first of the
 | After the reservation, before the request | `inference-uncertain`, reservation held | 0, then 1 after a manual attempt |
 | After the response, before the record | `inference-uncertain`, reservation held | 1, then 2 after a manual attempt |
 | Provider error with unknown completion | `inference-uncertain`, reservation held | 1 |
-| Provider failure with known usage | `inference-failed`, then `attempt-closed`; usage settled, no review written | 1 |
+| Provider failure with known usage, or a response that cannot form a valid record | `inference-failed`, then `attempt-closed`; usage settled, no review written | 1 |
 | After the record, or before or after any effect | Resumes and publishes each effect exactly once | 1 |
 | Lost response on an effect or on the manifest write | Reads the marker or the record and resumes | 1 |
 | Head moved mid-publication | `abandoned`; later runs of that attempt write nothing | 1, then 1 more on the new head |
+| Crash mid-publication, then a push | The first run on the new head abandons the old record and reviews the new head | 2 |
 
 A crash after the reservation but before the request cannot be told apart from a crash during it, so both hold the reservation. That costs at most one reservation and never repeats paid inference silently.
 
@@ -93,7 +94,8 @@ A crash after the reservation but before the request cannot be told apart from a
 | Status marker corrupted | Treated as deleted and rebuilt in a new comment; the unreadable one stays |
 | Sealed shard deleted | `recovery-required` (`missing-shard`) |
 | Sealed shard edited, even with a valid marker | `recovery-required` (`modified-shard`, or `corrupt-shard` when it no longer decodes or claims to start the chain) |
-| Newest shard deleted or its seen records changed | `recovery-required` (`cursor-missing` or `cursor-mismatch`) |
+| The shard the snapshot pins deleted, or the records it has seen changed | `recovery-required` (`cursor-missing` or `cursor-mismatch`) |
+| Records written after the last status write removed, or a shard opened after it deleted | Undetected. The snapshot only pins what it has seen. If a reservation is lost this way, the next run pays for inference again |
 | Two shards on one parent | `recovery-required` (`forked-journal`) |
 | Every shard deleted, threads or progress comments left | `recovery-required` (`missing-publication-record`), from markers on the remaining comments |
 | Inline comment edited or deleted | Not state. The round stays complete and nothing is republished |
@@ -133,4 +135,4 @@ Each run should print `createAuthorMatches`, `editAuthorMatches` and `listAuthor
 - Write publication chunks first and the manifest with the settlement last.
 - Carry the acknowledged unreadable shard ids and the known round keys in the reset record.
 - Validate every journal record type against its schema. The spike checks record envelopes and the publication record, and trusts the rest of each authenticated record's content.
-- Not covered by the spike: thread follow-up effects (they use the same read-then-write receipts as inline comments), compaction, and persisting the findings of an abandoned record.
+- Not covered by the spike: thread follow-up effects (they use the same read-then-write receipts as inline comments), compaction, persisting the findings of an abandoned record, and naming the interrupted head in the status comment after an abandonment.
