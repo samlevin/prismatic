@@ -522,21 +522,126 @@ test('the review-code skill resolves #N as a pull request in both tools', () => 
   }
 });
 
+// The paragraph of a role definition that defines what it returns: the last
+// paragraph that starts with "Return".
+function returnParagraph(text) {
+  return (
+    text
+      .split(/\n[ \t]*\n/)
+      .findLast((paragraph) => /^Return\b/.test(paragraph.trim())) ?? ''
+  );
+}
+
+// The Return paragraph names a `Requested settings: Policy:` line, inline or
+// as a line of its own in a fixed result format.
+function returnsRequestedSettings(text) {
+  const paragraph = returnParagraph(text);
+  return (
+    paragraph.includes('`Requested settings: Policy: <as dispatched>`') ||
+    /^Requested settings: Policy: <as dispatched>$/m.test(paragraph)
+  );
+}
+
+// The body of a skill's `## <heading>` section, up to the next heading.
+function section(text, heading) {
+  const start = text.indexOf(`\n## ${heading}\n`);
+  if (start === -1) return '';
+  const body = text.slice(start + heading.length + 5);
+  const end = body.search(/^#{1,2} /m);
+  return end === -1 ? body : body.slice(0, end);
+}
+
+// A sentence of the skill's report section relays, prints, or returns the
+// agent's result and its `Requested settings:` line verbatim.
+function relaysResult(text, { heading, result }) {
+  return section(text, heading)
+    .trim()
+    .split(/(?<=\.)\s+/)
+    .some(
+      (sentence) =>
+        result.test(sentence) &&
+        /`Requested settings:` lines?\b/.test(sentence) &&
+        /\bverbatim\b/.test(sentence),
+    );
+}
+
+// Each skill's report section, and how its sentence relaying the result opens.
+const RELAYED_RESULTS = {
+  implement: {
+    heading: 'Report',
+    result:
+      /^Relay the agent's READY FOR REVIEW or BLOCKED result verbatim, including every `Requested settings:` line\./,
+  },
+  'review-code': {
+    heading: 'Report',
+    result: /^Print the reviewer's verdict, /,
+  },
+  'review-security': { heading: 'Report', result: /^Print the verdict, / },
+  'create-github-issue': {
+    heading: 'Verify and return',
+    result: /^Return URLs, /,
+  },
+};
+
+test('every role returns a Requested settings: Policy: line in both tools', () => {
+  const files = render();
+  for (const role of Object.keys(policy.roles))
+    for (const path of [
+      `.claude/agents/${PREFIX}${role}.md`,
+      `.codex/agents/${PREFIX}${role}.toml`,
+    ]) {
+      const text = files.get(path);
+      assert.ok(returnsRequestedSettings(text), path);
+      // Removing the line from the Return paragraph fails the check, even
+      // where the definition still names it elsewhere.
+      const paragraph = returnParagraph(text);
+      const without = text.replace(paragraph, () =>
+        paragraph
+          .replace(/^Requested settings: Policy: <as dispatched>$/m, '')
+          .replaceAll(
+            '`Requested settings: Policy: <as dispatched>`',
+            '`Policy:`',
+          ),
+      );
+      assert.notEqual(without, text, path);
+      assert.ok(!returnsRequestedSettings(without), path);
+    }
+});
+
+test('implement, review, and filing skills relay the result and its Requested settings: line verbatim', () => {
+  const files = render();
+  for (const [skill, rule] of Object.entries(RELAYED_RESULTS))
+    for (const root of ['.claude/skills', '.agents/skills']) {
+      const path = `${root}/${PREFIX}${skill}/SKILL.md`;
+      const text = files.get(path);
+      const report = section(text, rule.heading);
+      assert.ok(relaysResult(text, rule), path);
+      assert.doesNotMatch(report, /summar|paraphras|condens/i, path);
+      // Dropping "verbatim", the `Requested settings:` line, or the relay
+      // itself fails the check.
+      for (const [from, to] of [
+        [/ verbatim\b/g, ''],
+        [/`Requested settings:` lines?/g, 'settings'],
+        [/\b(Relay|Print|Return) /g, 'Mention '],
+      ]) {
+        const mutated = text.replace(report, () => report.replace(from, to));
+        assert.notEqual(mutated, text, `${path} ${from}`);
+        assert.ok(!relaysResult(mutated, rule), `${path} ${from}`);
+      }
+      // The rule counts only inside the report section.
+      const moved =
+        text.replace(report, () => '\nReport back.\n\n') +
+        `\n## Notes\n${report}`;
+      assert.ok(!relaysResult(moved, rule), path);
+    }
+});
+
 test('reports carry requested settings and no runtime model claims', () => {
   const files = render();
   for (const [path, text] of files) {
     assert.doesNotMatch(text, /Runtime:|unverified/, path);
     assert.doesNotMatch(text, /runtime (model|reports)/i, path);
   }
-  for (const role of Object.keys(policy.roles))
-    for (const path of [
-      `.claude/agents/${PREFIX}${role}.md`,
-      `.codex/agents/${PREFIX}${role}.toml`,
-    ])
-      assert.ok(
-        files.get(path).includes('Requested settings: Policy: <as dispatched>'),
-        path,
-      );
   for (const path of [
     `.claude/agents/${PREFIX}implementer.md`,
     `.codex/agents/${PREFIX}implementer.toml`,
@@ -557,18 +662,6 @@ test('reports carry requested settings and no runtime model claims', () => {
         .includes("the implementer's `Requested settings:` lines verbatim"),
       path,
     );
-  for (const skill of [
-    'implement',
-    'review-code',
-    'review-security',
-    'create-github-issue',
-  ])
-    for (const root of ['.claude/skills', '.agents/skills'])
-      assert.match(
-        files.get(`${root}/${PREFIX}${skill}/SKILL.md`),
-        /`Requested settings:` lines? verbatim|verbatim, including every `Requested settings:` line/,
-        `${root}/${skill}`,
-      );
 });
 
 test('only automation moves an issue to In review', () => {
