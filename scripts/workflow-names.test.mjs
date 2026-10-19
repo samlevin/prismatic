@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { workflow, workflowDirectory } from './workflow-test-helpers.mjs';
+import {
+  evaluate,
+  workflow,
+  workflowDirectory,
+} from './workflow-test-helpers.mjs';
 
 // Workflow files are <area>-<name>.yml and the workflow is named
 // `<Area>: <name>`. CONTRIBUTING.md describes the convention.
@@ -62,7 +66,7 @@ test('workflow files, workflow names, and job names match the convention', () =>
       },
       'tracker-project-membership.yml': {
         name: 'Tracker: add issues to the project',
-        jobs: { 'add-to-project': 'Add the issue to the project' },
+        jobs: { 'add-to-project': 'Add issues to the project' },
       },
     },
   );
@@ -138,12 +142,15 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
       permissions: definition.permissions,
       concurrency: definition.concurrency,
       if: job.if,
-      steps: job.steps.map(({ uses, with: inputs, env, run }) => ({
-        uses,
-        with: inputs,
-        env,
-        run,
-      })),
+      steps: job.steps.map(
+        ({ if: condition, uses, with: inputs, env, run }) => ({
+          ...(condition && { if: condition }),
+          uses,
+          with: inputs,
+          env,
+          run,
+        }),
+      ),
     };
   };
   const checkout = {
@@ -280,17 +287,28 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   assert.deepEqual(contract('tracker-project-membership.yml'), {
     on: {
       issues: { types: ['opened'] },
+      schedule: [{ cron: '12,27,42,57 * * * *' }],
+      workflow_dispatch: {
+        inputs: {
+          dry_run: {
+            description: 'Preview the missing issues without adding them',
+            type: 'boolean',
+            default: true,
+          },
+        },
+      },
     },
     permissions: { contents: 'read' },
     concurrency: {
-      group: `project-membership-${eventNumber}`,
+      group: "project-membership-${{ github.event.issue.number || 'sweep' }}",
       'cancel-in-progress': false,
     },
-    if: "github.repository == 'samlevin/prismatic'",
+    if: "github.repository == 'samlevin/prismatic' && (github.event_name == 'issues' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))",
     steps: [
       checkout,
       node,
       {
+        if: "github.event_name == 'issues'",
         uses: undefined,
         with: undefined,
         env: {
@@ -300,8 +318,86 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
         },
         run: 'node scripts/issue-project-membership.mjs',
       },
+      {
+        if: "github.event_name != 'issues'",
+        uses: undefined,
+        with: undefined,
+        env: { PRISMATIC_PROJECT_TOKEN: token, DRY_RUN: dispatchDryRun },
+        run: 'node scripts/issue-project-membership.mjs --sweep',
+      },
     ],
   });
+});
+
+test('project membership adds one issue when it opens and sweeps on a schedule or dispatch', () => {
+  const definition = definitions.get('tracker-project-membership.yml');
+  const job = definition.jobs['add-to-project'];
+  const format = (template, ...values) =>
+    template.replace(/\{(\d+)\}/g, (_, index) => values[index]);
+  const interpolate = (text, values) =>
+    text.replace(/\$\{\{([\s\S]*?)\}\}/g, (_, expression) =>
+      evaluate(expression, values),
+    );
+  const start = (eventName, { event = {}, inputs = {}, ref } = {}) => {
+    const values = {
+      format,
+      inputs,
+      github: {
+        repository: 'samlevin/prismatic',
+        ref: ref ?? 'refs/heads/main',
+        event_name: eventName,
+        // Actions reads a property of a missing object as null, so `issue: {}`
+        // stands in for the absent issue on schedule and dispatch events.
+        event: { repository: { default_branch: 'main' }, issue: {}, ...event },
+      },
+    };
+    return {
+      name: interpolate(definition['run-name'], values),
+      group: interpolate(definition.concurrency.group, values),
+      runs: evaluate(job.if, values),
+      steps: job.steps
+        .filter((step) => step.if && evaluate(step.if, values))
+        .map((step) => ({
+          run: step.run,
+          dryRun: interpolate(step.env.DRY_RUN, values),
+        })),
+    };
+  };
+  assert.deepEqual(start('issues', { event: { issue: { number: 41 } } }), {
+    name: 'Add issue #41 to the project',
+    group: 'project-membership-41',
+    runs: true,
+    steps: [
+      { run: 'node scripts/issue-project-membership.mjs', dryRun: 'false' },
+    ],
+  });
+  const sweep = 'node scripts/issue-project-membership.mjs --sweep';
+  assert.deepEqual(start('schedule'), {
+    name: 'Add missing issues to the project (schedule)',
+    group: 'project-membership-sweep',
+    runs: true,
+    steps: [{ run: sweep, dryRun: 'false' }],
+  });
+  for (const [dryRunInput, dryRun] of [
+    [true, 'true'],
+    [false, 'false'],
+  ])
+    assert.deepEqual(
+      start('workflow_dispatch', { inputs: { dry_run: dryRunInput } }),
+      {
+        name: 'Add missing issues to the project (workflow_dispatch)',
+        group: 'project-membership-sweep',
+        runs: true,
+        steps: [{ run: sweep, dryRun }],
+      },
+    );
+  assert.equal(
+    start('workflow_dispatch', {
+      inputs: { dry_run: false },
+      ref: 'refs/heads/feature',
+    }).runs,
+    false,
+  );
 });
 
 test('workflows started by pull_request_target never check out or run pull request code', () => {

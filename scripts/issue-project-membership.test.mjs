@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
+  addMissingIssues,
   addToProject,
   configuration,
   PROJECT,
@@ -17,11 +18,16 @@ const STATUS_OPTIONS = [
 // A mock project that behaves like addProjectV2ItemById: adding content that
 // is already in the project returns the existing item. `existing` maps content
 // IDs to items already on the board, each with an optional Status option ID.
+// `repository` lists the issues and pull requests the sweep can find, each
+// with a number, and `failing` holds content IDs whose add fails.
 function fixture({
   content = { __typename: 'Issue', id: 'I_1' },
   project = { id: 'PVT_1', closed: false },
   statusOptions = STATUS_OPTIONS,
   existing = {},
+  repository = [],
+  pageSize = 100,
+  failing = [],
 } = {}) {
   const items = new Map(
     Object.entries(existing).map(([contentId, item]) => [contentId, item]),
@@ -41,6 +47,8 @@ function fixture({
         return { updateProjectV2ItemFieldValue: { projectV2Item: { id: 1 } } };
       }
       assert.match(query, /addProjectV2ItemById/);
+      if (failing.includes(variables.content))
+        throw new Error('API rate limit exceeded');
       if (!items.has(variables.content))
         items.set(variables.content, { id: `PVTI_${items.size + 1}` });
       return {
@@ -49,16 +57,53 @@ function fixture({
         },
       };
     }
+    if (/issues\(first: 100/.test(query)) {
+      // Like GitHub, the issues connection holds open issues and no pull requests.
+      const open = repository.filter(
+        (issue) => issue.__typename === 'Issue' && issue.state === 'OPEN',
+      );
+      const start = Number(variables.cursor ?? 0);
+      const end = start + pageSize;
+      return {
+        repository: {
+          issues: {
+            nodes: open.slice(start, end).map((issue) => ({
+              number: issue.number,
+              projectItems: {
+                nodes: [
+                  ...(issue.otherProject ? [{ project: { id: 'PVT_9' } }] : []),
+                  ...(items.has(issue.id)
+                    ? [{ project: { id: project?.id } }]
+                    : []),
+                ],
+              },
+            })),
+            pageInfo: {
+              hasNextPage: end < open.length,
+              endCursor: String(end),
+            },
+          },
+        },
+        user: { projectV2: project },
+      };
+    }
     if (/issueOrPullRequest\(number: \$number\)/.test(query)) {
+      const found =
+        repository.find((issue) => issue.number === variables.number) ??
+        content;
       const nodes = [...items.entries()]
-        .filter(([contentId]) => contentId === content?.id)
+        .filter(([contentId]) => contentId === found?.id)
         .map(([, item]) => ({ id: item.id, project: { id: project?.id } }));
       return {
         repository: {
           issueOrPullRequest:
-            content?.__typename === 'Issue'
-              ? { ...content, projectItems: { nodes } }
-              : content,
+            found?.__typename === 'Issue'
+              ? {
+                  __typename: 'Issue',
+                  id: found.id,
+                  projectItems: { nodes },
+                }
+              : found,
         },
         user: { projectV2: project },
       };
@@ -276,7 +321,147 @@ test('a mutation without an item fails', async () => {
   );
 });
 
+const issue = (number, options = {}) => ({
+  __typename: 'Issue',
+  id: `I_${number}`,
+  number,
+  state: 'OPEN',
+  ...options,
+});
+const listings = (f) =>
+  f.calls.filter(({ query }) => /issues\(first: 100/.test(query));
+
+test('a sweep adds only open issues missing from the project, across pages', async () => {
+  const f = fixture({
+    repository: [
+      issue(1),
+      issue(2),
+      issue(3, { otherProject: true }),
+      issue(4),
+      issue(5, { state: 'CLOSED' }),
+      { __typename: 'PullRequest', id: 'PR_6', number: 6, state: 'OPEN' },
+      issue(7),
+    ],
+    existing: {
+      I_2: { id: 'PVTI_2', status: 'OPT_READY' },
+      I_4: { id: 'PVTI_4' },
+    },
+    pageSize: 2,
+  });
+  assert.deepEqual(await addMissingIssues({ ...f, dryRun: false }), {
+    missing: [1, 3, 7],
+    added: 3,
+    failed: [],
+  });
+  assert.match(
+    listings(f)[0].query,
+    /repository\(owner: \$owner, name: \$name\) \{\s*issues\(first: 100, after: \$cursor, states: \[OPEN\]\)/,
+  );
+  assert.deepEqual(
+    listings(f).map(({ variables }) => variables.cursor),
+    [null, '2', '4'],
+  );
+  assert.deepEqual(
+    f.writes
+      .filter((write) => 'content' in write)
+      .map((write) => write.content),
+    ['I_1', 'I_3', 'I_7'],
+  );
+  assert.deepEqual(statusWrites(f), ['OPT_INBOX', 'OPT_INBOX', 'OPT_INBOX']);
+  assert.equal(f.items.get('I_2').status, 'OPT_READY');
+  assert.equal(f.items.get('I_4').status, undefined);
+  assert.equal(f.items.has('PR_6'), false);
+  assert.equal(f.items.has('I_5'), false);
+  assert.equal(
+    f.lines.at(-1),
+    'Project membership sweep: 5 open, 3 missing, 3 added, 0 failed; DRY_RUN=false',
+  );
+});
+
+test('a sweep that finds nothing missing makes one query per page and no writes', async () => {
+  const f = fixture({
+    repository: [issue(1), issue(2)],
+    existing: { I_1: { id: 'PVTI_1' }, I_2: { id: 'PVTI_2' } },
+  });
+  assert.deepEqual(await addMissingIssues({ ...f, dryRun: false }), {
+    missing: [],
+    added: 0,
+    failed: [],
+  });
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(f.lines, [
+    'Project membership sweep: 2 open, 0 missing, 0 added, 0 failed; DRY_RUN=false',
+  ]);
+});
+
+test('a dry-run sweep reports the missing issues and writes nothing', async () => {
+  const f = fixture({
+    repository: [issue(1), issue(2)],
+    existing: { I_2: { id: 'PVTI_2' } },
+  });
+  assert.deepEqual(await addMissingIssues(f), {
+    missing: [1],
+    added: 0,
+    failed: [],
+  });
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(f.lines, [
+    'DRY_RUN would add issue #1 to Prismatic delivery and set its Status to Inbox.',
+    'Project membership sweep: 2 open, 1 missing, 0 added, 0 failed; DRY_RUN=true',
+  ]);
+});
+
+test('a sweep logs a failing issue, adds the rest, and then fails', async () => {
+  const f = fixture({
+    repository: [issue(1), issue(2), issue(3)],
+    failing: ['I_2'],
+  });
+  await assert.rejects(
+    addMissingIssues({ ...f, dryRun: false }),
+    /Could not add #2 to Prismatic delivery/,
+  );
+  assert.deepEqual([...f.items.keys()], ['I_1', 'I_3']);
+  assert.deepEqual(statusWrites(f), ['OPT_INBOX', 'OPT_INBOX']);
+  assert.ok(
+    f.lines.includes('Could not add issue #2: API rate limit exceeded'),
+    f.lines.join('\n'),
+  );
+  assert.equal(
+    f.lines.at(-1),
+    'Project membership sweep: 3 open, 3 missing, 2 added, 1 failed; DRY_RUN=false',
+  );
+});
+
+test('a sweep fails before writing when the project is missing or closed', async () => {
+  for (const project of [null, { id: 'PVT_1', closed: true }]) {
+    const f = fixture({ project, repository: [issue(1)] });
+    await assert.rejects(
+      addMissingIssues({ ...f, dryRun: false }),
+      /project is unavailable/,
+    );
+    assert.deepEqual(f.writes, []);
+  }
+});
+
 test('configuration requires the token and repository in Actions and defaults to a dry run', () => {
+  assert.deepEqual(configuration({}, ['--sweep']), {
+    sweep: true,
+    dryRun: true,
+  });
+  assert.deepEqual(configuration({ DRY_RUN: 'false' }, ['--sweep']), {
+    sweep: true,
+    dryRun: false,
+  });
+  for (const args of [['--apply'], ['--sweep', '--sweep']])
+    assert.throws(
+      () => configuration({ ISSUE_NUMBER: '12' }, args),
+      /only option is --sweep/,
+    );
+  assert.throws(
+    () => configuration({ GITHUB_ACTIONS: 'true' }, ['--sweep']),
+    /PRISMATIC_PROJECT_TOKEN/,
+  );
   assert.deepEqual(configuration({ ISSUE_NUMBER: '12' }), {
     number: 12,
     dryRun: true,
