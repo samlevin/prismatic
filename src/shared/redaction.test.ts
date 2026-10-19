@@ -56,6 +56,14 @@ describe('credential patterns', () => {
     ).toBe(
       'https://x-access-token:[REDACTED:connection-string-password]@github.com/o/r.git',
     );
+    expect(redactText(`redis://:${password}@cache:6379/0`)).toBe(
+      'redis://:[REDACTED:connection-string-password]@cache:6379/0',
+    );
+  });
+
+  it('leaves a URL with a port and no credentials alone', () => {
+    const url = 'https://host:8080/path@v2';
+    expect(redactText(url)).toBe(url);
   });
 
   it('masks authorization headers and bearer and basic credentials', () => {
