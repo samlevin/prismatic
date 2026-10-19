@@ -609,6 +609,18 @@ test('only automation moves an issue to In review', () => {
     assert.doesNotMatch(files.get(path), /move [^\n.]*In review/i, path);
 });
 
+test('the agents skill lints Markdown when it verifies', () => {
+  const files = render();
+  for (const root of ['.claude/skills', '.agents/skills']) {
+    const path = `${root}/${PREFIX}agents/SKILL.md`;
+    assert.match(
+      files.get(path),
+      /^npx eslint scripts\/agent-policy\.mjs scripts\/agent-policy\.test\.mjs '\*\*\/\*\.md' --max-warnings 0$/m,
+      path,
+    );
+  }
+});
+
 test('generated definitions in the repository are current', () => {
   assert.deepEqual(check(), []);
 });
