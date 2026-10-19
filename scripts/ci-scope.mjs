@@ -4,14 +4,20 @@
 // change to this file takes effect only after it merges. Keep the exports pure: tests
 // and the workflow call them without a checkout or GitHub access.
 
-// Directories whose files feed lint, the generated agent definitions, or the
-// script tests. Markdown under them still selects every check.
+// Directories whose files feed lint, the generated agent definitions, the
+// script tests, or the product and its tests. Markdown under them, such as
+// prompt templates in src/prompts/, still selects every check.
 const toolingDirectories = [
   '.agents/',
   '.claude/',
   '.codex/',
   '.github/',
   'scripts/',
+  'src/',
+  'apps/',
+  'tooling/',
+  'tests/',
+  'evals/',
 ];
 
 // Returns 'documentation' for a path that only the format check and the

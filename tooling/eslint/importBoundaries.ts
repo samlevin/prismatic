@@ -46,23 +46,21 @@ export const allowedImports: Readonly<
   apps: ['shared', 'core', 'domain', 'adapter', 'pipeline', 'apps'],
 };
 
-// Node.js built-in modules that reach the filesystem, processes, the
-// network, or the module loader. Only adapters import them.
-export const adapterOnlyBuiltins: ReadonlySet<string> = new Set([
-  'child_process',
-  'cluster',
-  'dgram',
-  'dns',
-  'fs',
-  'http',
-  'http2',
-  'https',
-  'inspector',
-  'module',
-  'net',
-  'tls',
-  'vm',
-  'worker_threads',
+// Node.js built-in modules without I/O, open to every module with their
+// subpaths, such as `path/posix`. Every other built-in, including one a
+// later Node.js release adds, is adapter-only.
+export const pureBuiltins: ReadonlySet<string> = new Set([
+  'assert',
+  'buffer',
+  'crypto',
+  'events',
+  'path',
+  'querystring',
+  'stream',
+  'string_decoder',
+  'timers',
+  'url',
+  'util',
 ]);
 
 export interface BoundaryException {
@@ -88,15 +86,14 @@ export interface Location {
 }
 
 // Classifies a repository-relative POSIX path. Returns undefined outside
-// src/ and apps/, and a location without a kind for a path in src/ that is
-// not inside a known module.
+// src/ and apps/, and a location without a kind for a path that is not
+// inside a known module, such as `src/index.ts` or `apps/main.ts`.
 export function locate(relativePath: string): Location | undefined {
   const [top, name, ...rest] = relativePath.split('/');
-  if (top === 'apps' && name !== undefined && rest.length > 0)
-    return { module: `apps/${name}`, kind: 'apps' };
-  if (top !== 'src') return undefined;
+  if (top !== 'src' && top !== 'apps') return undefined;
   if (name === undefined || rest.length === 0)
     return { module: '', kind: undefined };
+  if (top === 'apps') return { module: `apps/${name}`, kind: 'apps' };
   return {
     module: name,
     kind: Object.hasOwn(sourceModules, name) ? sourceModules[name] : undefined,
@@ -148,7 +145,7 @@ const rule: Rule.RuleModule = {
     ],
     messages: {
       unclassifiedFile:
-        '`{{file}}` is not inside a known module. Add its directory to sourceModules in tooling/eslint/importBoundaries.ts.',
+        '`{{file}}` is not inside a known module: a src/<module>/ directory listed in sourceModules in tooling/eslint/importBoundaries.ts, or an apps/<app>/ directory.',
       unclassifiedTarget:
         '`{{specifier}}` resolves to `{{target}}`, which is not inside a known module.',
       forbiddenModule:
@@ -227,7 +224,7 @@ const rule: Rule.RuleModule = {
       }
       if (fromKind === 'adapter') return;
       const sdk = isBuiltin(specifier)
-        ? adapterOnlyBuiltins.has(packageName(specifier.replace(/^node:/, '')))
+        ? !pureBuiltins.has(packageName(specifier.replace(/^node:/, '')))
         : !packages.has(packageName(specifier));
       if (sdk)
         context.report({ node, messageId: 'adapterOnly', data: { specifier } });
@@ -253,6 +250,10 @@ const rule: Rule.RuleModule = {
       },
       ImportExpression(node) {
         checkSource(node.source);
+      },
+      // Inline type imports, such as `typeof import('openai')`.
+      TSImportType(node: ESTree.Node) {
+        checkSource((node as unknown as { source: ESTree.Node }).source);
       },
       CallExpression(node) {
         const [argument] = node.arguments;

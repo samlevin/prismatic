@@ -27,5 +27,5 @@
     "experiments/**/*.ts",
     "vitest.config.ts"
   ],
-  "exclude": ["**/fixtures/**"]
+  "exclude": ["tooling/eslint/fixtures/**"]
 }
