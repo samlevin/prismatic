@@ -66,7 +66,16 @@ export default [
         {
           root: fileURLToPath(new URL('.', import.meta.url)),
           packages: [],
-          exceptions: [],
+          exceptions: [
+            // The Action entrypoint opens GITHUB_OUTPUT and
+            // GITHUB_STEP_SUMMARY as root and creates the run's workspace
+            // after the privilege drop. Until ActionBootstrap exists, its
+            // stub also starts the first git process.
+            {
+              file: 'apps/action/main.ts',
+              imports: ['node:fs', 'node:child_process'],
+            },
+          ],
         },
       ],
     },
