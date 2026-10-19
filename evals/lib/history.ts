@@ -964,14 +964,18 @@ export function parseHistory(value: unknown): LabeledHistory {
   labels.decoys.forEach((decoy, index) =>
     checkLocation(trees, decoy.location, `labels.decoys[${index}].location`),
   );
-  if (
-    labels.check.status !== 'pending' &&
-    labels.check.by === labels.labeledBy
-  ) {
-    throw new HistoryError(
-      'labels.check.by',
-      'the checker must not be the labeler',
-    );
+  // The check is a person's. Logins compare without case, as GitHub's do.
+  if (labels.check.status !== 'pending') {
+    const checker = labels.check.by.toLowerCase();
+    if (checker.startsWith('agent:')) {
+      throw new HistoryError('labels.check.by', 'the checker must be a person');
+    }
+    if (checker === labels.labeledBy.toLowerCase()) {
+      throw new HistoryError(
+        'labels.check.by',
+        'the checker must not be the labeler',
+      );
+    }
   }
   checkExpected(history);
   checkScenarios(history);

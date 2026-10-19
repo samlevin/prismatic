@@ -175,10 +175,78 @@ describe('scoreRun', () => {
     // g3 is marked fixed in round 1, while the defect is still present. g1
     // fails causality, so its transition is not a lifecycle error.
     expect(score.falseFixed).toBe(1);
-    expect(score.dismissedResurfaced).toBe(1);
+    // g5 is the run's first comment finding, so nothing was dismissed in
+    // this run and it is not resurfacing.
+    expect(score.dismissedResurfaced).toBe(0);
     expect(score.unexpectedInference).toBe(1);
     expect(score.cost.usageComplete).toBe(false);
     expect(score.cost.failedAttemptUsd).toBe(0.5);
+  });
+
+  test('counts a dismissed finding published again as resurfacing', () => {
+    const run = perfectRun();
+    const rounds = [
+      run.rounds[0] as ObservedRound,
+      run.rounds[1] as ObservedRound,
+      observedRound(3, {
+        requests: [],
+        published: [
+          {
+            id: 'f3',
+            severity: 'low',
+            defect: 'comment',
+            causality: 'unrelated',
+          },
+        ],
+      }),
+    ];
+    const score = scoreRun(sample, { ...run, rounds }, rates);
+    expect(score.dismissedResurfaced).toBe(1);
+    expect(score.falseFindings).toBe(1);
+  });
+
+  test('does not count a dismissal of a finding published only with unrelated causality', () => {
+    const run = perfectRun();
+    const first = {
+      ...(run.rounds[0] as ObservedRound),
+      published: [
+        {
+          id: 'f1',
+          severity: 'high' as const,
+          defect: 'divide',
+          causality: 'supported' as const,
+        },
+        {
+          id: 'f2',
+          severity: 'low' as const,
+          defect: 'comment',
+          causality: 'unrelated' as const,
+        },
+      ],
+    };
+    const third = observedRound(3, {
+      requests: [],
+      published: [
+        {
+          id: 'f3',
+          severity: 'low',
+          defect: 'comment',
+          causality: 'supported',
+        },
+      ],
+    });
+    const score = scoreRun(
+      sample,
+      { ...run, rounds: [first, run.rounds[1] as ObservedRound, third] },
+      rates,
+    );
+    expect(score.dismissedResurfaced).toBe(0);
+  });
+
+  test('reports end-to-end severe recall over ineligible defects too', () => {
+    const score = scoreRun(sample, perfectRun(), rates);
+    expect(score.severeRecallEndToEnd).toEqual({ successes: 1, trials: 2 });
+    expect(score.rounds).toBe(3);
   });
 
   test('reports where a missed defect left the funnel', () => {
@@ -434,7 +502,7 @@ describe('scoreVariant', () => {
       ],
       'delta',
       rates,
-      { resamples: 500 },
+      { resamples: 500, allowPendingChecks: true },
     );
     expect(report.runs).toBe(4);
     expect(report.histories).toBe(2);
@@ -449,12 +517,18 @@ describe('scoreVariant', () => {
     expect(report.retrievalMiss.value).toBe(0);
     expect(report.bucketRecall.get(6)?.value).toBeNull();
     expect(report.bucketRecall.get(6)?.interval).toBeNull();
-    expect(report.cleanFalseFindingsPerPr.cleanHistories).toBe(1);
+    expect(report.cleanFalseFindingsPerPr.histories).toBe(1);
+    // Sample: (0 + 2) / 2 false findings; clean: 0.5.
+    expect(report.falseFindingsPerPr.value).toBeCloseTo(1.5 / 2, 12);
+    expect(report.falseFindingsPerPr.histories).toBe(2);
+    expect(report.severeRecallEndToEnd.value).toBe(0.5);
+    // Sample: $4.25 over 3 rounds; clean: $2 over 1 round.
+    expect(report.costPerRoundUsd.mean).toBeCloseTo((4.25 / 3 + 2) / 2, 12);
     expect(report.cleanFalseFindingsPerPr.value).toBe(0.5);
     expect(report.cleanFalseFindingsPerPr.interval?.lower).toBe(0);
     expect(report.cleanFalseFindingsPerPr.interval?.upper).toBeGreaterThan(5);
     expect(report.falseFixed).toBe(1);
-    expect(report.dismissedResurfaced).toBe(1);
+    expect(report.dismissedResurfaced).toBe(0);
     expect(report.duplicates).toBe(1);
     expect(report.unexpectedInference).toBe(1);
     expect(report.funnel).toEqual({
@@ -480,9 +554,10 @@ describe('scoreVariant', () => {
   test('reports no clean-PR rate without clean histories', () => {
     const report = scoreVariant([sample], [perfectRun()], 'delta', rates, {
       resamples: 100,
+      allowPendingChecks: true,
     });
     expect(report.cleanFalseFindingsPerPr).toEqual({
-      cleanHistories: 0,
+      histories: 0,
       value: null,
       interval: null,
     });
@@ -490,18 +565,49 @@ describe('scoreVariant', () => {
     expect(report.costPerDefectUsd).toBeCloseTo(2, 12);
   });
 
+  test('refuses histories whose labels are not checked yet', () => {
+    expect(() =>
+      scoreVariant([sample], [perfectRun()], 'delta', rates),
+    ).toThrow('Labels are not checked yet: sample.');
+    const json = sampleHistory();
+    json.labels['check'] = {
+      status: 'confirmed',
+      by: 'checker-b',
+      on: '2026-10-20',
+      notes: 'Agreed.',
+    };
+    const checked = parseHistory(json);
+    expect(
+      scoreVariant([checked], [perfectRun()], 'delta', rates, { resamples: 10 })
+        .precision.value,
+    ).toBe(1);
+  });
+
   test('refuses an incomplete or inconsistent set of runs', () => {
+    const pending = { allowPendingChecks: true };
     expect(() => scoreVariant([], [], 'delta', rates)).toThrow(
       'The corpus is empty',
     );
     expect(() =>
-      scoreVariant([sample, clean], [perfectRun()], 'delta', rates),
+      scoreVariant([sample, clean], [perfectRun()], 'delta', rates, pending),
     ).toThrow('Variant delta has no run of clean');
     expect(() =>
-      scoreVariant([sample], [perfectRun(1), perfectRun(1)], 'delta', rates),
+      scoreVariant(
+        [sample],
+        [perfectRun(1), perfectRun(1)],
+        'delta',
+        rates,
+        pending,
+      ),
     ).toThrow('is recorded twice');
     expect(() =>
-      scoreVariant([sample], [perfectRun(), cleanRun(1, 0)], 'delta', rates),
+      scoreVariant(
+        [sample],
+        [perfectRun(), cleanRun(1, 0)],
+        'delta',
+        rates,
+        pending,
+      ),
     ).toThrow('names a history outside the corpus');
   });
 });

@@ -41,7 +41,9 @@
             "      return await task();",
             "    } catch (error) {",
             "      lastError = error;",
-            "      await new Promise((resolve) => setTimeout(resolve, options.delayMs));",
+            "      if (attempt + 1 < options.attempts) {",
+            "        await new Promise((resolve) => setTimeout(resolve, options.delayMs));",
+            "      }",
             "    }",
             "  }",
             "  throw lastError;",
@@ -95,7 +97,9 @@
             "      return await task();",
             "    } catch (error) {",
             "      lastError = error;",
-            "      await new Promise((resolve) => setTimeout(resolve, options.delayMs));",
+            "      if (attempt + 1 < options.attempts) {",
+            "        await new Promise((resolve) => setTimeout(resolve, options.delayMs));",
+            "      }",
             "    }",
             "  }",
             "  throw lastError;",
@@ -130,8 +134,8 @@
           {
             "path": "src/jobs/retry.ts",
             "round": 1,
-            "startLine": 20,
-            "endLine": 20,
+            "startLine": 22,
+            "endLine": 22,
             "marker": "throw lastError"
           }
         ],
