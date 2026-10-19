@@ -12,6 +12,7 @@ export default defineConfig({
       'tooling/**/*.test.ts',
       'tests/**/*.test.ts',
       'experiments/**/*.test.ts',
+      'evals/**/*.test.ts',
     ],
     // tests/e2e/ builds and runs the Docker image, so it needs Docker and,
     // for the build, the network. `npm run test:container` runs it.
@@ -32,6 +33,7 @@ export default defineConfig({
         'apps/**/*.ts',
         'tooling/**/*.ts',
         'experiments/**/*.ts',
+        'evals/**/*.ts',
       ],
       exclude: [
         '**/*.test.ts',

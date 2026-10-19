@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "id": "py-client-logs-auth-header",
+  "title": "API client logs its Authorization header",
+  "language": "python",
+  "provenance": {
+    "origin": "synthetic",
+    "author": "agent:prism-implementer",
+    "createdOn": "2026-10-19",
+    "license": "MIT",
+    "notes": "Synthetic code written for the pilot; no third-party or private source. The token is read at runtime; no credential value appears in the fixture."
+  },
+  "scenarios": ["correct-high-severity"],
+  "pullRequest": {
+    "title": "Add an API client with request logging",
+    "body": "Adds ApiClient with debug logging of each request for troubleshooting."
+  },
+  "source": {
+    "base": {},
+    "rounds": [
+      {
+        "number": 1,
+        "trigger": "opened",
+        "message": "Add ApiClient",
+        "actions": [],
+        "changes": {
+          "app/client.py": [
+            "import logging",
+            "",
+            "import requests",
+            "",
+            "log = logging.getLogger(__name__)",
+            "",
+            "",
+            "class ApiClient:",
+            "    def __init__(self, base_url: str, auth: str) -> None:",
+            "        self._base_url = base_url.rstrip(\"/\")",
+            "        self._session = requests.Session()",
+            "        self._session.headers[\"Authorization\"] = f\"Bearer {auth}\"",
+            "",
+            "    def get_json(self, path: str) -> dict:",
+            "        url = f\"{self._base_url}/{path.lstrip('/')}\"",
+            "        log.debug(\"GET %s headers=%s\", url, dict(self._session.headers))",
+            "        response = self._session.get(url, timeout=10)",
+            "        response.raise_for_status()",
+            "        return response.json()"
+          ]
+        }
+      }
+    ]
+  },
+  "labels": {
+    "labeledBy": "agent:prism-implementer",
+    "labeledOn": "2026-10-19",
+    "check": {
+      "status": "pending"
+    },
+    "defects": [
+      {
+        "id": "token-in-debug-log",
+        "severity": "high",
+        "category": "security",
+        "failureMode": "secret-exposure",
+        "introducedRound": 1,
+        "fixedRound": null,
+        "location": {
+          "path": "app/client.py",
+          "round": 1,
+          "startLine": 16,
+          "endLine": 16,
+          "marker": "log.debug("
+        },
+        "requiredEvidence": [
+          {
+            "path": "app/client.py",
+            "round": 1,
+            "startLine": 16,
+            "endLine": 16,
+            "marker": "log.debug("
+          },
+          {
+            "path": "app/client.py",
+            "round": 1,
+            "startLine": 12,
+            "endLine": 12,
+            "marker": "headers[\"Authorization\"]"
+          }
+        ],
+        "eligible": true,
+        "available": true,
+        "summary": "The debug log prints every session header, including the bearer token, so anyone with log access gets the credential."
+      }
+    ],
+    "decoys": []
+  },
+  "expected": [
+    {
+      "round": 1,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": ["token-in-debug-log"],
+      "transitions": []
+    }
+  ]
+}

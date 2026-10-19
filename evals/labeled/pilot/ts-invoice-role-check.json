@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "id": "ts-invoice-role-check",
+  "title": "Invoice archive route widens who may delete",
+  "language": "typescript",
+  "provenance": {
+    "origin": "synthetic",
+    "author": "agent:prism-implementer",
+    "createdOn": "2026-10-19",
+    "license": "MIT",
+    "notes": "Synthetic code written for the pilot; no third-party or private source."
+  },
+  "scenarios": ["correct-high-severity", "cross-file"],
+  "pullRequest": {
+    "title": "Let editors archive invoices",
+    "body": "Adds an archive endpoint for editors. Deleting stays admin-only."
+  },
+  "source": {
+    "base": {
+      "src/auth/permissions.ts": [
+        "export type Role = 'viewer' | 'editor' | 'admin';",
+        "",
+        "export interface User {",
+        "  id: string;",
+        "  roles: readonly Role[];",
+        "}",
+        "",
+        "export function hasRole(user: User, role: Role): boolean {",
+        "  return user.roles.includes(role);",
+        "}"
+      ],
+      "src/store/invoices.ts": [
+        "const invoices = new Map<string, { archived: boolean }>();",
+        "",
+        "export function deleteInvoice(id: string): void {",
+        "  invoices.delete(id);",
+        "}"
+      ],
+      "src/routes/invoices.ts": [
+        "import { hasRole, type User } from '../auth/permissions.ts';",
+        "import { deleteInvoice } from '../store/invoices.ts';",
+        "",
+        "export function handleDelete(user: User, invoiceId: string): number {",
+        "  if (!hasRole(user, 'admin')) {",
+        "    return 403;",
+        "  }",
+        "  deleteInvoice(invoiceId);",
+        "  return 204;",
+        "}"
+      ]
+    },
+    "rounds": [
+      {
+        "number": 1,
+        "trigger": "opened",
+        "message": "Add invoice archiving for editors",
+        "actions": [],
+        "changes": {
+          "src/store/invoices.ts": [
+            "const invoices = new Map<string, { archived: boolean }>();",
+            "",
+            "export function deleteInvoice(id: string): void {",
+            "  invoices.delete(id);",
+            "}",
+            "export function archiveInvoice(id: string): void {",
+            "  const invoice = invoices.get(id);",
+            "  if (invoice !== undefined) {",
+            "    invoice.archived = true;",
+            "  }",
+            "}"
+          ],
+          "src/routes/invoices.ts": [
+            "import { hasRole, type User } from '../auth/permissions.ts';",
+            "import { archiveInvoice, deleteInvoice } from '../store/invoices.ts';",
+            "",
+            "// Editors may archive invoices; only admins may delete them.",
+            "function canModify(user: User): boolean {",
+            "  return hasRole(user, 'editor') || user.roles.length > 0;",
+            "}",
+            "",
+            "export function handleArchive(user: User, invoiceId: string): number {",
+            "  if (!canModify(user)) {",
+            "    return 403;",
+            "  }",
+            "  archiveInvoice(invoiceId);",
+            "  return 204;",
+            "}",
+            "",
+            "export function handleDelete(user: User, invoiceId: string): number {",
+            "  if (!canModify(user)) {",
+            "    return 403;",
+            "  }",
+            "  deleteInvoice(invoiceId);",
+            "  return 204;",
+            "}"
+          ]
+        }
+      }
+    ]
+  },
+  "labels": {
+    "labeledBy": "agent:prism-implementer",
+    "labeledOn": "2026-10-19",
+    "check": {
+      "status": "pending"
+    },
+    "defects": [
+      {
+        "id": "any-role-may-modify",
+        "severity": "high",
+        "category": "security",
+        "failureMode": "authz-or-trust-boundary",
+        "introducedRound": 1,
+        "fixedRound": null,
+        "location": {
+          "path": "src/routes/invoices.ts",
+          "round": 1,
+          "startLine": 6,
+          "endLine": 6,
+          "marker": "user.roles.length > 0"
+        },
+        "requiredEvidence": [
+          {
+            "path": "src/routes/invoices.ts",
+            "round": 1,
+            "startLine": 6,
+            "endLine": 6,
+            "marker": "user.roles.length > 0"
+          },
+          {
+            "path": "src/auth/permissions.ts",
+            "round": 1,
+            "startLine": 1,
+            "endLine": 1,
+            "marker": "export type Role"
+          }
+        ],
+        "eligible": true,
+        "available": true,
+        "summary": "canModify accepts any user with at least one role, so a viewer passes the check meant for editors."
+      },
+      {
+        "id": "delete-not-admin-only",
+        "severity": "high",
+        "category": "security",
+        "failureMode": "authz-or-trust-boundary",
+        "introducedRound": 1,
+        "fixedRound": null,
+        "location": {
+          "path": "src/routes/invoices.ts",
+          "round": 1,
+          "startLine": 18,
+          "endLine": 21,
+          "marker": "canModify"
+        },
+        "requiredEvidence": [
+          {
+            "path": "src/routes/invoices.ts",
+            "round": 1,
+            "startLine": 4,
+            "endLine": 4,
+            "marker": "// Editors may archive invoices"
+          },
+          {
+            "path": "src/routes/invoices.ts",
+            "round": 0,
+            "startLine": 5,
+            "endLine": 5,
+            "marker": "hasRole(user, 'admin')"
+          }
+        ],
+        "eligible": true,
+        "available": true,
+        "summary": "handleDelete now uses canModify instead of the admin check, so non-admins can delete invoices, contrary to the PR description and the comment."
+      }
+    ],
+    "decoys": []
+  },
+  "expected": [
+    {
+      "round": 1,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": ["any-role-may-modify", "delete-not-admin-only"],
+      "transitions": []
+    }
+  ]
+}

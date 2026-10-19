@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "id": "ts-format-units-caller",
+  "title": "Changed function units break a caller outside the diff",
+  "language": "typescript",
+  "provenance": {
+    "origin": "synthetic",
+    "author": "agent:prism-implementer",
+    "createdOn": "2026-10-19",
+    "license": "MIT",
+    "notes": "Synthetic code written for the pilot; no third-party or private source."
+  },
+  "scenarios": ["correct-high-severity", "cross-file"],
+  "pullRequest": {
+    "title": "Format currency with Intl.NumberFormat",
+    "body": "Switches formatUsd to Intl.NumberFormat and adds invoice lines that use it."
+  },
+  "source": {
+    "base": {
+      "src/money/format.ts": [
+        "// Formats an amount in cents as US dollars, such as 1234 -> \"$12.34\".",
+        "export function formatUsd(cents: number): string {",
+        "  return `$${(cents / 100).toFixed(2)}`;",
+        "}"
+      ],
+      "src/report/summary.ts": [
+        "import { formatUsd } from '../money/format.ts';",
+        "",
+        "export interface LineItem {",
+        "  label: string;",
+        "  cents: number;",
+        "}",
+        "",
+        "export function summaryLine(items: readonly LineItem[]): string {",
+        "  const total = items.reduce((sum, item) => sum + item.cents, 0);",
+        "  return `Total: ${formatUsd(total)}`;",
+        "}"
+      ]
+    },
+    "rounds": [
+      {
+        "number": 1,
+        "trigger": "opened",
+        "message": "Use Intl.NumberFormat for currency",
+        "actions": [],
+        "changes": {
+          "src/money/format.ts": [
+            "const usd = new Intl.NumberFormat('en-US', {",
+            "  style: 'currency',",
+            "  currency: 'USD',",
+            "});",
+            "",
+            "// Formats a dollar amount, such as 12.34 -> \"$12.34\".",
+            "export function formatUsd(dollars: number): string {",
+            "  return usd.format(dollars);",
+            "}"
+          ],
+          "src/report/invoice.ts": [
+            "import { formatUsd } from '../money/format.ts';",
+            "",
+            "export function invoiceLine(label: string, dollars: number): string {",
+            "  return `${label}: ${formatUsd(dollars)}`;",
+            "}"
+          ]
+        }
+      }
+    ]
+  },
+  "labels": {
+    "labeledBy": "agent:prism-implementer",
+    "labeledOn": "2026-10-19",
+    "check": {
+      "status": "pending"
+    },
+    "defects": [
+      {
+        "id": "caller-passes-cents",
+        "severity": "high",
+        "category": "correctness",
+        "failureMode": "breaking-api-change",
+        "introducedRound": 1,
+        "fixedRound": null,
+        "location": {
+          "path": "src/money/format.ts",
+          "round": 1,
+          "startLine": 7,
+          "endLine": 7,
+          "marker": "export function formatUsd(dollars: number)"
+        },
+        "requiredEvidence": [
+          {
+            "path": "src/money/format.ts",
+            "round": 1,
+            "startLine": 7,
+            "endLine": 7,
+            "marker": "export function formatUsd(dollars: number)"
+          },
+          {
+            "path": "src/report/summary.ts",
+            "round": 1,
+            "startLine": 10,
+            "endLine": 10,
+            "marker": "formatUsd(total)"
+          },
+          {
+            "path": "src/report/summary.ts",
+            "round": 1,
+            "startLine": 9,
+            "endLine": 9,
+            "marker": "sum + item.cents"
+          }
+        ],
+        "eligible": true,
+        "available": true,
+        "summary": "formatUsd now takes dollars, but summaryLine in an unchanged file still passes a total in cents, so summaries show amounts 100 times too large."
+      }
+    ],
+    "decoys": []
+  },
+  "expected": [
+    {
+      "round": 1,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": ["caller-passes-cents"],
+      "transitions": []
+    }
+  ]
+}
