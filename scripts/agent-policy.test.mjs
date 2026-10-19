@@ -699,7 +699,7 @@ test("the implementer sends each handoff that handoff's own Policy line", () => 
     );
     assert.match(
       implementer,
-      /You need APPROVE for that exact base\/head pair\. On REQUEST CHANGES: fix, rerun the affected gates, push, and re-review\. After two rejected rounds, return BLOCKED with the open findings instead of looping\. Any base\/head change before the PR opens invalidates the approval\. Never self-approve\./,
+      /You need APPROVE for that exact base\/head pair\. On REQUEST CHANGES: fix, rerun the affected gates, push, and re-review with the same packet plus the previous head SHA and that round's findings verbatim\. After two rejected rounds, return BLOCKED with the open findings instead of looping\. Any base\/head change before the PR opens invalidates the approval\. Never self-approve\./,
       path,
     );
     assert.match(
@@ -821,6 +821,40 @@ test('AGENTS.md holds the code-and-comments rules and the reviewer enforces them
       files.get(`${dir}/${PREFIX}implementer.${ext}`),
       /describe the current state/,
     );
+  }
+});
+
+test('the code reviewer finds everything in one pass and scopes re-reviews to the fixes', () => {
+  const files = render();
+  for (const path of [
+    `.claude/agents/${PREFIX}code-reviewer.md`,
+    `.codex/agents/${PREFIX}code-reviewer.toml`,
+  ]) {
+    const reviewer = files.get(path);
+    assert.ok(
+      reviewer.includes(
+        "Make one complete pass before writing the verdict: read the full diff, every changed file's callers, every acceptance criterion, and every test file for what it asserts and misses. Report every evidenced finding in this report; never hold one back for a later round.",
+      ),
+      path,
+    );
+    assert.ok(
+      reviewer.includes(
+        "A re-review packet also carries the previous round's head SHA and findings.",
+      ),
+      path,
+    );
+    assert.ok(
+      reviewer.includes(
+        'On a re-review, confirm each previous finding is fixed or carry it forward as open, and read `git diff <previous head>..<head>` for defects the fix introduced. Raise no new finding on code that is unchanged since the previous head and was already in scope, unless the earlier round missed a defect that blocks acceptance.',
+      ),
+      path,
+    );
+    assert.match(
+      returnParagraph(reviewer),
+      /^Acceptance: met \/ gaps \(one line each\)\nPrevious findings: fixed \/ open \(one line each; re-review only\)\nFindings: severity \| file:line \| problem \| fix$/m,
+      path,
+    );
+    assert.match(reviewer, /Never: run tests,/, path);
   }
 });
 
