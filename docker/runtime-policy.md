@@ -43,6 +43,10 @@ It also gets these options, before the subcommand:
 -c submodule.recurse=false -c credential.helper=
 ```
 
+`src/repository/ReadOnlyProcessRunner.ts` applies these rules to every process the review starts. Its `runBinary` method accepts only `git` and `ast-grep` and runs them at `/usr/local/bin/`. A caller must give a deadline and a cap for stdout and for stderr, up to 22 minutes and 64 MiB each. When a run passes any of them, the runner kills the process group with `SIGKILL`, so helpers that `git fetch` starts die with it. The result names the limit that ended the run. ast-grep gets an empty environment. The arguments must start with a subcommand, so a caller cannot add `-c`, `-C`, or `--exec-path` of its own. The one exception is `-c fetch.negotiationAlgorithm=noop` in front of `fetch`, which blob-ID fetches need ([ADR 0004](../docs/adr/0004-blobless-fetch.md)). Stderr is redacted with the run's secret redactor before the caller sees it.
+
+Tests run git from `PATH` and fetch from local `file://` remotes, which `protocol.allow=never` refuses. `tests/support/processHarness.ts` maps the image paths to local binaries and can add `-c protocol.file.allow=always` to git runs. Production code cannot import it, because the import-boundary lint rule refuses anything outside `src/` and `apps/`, and the build compiles only those directories.
+
 ## Outputs and failures
 
 Each output is written in the runner's multi-line form with a random delimiter, so a value cannot end its entry early and add another output. A failure prints one `::error::` line with secrets masked and line breaks and `%` escaped, writes `result: failed` when `GITHUB_OUTPUT` is open, and exits with status 1.
