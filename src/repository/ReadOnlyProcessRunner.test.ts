@@ -678,7 +678,7 @@ describe('nodeProcessSpawner', () => {
     );
     const error = await rejection(nodeProcessSpawner(request('0')));
     expect(error).toMatchObject({ code: 'process-start-failed' });
-    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+    expect(child.kill).not.toHaveBeenCalled();
     // The deferred error finds a listener and settles nothing twice.
     expect(() =>
       child.emit(
