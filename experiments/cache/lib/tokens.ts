@@ -1,11 +1,11 @@
 // Local tokenizer candidates and the margin between their counts and the
 // provider's. No published tokenizer maps to gpt-6.1-sol, so the spike counts
 // the same requests locally with each candidate and with the provider's
-// input-token counting endpoint, then selects the most accurate candidate
-// and the margin it needs. Under-counting is the dangerous direction: it lets
-// a plan the allocator believes fits exceed the ceiling. Over-counting only
-// wastes budget, but a candidate that over-counts everything is not "safe",
-// just inaccurate, so selection weighs both directions.
+// input-token counting endpoint, fits the provider count as a linear
+// function of each candidate's count to separate fixed request framing from
+// per-token error, and selects the candidate whose fit is tightest. The
+// fit's worst under-prediction is the margin to plan with: under-counting
+// lets a plan the allocator believes fits exceed the ceiling.
 import { Tiktoken } from 'js-tiktoken/lite';
 import cl100k from 'js-tiktoken/ranks/cl100k_base';
 import o200k from 'js-tiktoken/ranks/o200k_base';
@@ -42,26 +42,49 @@ export const tokenizerCandidates: readonly Tokenizer[] = [
 ];
 
 export interface CountSample {
-  // What the sample is, such as `cold-warm/full-request`.
+  // The step that first sent this exact request, such as `cold-warm/cold`.
   readonly label: string;
+  // The candidate's count of the rendered block text.
   readonly local: number;
+  // The provider's count of the complete request, which adds message and
+  // item framing and the response-format schema to the block text.
   readonly provider: number;
 }
 
 export interface MarginSummary {
   readonly tokenizer: string;
   readonly samples: number;
-  // max((provider - local) / provider) over samples; positive means the
-  // local count was low.
-  readonly worstUnderCountRatio: number;
-  readonly worstAbsoluteErrorRatio: number;
-  readonly meanAbsoluteErrorRatio: number;
-  // The input margin to plan with: the worst under-count, or 0.
+  // Least-squares fit of provider = slope * local + interceptTokens. The
+  // intercept is the fixed framing and schema a complete request adds; the
+  // slope is the tokenizer's proportional error. With one distinct local
+  // count the slope is taken as 1.
+  readonly slope: number;
+  readonly interceptTokens: number;
+  // Residuals of the fit relative to the provider count. Positive means the
+  // fit predicted too few tokens.
+  readonly worstUnderPredictionRatio: number;
+  readonly worstAbsoluteResidualRatio: number;
+  readonly meanAbsoluteResidualRatio: number;
+  // The input margin to plan with on top of the fit: the worst
+  // under-prediction, or 0.
   readonly requiredMarginRatio: number;
-  // provider - local in tokens: the fixed framing a complete request adds
-  // over its rendered text, when the ratio is near zero.
-  readonly minOverheadTokens: number;
-  readonly maxOverheadTokens: number;
+}
+
+function fit(samples: readonly CountSample[]): {
+  slope: number;
+  intercept: number;
+} {
+  const n = samples.length;
+  const meanX = samples.reduce((sum, s) => sum + s.local, 0) / n;
+  const meanY = samples.reduce((sum, s) => sum + s.provider, 0) / n;
+  let sxx = 0;
+  let sxy = 0;
+  for (const s of samples) {
+    sxx += (s.local - meanX) ** 2;
+    sxy += (s.local - meanX) * (s.provider - meanY);
+  }
+  const slope = sxx === 0 ? 1 : sxy / sxx;
+  return { slope, intercept: meanY - slope * meanX };
 }
 
 export function summarizeMargin(
@@ -71,32 +94,34 @@ export function summarizeMargin(
   if (samples.length === 0) {
     throw new RangeError('A margin needs at least one sample.');
   }
-  const ratios = samples.map(
-    (s) => (s.provider - s.local) / Math.max(1, s.provider),
+  const { slope, intercept } = fit(samples);
+  const residuals = samples.map(
+    (s) =>
+      (s.provider - (slope * s.local + intercept)) / Math.max(1, s.provider),
   );
-  const overheads = samples.map((s) => s.provider - s.local);
-  const worstUnderCountRatio = Math.max(...ratios);
+  const worstUnderPredictionRatio = Math.max(...residuals);
   return {
     tokenizer,
     samples: samples.length,
-    worstUnderCountRatio,
-    worstAbsoluteErrorRatio: Math.max(...ratios.map(Math.abs)),
-    requiredMarginRatio: Math.max(0, worstUnderCountRatio),
-    meanAbsoluteErrorRatio:
-      ratios.reduce((sum, r) => sum + Math.abs(r), 0) / ratios.length,
-    minOverheadTokens: Math.min(...overheads),
-    maxOverheadTokens: Math.max(...overheads),
+    slope,
+    interceptTokens: intercept,
+    worstUnderPredictionRatio,
+    worstAbsoluteResidualRatio: Math.max(...residuals.map(Math.abs)),
+    meanAbsoluteResidualRatio:
+      residuals.reduce((sum, r) => sum + Math.abs(r), 0) / residuals.length,
+    requiredMarginRatio: Math.max(0, worstUnderPredictionRatio),
   };
 }
 
-// The candidate with the smallest worst error in either direction, ties
-// broken by mean error. Returns undefined when there is nothing to compare.
+// The candidate whose fit leaves the smallest worst residual, ties broken by
+// the slope's distance from 1, so fixed framing never counts as tokenizer
+// error. Returns undefined when there is nothing to compare.
 export function selectTokenizer(
   summaries: readonly MarginSummary[],
 ): MarginSummary | undefined {
   return [...summaries].sort(
     (a, b) =>
-      a.worstAbsoluteErrorRatio - b.worstAbsoluteErrorRatio ||
-      a.meanAbsoluteErrorRatio - b.meanAbsoluteErrorRatio,
+      a.worstAbsoluteResidualRatio - b.worstAbsoluteResidualRatio ||
+      Math.abs(a.slope - 1) - Math.abs(b.slope - 1),
   )[0];
 }

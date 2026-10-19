@@ -4,14 +4,14 @@
 import OpenAI from 'openai';
 import type { Provider } from './runner.ts';
 
-// `fetch` is for tests, which check the wire format without a network.
+// Tests pass a fake `fetch` to check the wire format without a network.
 export function openAIProvider(
   apiKey: string,
-  fetch?: typeof globalThis.fetch,
+  fetch: typeof globalThis.fetch,
 ): Provider {
   const client = new OpenAI({
     apiKey,
-    ...(fetch === undefined ? {} : { fetch }),
+    fetch,
     baseURL: 'https://api.openai.com/v1',
     organization: null,
     project: null,

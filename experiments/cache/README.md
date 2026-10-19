@@ -10,7 +10,7 @@ OPENAI_API_KEY=... node experiments/cache/spike/main.ts --budget-usd 5 > results
 OPENAI_API_KEY=... node experiments/cache/spike/main.ts --budget-usd 1 --only cold-warm,effort-configuration-update > results.json
 ```
 
-The dry run builds and prices every request and sends nothing. A live run requires `--budget-usd`. Each request reserves its worst case first (every planned input token at the cache-write rate, scaled by 1.1 for tokenizer error, plus the full output ceiling) and is skipped when that does not fit. A request that fails or returns no usage keeps its whole reservation. The full matrix is 25 requests with a planned worst case of $3.07 at the default 8,000 output tokens. Options: `--model` (default `gpt-6.1-sol`, the only model in the price catalog), `--max-output-tokens` (default 8000), `--settle-ms` between steps of a scenario (default 3000), and `--only <ids>`.
+The dry run builds and prices every request and sends nothing. A live run requires `--budget-usd`. Each request reserves its worst case first (every planned input token at the cache-write rate, scaled by 1.1 for tokenizer error, plus the full output ceiling) and is skipped when that does not fit. A request that fails or returns no usage keeps its whole reservation. The full matrix is 26 requests with a planned worst case of $3.16 at the default 8,000 output tokens. Options: `--model` (default `gpt-6.1-sol`, the only model in the price catalog), `--max-output-tokens` (default 8000), `--settle-ms` between steps of a scenario (default 3000), and `--only <ids>`.
 
 Results are JSON on stdout and progress goes to stderr. The exit status is 1 when any request errored. Each step also makes up to five calls to the input-token counting endpoint, one for the whole request and one per planned breakpoint, cached by payload.
 
@@ -33,7 +33,7 @@ Criteria are the acceptance criteria of #142, in order.
 | `representation-change` | 1, 3 | Prime, then one block 3 file from L0 to L2 |
 | `base-provenance-only` | 1, 3 | Prime, then only the base-tip SHA in block 5 changes |
 | `caching-disabled` | 1, 3 | Explicit mode with no breakpoints, twice |
-| `short-stable-prefix` | 1, 3 | A prefix under 1,024 tokens in a request over it, twice |
+| `short-stable-prefix` | 1, 3 | A prefix under 1,024 tokens in a request over it: once with no breakpoint, then twice with breakpoints forced onto the short prefix |
 | `effort-high-to-medium` | 2, 3 | High, medium, medium again |
 | `effort-configuration-update` | 2, 3 | High, then high with a `configuration_update` to medium after block 4, twice |
 | `schema-variants` | 4 | The incremental and reconcile schemas under `strict: true` |

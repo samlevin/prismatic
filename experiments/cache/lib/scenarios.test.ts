@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { RenderedBlock } from './layout.ts';
-import { renderBlocks } from './layout.ts';
+import { planBreakpoints, renderBlocks } from './layout.ts';
 import type { VariantSpec } from './scenarios.ts';
 import { materialFor, minimumPrefixTokens, scenarios } from './scenarios.ts';
 import { tokenizerCandidates } from './tokens.ts';
@@ -60,6 +60,30 @@ describe('scenarios', () => {
       { requestEffort: 'high', updateEffort: 'medium' },
       { requestEffort: 'high', updateEffort: 'medium' },
     ]);
+  });
+});
+
+describe('short-stable-prefix', () => {
+  test('forces breakpoints onto the short prefix only in its forced steps', () => {
+    const scenario = scenarios.find((s) => s.id === 'short-stable-prefix');
+    const [o200k] = tokenizerCandidates;
+    if (scenario === undefined || o200k === undefined) throw new Error('none');
+    const blocks = render({ short: true });
+    const through = (k: number): number =>
+      blocks
+        .filter((b) => b.block <= k)
+        .reduce((sum, b) => sum + o200k.count(b.text), 0);
+    const planned = scenario.steps.map((step) =>
+      planBreakpoints(blocks, through, step.caching).breakpoints.map(
+        (b) => b.afterBlock,
+      ),
+    );
+    expect(scenario.steps.map((s) => s.label)).toEqual([
+      'unmarked',
+      'forced',
+      'forced-again',
+    ]);
+    expect(planned).toEqual([[], [1, 4], [1, 4]]);
   });
 });
 

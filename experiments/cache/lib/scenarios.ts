@@ -60,6 +60,13 @@ export const measuredCaching: CachingOptions = {
   minimumPrefixTokens,
 };
 
+// Places breakpoints on prefixes under the provider minimum, which the
+// planner otherwise refuses, to see what the provider does with them.
+export const forcedShortCaching: CachingOptions = {
+  ...measuredCaching,
+  minimumPrefixTokens: 0,
+};
+
 export const disabledCaching: CachingOptions = {
   ...measuredCaching,
   enabled: false,
@@ -162,10 +169,15 @@ export const scenarios: readonly ScenarioSpec[] = [
     criteria: [1, 3],
     title: 'A stable prefix under the minimum in a request over it',
     hypothesis:
-      'No breakpoint qualifies, so nothing is written or read even though the whole request exceeds the minimum.',
+      'With no breakpoint nothing is cached even though the whole request exceeds the minimum. With breakpoints forced onto the short prefix, the provider ignores them, rejects the request, or writes and reads them; the forced steps show which.',
     steps: [
-      step('first', { short: true }),
-      step('second', { short: true }, { compareWith: 'first' }),
+      step('unmarked', { short: true }),
+      step('forced', { short: true }, { caching: forcedShortCaching }),
+      step(
+        'forced-again',
+        { short: true },
+        { caching: forcedShortCaching, compareWith: 'forced' },
+      ),
     ],
   },
   {
