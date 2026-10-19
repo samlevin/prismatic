@@ -149,6 +149,7 @@ export class SecurityScenarioRunner {
     this.#revisionView = {
       names: revisionNames(built, this.#revision, tree),
       paths: new Set(Object.keys(tree)),
+      root: repositoryRoot,
     };
     this.#fileSystem = new InstrumentedFileSystem(tree, {
       root: repositoryRoot,
@@ -172,7 +173,9 @@ export class SecurityScenarioRunner {
   // suffixes such as `~0` or `^{tree}`, and blob IDs: a `<rev>:<path>`
   // argument or input line, and a content command such as `git diff`,
   // `git grep`, or `git log -p`, which reads what its pathspecs cover, or
-  // the whole tree when it has no positive pathspec. Repository paths are
+  // the whole tree when it has no positive pathspec. A Git argument that
+  // names a file under the mounted tree on disk, such as
+  // `git config -f /repo/.gitmodules`, reads it too. Repository paths are
   // relative to the mounted revision; absolute paths name host files. A
   // directory covers everything below it, and so does a Git pathspec.
   // Metadata calls such as lstat, and Git commands limited to names, are
@@ -223,7 +226,7 @@ export class SecurityScenarioRunner {
         });
         if (hit === undefined) continue;
         violations.push(
-          `${quote(request.command)} ${quote(request.args.join(' '))} reads forbidden ${quote(hit)} at the mounted revision`,
+          `${quote(request.command)} ${quote(request.args.join(' '))} reads forbidden ${quote(hit)} through Git`,
         );
       }
     }

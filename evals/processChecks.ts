@@ -327,6 +327,8 @@ export interface RevisionView {
   readonly names: ReadonlyMap<string, readonly MountedObject[]>;
   // Every path in the mounted tree.
   readonly paths: ReadonlySet<string>;
+  // Where the mounted tree sits on disk.
+  readonly root: string;
 }
 
 export interface GitRead {
@@ -437,6 +439,8 @@ interface CommandSpec {
   readonly pathspecs: boolean;
   // Every option value may be a revision.
   readonly valuesMayBeRevisions?: boolean;
+  // With no revision, the command reads HEAD.
+  readonly defaultsToHead?: boolean;
   // False when the arguments make the command read nothing at all.
   readonly reads?: (args: readonly string[]) => boolean;
 }
@@ -520,16 +524,46 @@ const contentCommands = new Map<string, CommandSpec>([
     },
   ],
   ['unpack-file', command('nothing', 'nothing', 'contents', [])],
-  ['show', command('patch', 'nothing', 'contents', logValues)],
+  [
+    'config',
+    {
+      ...command('nothing', 'nothing', 'contents', [
+        '-f',
+        '--file',
+        '--blob',
+        '--type',
+        '--default',
+        '--comment',
+      ]),
+      pathspecs: false,
+      revisionValues: ['--blob'],
+    },
+  ],
+  [
+    'show',
+    {
+      ...command('patch', 'nothing', 'contents', logValues),
+      defaultsToHead: true,
+    },
+  ],
   ['diff', command('patch', 'patch', 'patch', diffValues)],
   [
     'diff-tree',
     command('requested-patch', 'requested-patch', 'nothing', diffValues),
   ],
-  ['log', command('requested-patch', 'requested-patch', 'nothing', logValues)],
+  [
+    'log',
+    {
+      ...command('requested-patch', 'requested-patch', 'nothing', logValues),
+      defaultsToHead: true,
+    },
+  ],
   [
     'whatchanged',
-    command('requested-patch', 'requested-patch', 'nothing', logValues),
+    {
+      ...command('requested-patch', 'requested-patch', 'nothing', logValues),
+      defaultsToHead: true,
+    },
   ],
   [
     'format-patch',
@@ -624,7 +658,6 @@ const nameCommands = new Set([
   'check-ref-format',
   'cherry',
   'commit-tree',
-  'config',
   'count-objects',
   'describe',
   'fetch',
@@ -721,6 +754,8 @@ interface Walk {
   readonly flags: string[];
   readonly objects: MountedObject[];
   readonly pathspecs: Pathspec[];
+  // True when an argument names any revision, mounted or not.
+  named: boolean;
 }
 
 // Sorts the arguments after the subcommand into flags, the objects they
@@ -730,21 +765,27 @@ function walk(
   spec: CommandSpec,
   view: RevisionView,
 ): Walk {
-  const result: Walk = { flags: [], objects: [], pathspecs: [] };
+  const result: Walk = { flags: [], objects: [], pathspecs: [], named: false };
   const addObject = (name: string): void => {
-    result.objects.push(...(resolveObject(name, view) ?? []));
+    const objects = resolveObject(name, view);
+    if (objects !== undefined) result.named = true;
+    result.objects.push(...(objects ?? []));
   };
   let patternPending =
     spec.pattern === true &&
     !args.some((arg) => /^(?:-[ef].*|--file(?:=.*)?)$/.test(arg));
+  let skippedSeparator = false;
   let separated = false;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index] ?? '';
     if (separated) {
       const pathspec = spec.pathspecs ? readPathspec(arg) : undefined;
       if (pathspec !== undefined) result.pathspecs.push(pathspec);
-    } else if (patternPending && (arg === '--' || !arg.startsWith('-'))) {
-      // Git takes the first argument as the pattern, even `--`.
+    } else if (patternPending && arg === '--' && !skippedSeparator) {
+      // `git grep -- <pattern>` skips the `--` and takes the next argument
+      // as the pattern.
+      skippedSeparator = true;
+    } else if (patternPending && (skippedSeparator || !arg.startsWith('-'))) {
       patternPending = false;
     } else if (arg === '--') {
       separated = true;
@@ -765,8 +806,10 @@ function walk(
       ) {
         addObject(value);
       }
-      if (allRefsFlag.test(arg))
+      if (allRefsFlag.test(arg)) {
+        result.named = true;
         result.objects.push({ type: 'commit', path: '' });
+      }
     } else if (resolveObject(arg, view) !== undefined) {
       addObject(arg);
     } else if (spec.pathspecs) {
@@ -791,8 +834,12 @@ function inputObjects(
   };
   const commands = flags.some((flag) => flag.startsWith('--batch-command'));
   for (const line of input.split(/[\n\0]/)) {
-    if (subcommand !== 'cat-file') add(line);
-    else if (commands) {
+    if (subcommand !== 'cat-file') {
+      // A `--stdin` line can hold several revisions, such as a commit and
+      // its parents.
+      add(line);
+      if (/\s/.test(line)) line.split(/\s+/).forEach(add);
+    } else if (commands) {
       const contents = /^contents (.*)$/.exec(line);
       if (contents !== null) add(contents[1] ?? '');
     } else {
@@ -830,8 +877,35 @@ function attributeSources(request: ProcessRequest, top: readonly string[]) {
   return sources;
 }
 
-// Repository paths whose contents a Git request reads in the mounted
-// revision, through any name Git resolves to it or to an object in it.
+// Repository paths that arguments after the subcommand name on disk, such
+// as `git config -f /repo/.gitmodules` or `git diff --no-index /repo/.env`.
+// Git reads files it is pointed at this way, whatever the command.
+function diskPaths(
+  args: readonly string[],
+  cwd: string,
+  root: string,
+): string[] {
+  const paths: string[] = [];
+  for (const arg of args) {
+    const equals = arg.indexOf('=');
+    const value = !arg.startsWith('-')
+      ? arg
+      : equals === -1
+        ? ''
+        : arg.slice(equals + 1);
+    if (value === '') continue;
+    const resolved = lexicalPath(value, cwd);
+    if (resolved === root) paths.push('');
+    else if (resolved.startsWith(`${root}/`)) {
+      paths.push(resolved.slice(root.length + 1));
+    }
+  }
+  return paths;
+}
+
+// Repository paths whose contents a Git request reads: in the mounted
+// revision, through any name Git resolves to it or to an object in it, or
+// on disk, through a path under the mounted tree.
 export function gitReadPaths(
   request: ProcessRequest,
   view: RevisionView,
@@ -854,7 +928,11 @@ export function gitReadPaths(
     subcommand === undefined || nameCommands.has(subcommand)
       ? undefined
       : (contentCommands.get(subcommand) ?? otherCommand);
-  const args = request.args.slice(subcommandIndex + 1);
+  const args =
+    subcommandIndex === -1 ? [] : request.args.slice(subcommandIndex + 1);
+  for (const path of diskPaths(args, request.options.cwd ?? '/', view.root)) {
+    add(path);
+  }
   if (
     subcommand === undefined ||
     spec === undefined ||
@@ -862,10 +940,13 @@ export function gitReadPaths(
   ) {
     return [...reads.values()];
   }
-  const { flags, objects, pathspecs } = walk(args, spec, view);
+  const { flags, objects, pathspecs, named } = walk(args, spec, view);
   objects.push(
     ...inputObjects(subcommand, flags, request.options.input ?? '', view),
   );
+  if (spec.defaultsToHead === true && !named && !flags.includes('--stdin')) {
+    objects.push(...(resolveObject('HEAD', view) ?? []));
+  }
   // `cat-file --batch-all-objects` prints every object in the store.
   if (subcommand === 'cat-file' && flags.includes('--batch-all-objects')) {
     add('');

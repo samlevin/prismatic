@@ -40,7 +40,14 @@ const view: RevisionView = {
     'secrets/copy.ts',
     '.gitattributes',
     'docs/.gitattributes',
+    '.gitmodules',
   ]),
+  root: '/repo',
+};
+// The same revision mounted at the default branch tip, so HEAD names it.
+const headView: RevisionView = {
+  ...view,
+  names: new Map([...view.names, ['HEAD', [commit]]]),
 };
 
 const reads = (args: readonly string[], options: ProcessOptions = {}) =>
@@ -160,7 +167,11 @@ describe('gitReadPaths', () => {
 
   it('takes the first argument of git grep as its pattern', () => {
     expect(reads(['grep', 'src', 'feature'])).toEqual([whole]);
-    expect(reads(['grep', '--', 'feature'])).toEqual([whole]);
+    expect(reads(['grep', '--', 'needle', 'feature'])).toEqual([whole]);
+    expect(reads(['grep', '--', '-needle', 'feature', 'src'])).toEqual([
+      file('src'),
+    ]);
+    expect(reads(['grep', '--', 'feature'])).toEqual([]);
     expect(reads(['grep', '-e', 'x', '-C', '3', 'feature', 'src'])).toEqual([
       file('src'),
     ]);
@@ -276,6 +287,59 @@ describe('gitReadPaths', () => {
     expect(reads(['rev-list', '--objects', '--all'])).toEqual([]);
     expect(reads(['--version'])).toEqual([]);
     expect(reads(['archive', '--list'])).toEqual([]);
+  });
+
+  it('reads a blob that git config takes settings from', () => {
+    expect(reads(['config', '--blob=feature:.gitmodules', '--list'])).toEqual([
+      file('.gitmodules'),
+    ]);
+    expect(
+      reads(['config', '--blob', 'feature:.gitmodules', '--get', 'a.b']),
+    ).toEqual([file('.gitmodules')]);
+    expect(reads(['config', '--blob=main:.gitmodules', '--list'])).toEqual([]);
+    expect(reads(['config', '--get', 'feature.url'])).toEqual([]);
+  });
+
+  it('reads files under the mounted tree that Git is pointed at on disk', () => {
+    expect(reads(['config', '-f', '/repo/.gitmodules', '--list'])).toEqual([
+      file('.gitmodules'),
+    ]);
+    expect(
+      reads(['diff', '--no-index', '/repo/secrets/prod.ts', '/dev/null']),
+    ).toEqual([file('secrets/prod.ts')]);
+    expect(
+      reads(['blame', '--contents=/repo/src/../secrets/prod.ts', 'x']),
+    ).toEqual([file('secrets/prod.ts')]);
+    expect(reads(['hash-object', '.gitmodules'], { cwd: '/repo' })).toEqual([
+      file('.gitmodules'),
+    ]);
+    expect(reads(['status', '/repo'])).toEqual([whole]);
+    expect(
+      reads(['--git-dir', '/repo/.git', 'diff', '--no-index', '/tmp/a', '-']),
+    ).toEqual([]);
+  });
+
+  it('reads HEAD when a log or show names no revision', () => {
+    const headReads = (args: readonly string[], input?: string) =>
+      gitReadPaths(
+        {
+          command: 'git',
+          args,
+          options: input === undefined ? {} : { input },
+        },
+        headView,
+      );
+    expect(headReads(['show'])).toEqual([whole]);
+    expect(headReads(['log', '-p', '--', 'src'])).toEqual([file('src')]);
+    expect(headReads(['log', '-p', 'main'])).toEqual([]);
+    expect(headReads(['log', '-p', '--stdin'], 'main\n')).toEqual([]);
+    expect(reads(['show'])).toEqual([]);
+  });
+
+  it('resolves every revision on a --stdin line', () => {
+    expect(
+      reads(['diff-tree', '-p', '--stdin'], { input: `${mounted} ${other}\n` }),
+    ).toEqual([whole]);
   });
 
   it('reads the attribute files of a tree Git takes attributes from', () => {

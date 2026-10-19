@@ -482,6 +482,36 @@ describe('assertNeverExecutes', () => {
     ]);
   });
 
+  it('catches git config reading .gitmodules from a blob or from disk', async () => {
+    const scenario = securityScenario('submodule');
+    const reads = new SecurityScenarioRunner(
+      scenario,
+      async ({ processRunner, revision }) => {
+        await processRunner.run(
+          ...normativeGit([
+            'config',
+            `--blob=${revision}:.gitmodules`,
+            '--list',
+          ]),
+        );
+        await processRunner.run(
+          ...normativeGit(['config', '-f', '/repo/.gitmodules', '--list']),
+        );
+        await processRunner.run(
+          ...normativeGit(['config', '--get', 'core.bare']),
+        );
+      },
+    );
+    expect(await violations(reads.assertNeverReads(['.gitmodules']))).toEqual([
+      expect.stringMatching(
+        /config --blob=[0-9a-f]{40}:.gitmodules --list" reads forbidden "\/repo\/.gitmodules" through Git/,
+      ),
+      expect.stringMatching(
+        /config -f \/repo\/.gitmodules --list" reads forbidden "\/repo\/.gitmodules" through Git/,
+      ),
+    ]);
+  });
+
   it('catches a shell, an untrusted executable, and option injection', async () => {
     const scenario = runner(
       'shell-metacharacters',
