@@ -1,7 +1,7 @@
 // Adversarial inputs for the shared primitives: names a malicious repository
 // can commit, text a PR can carry into logs and comments, and errors that
-// hold credentials. The fixture corpus in #139 will supply these from
-// generated repositories; until then the cases are listed here.
+// hold credentials. adversarialCorpus.test.ts runs the same primitives
+// against the generated corpus in evals/fixtures/security/.
 import { describe, expect, it } from 'vitest';
 import { normalizeError } from '../../src/shared/errors.ts';
 import { escapeMarkdown } from '../../src/shared/markdown.ts';
