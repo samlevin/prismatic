@@ -480,8 +480,14 @@ test('the review-code skill resolves #N as a pull request in both tools', () => 
     );
     assert.match(
       skill,
-      /gh pr view N --repo \S+ --json [^`]*closingIssuesReferences/,
+      /`gh api repos\/\S+\/pulls\/N --jq '[^`]*headRefOid: \.head\.sha[^`]*baseRefOid: \.base\.sha/,
     );
+    assert.match(
+      skill,
+      /REST has no closing-issues read: `gh api graphql [^`]*closingIssuesReferences/,
+    );
+    assert.match(skill, /If that call is rate-limited, do not wait/);
+    assert.doesNotMatch(skill, /gh (pr|issue) view/);
     assert.match(skill, /no pull request #N exists/);
     assert.match(skill, /Do not fall back to reading N as an issue/);
     assert.match(skill, /git fetch origin pull\/N\/head <baseRefName>/);
