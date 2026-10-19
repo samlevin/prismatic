@@ -16,7 +16,7 @@ Runs only when a person explicitly asked for a security review. If the request c
 
 ## Gather
 
-1. Resolve the target in `{{repository}}`: a PR number or URL (`gh pr view <n> --json headRefName,headRefOid,baseRefName,baseRefOid,url`) or a branch (`git ls-remote origin <branch>`; base is the merge base with `origin/main` unless the request names one). Return BLOCKED if the base cannot be inferred safely.
+1. Resolve the target in `{{repository}}`: a PR number or URL (`gh api repos/{{repository}}/pulls/<n> --jq '{headRefName: .head.ref, headRefOid: .head.sha, baseRefName: .base.ref, baseRefOid: .base.sha, url: .html_url}'`) or a branch (`git ls-remote origin <branch>`; base is the merge base with `origin/main` unless the request names one). Return BLOCKED if the base cannot be inferred safely.
 2. `git fetch origin <branch>` on the human checkout (read-only) so the objects exist locally; the reviewer reads through `git diff` and `git show` in that worktree path.
 3. Record the scope the person named (whole diff by default; {{#infrastructure}}OpenTofu, CDK, or {{/infrastructure}}workflow paths when they say so).
 4. Parse overrides: `model <name>` and `effort <level>` apply to the reviewer. A partial override changes only the named setting.
