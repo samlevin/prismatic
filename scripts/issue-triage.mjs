@@ -204,11 +204,20 @@ export async function reconcile({
   return { candidates, updated };
 }
 
-// Moves every closed issue on the board to Done, whatever its Status. The
-// project's built-in "Item closed" workflow is off, and the API cannot turn it
-// on. The listing carries each item's Status, so only issues that need the
-// move cost a per-item read.
-export async function reconcileClosed({
+// The Status an issue must have for its state: Done when closed, Ready when
+// reopened out of Done, otherwise none.
+function doneTarget(state, status) {
+  if (state === 'CLOSED' && status !== 'Done') return 'Done';
+  if (state === 'OPEN' && status === 'Done') return 'Ready';
+  return undefined;
+}
+
+// Keeps Done equal to closed: moves every closed issue on the board to Done,
+// whatever its Status, and every reopened issue still in Done back to Ready.
+// The project's built-in "Item closed" workflow is off, and the API cannot
+// turn it on. The listing carries each item's Status, so only issues that need
+// a move cost a per-item read.
+export async function reconcileDone({
   api,
   dryRun = true,
   issueNumber,
@@ -219,7 +228,7 @@ export async function reconcileClosed({
     (!Number.isSafeInteger(issueNumber) || issueNumber <= 0)
   )
     throw new Error('--issue requires a positive safe integer');
-  const context = await discover(api, { Status: ['Done'] });
+  const context = await discover(api, { Status: ['Ready', 'Done'] });
   const items = await paginate(async (cursor) => {
     const data = await api(
       `query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2 {
@@ -240,29 +249,25 @@ export async function reconcileClosed({
       listed.type !== 'ISSUE' ||
       listed.content?.__typename !== 'Issue' ||
       listed.content.repository.nameWithOwner !== REPOSITORY ||
-      listed.content.state !== 'CLOSED' ||
-      listed.fieldValueByName?.name === 'Done' ||
+      !doneTarget(listed.content.state, listed.fieldValueByName?.name) ||
       (issueNumber !== undefined && listed.content.number !== issueNumber)
     )
       continue;
     // Re-read the issue state and Status at the write boundary.
     const fresh = await readItem(api, listed.id, context);
-    if (
-      !fresh ||
-      fresh.content?.state !== 'CLOSED' ||
-      fresh.fields.Status === 'Done'
-    )
-      continue;
+    const target =
+      fresh && doneTarget(fresh.content?.state, fresh.fields.Status);
+    if (!target) continue;
     candidates++;
     log(
-      `${dryRun ? 'DRY_RUN would move' : 'Moving'} closed issue #${fresh.content.number} ${fresh.fields.Status ?? 'without Status'} -> Done`,
+      `${dryRun ? 'DRY_RUN would move' : 'Moving'} ${target === 'Done' ? 'closed' : 'reopened'} issue #${fresh.content.number} ${fresh.fields.Status ?? 'without Status'} -> ${target}`,
     );
     if (dryRun) continue;
-    await updateProjectStatus(api, context, fresh.id, 'Done');
+    await updateProjectStatus(api, context, fresh.id, target);
     updated++;
   }
   log(
-    `Closed issue reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
+    `Done reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
   );
   return { candidates, updated };
 }
@@ -324,6 +329,13 @@ export async function reconcileEpicLabels({
   }
 }
 
+// Every pass the command line runs, in order.
+export async function run(options) {
+  await reconcileEpicLabels(options);
+  await reconcile(options);
+  await reconcileDone(options);
+}
+
 export function configuration(env, args) {
   if (env.GITHUB_ACTIONS === 'true' && !env.PRISMATIC_PROJECT_TOKEN)
     throw new Error(
@@ -368,9 +380,7 @@ if (
     const config = configuration(process.env, process.argv.slice(2));
     if (process.env.GITHUB_ACTIONS === 'true')
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
-    await reconcileEpicLabels({ api: ghGraphql, ...config });
-    await reconcile({ api: ghGraphql, ...config });
-    await reconcileClosed({ api: ghGraphql, ...config });
+    await run({ api: ghGraphql, ...config });
   } catch (error) {
     console.error(failureMessage(error));
     process.exitCode = 1;

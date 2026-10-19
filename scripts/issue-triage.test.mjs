@@ -19,8 +19,9 @@ import {
   paginate,
   readItem,
   reconcile,
-  reconcileClosed,
+  reconcileDone,
   REPOSITORY,
+  run,
 } from './issue-triage.mjs';
 
 function issue(overrides = {}) {
@@ -503,15 +504,16 @@ test('invalid programmatic issue filters fail before any API access', async () =
   }
 });
 
-// A board for reconcileClosed. Each entry lists an issue's state and Status,
-// and `reread` changes an entry between the listing and the re-read.
-function closedBoard(entries, { reread = {} } = {}) {
+// A board for reconcileDone and run. Each entry lists an issue's state and
+// Status, and `reread` changes an entry between the listing and the re-read.
+function doneBoard(entries, { reread = {} } = {}) {
   const statuses = ['Inbox', 'Ready', 'In progress', 'In review', 'Done'];
   const board = new Map(
     entries.map((entry) => [`item-${entry.number}`, entry]),
   );
   const mutations = [];
   const reads = [];
+  const listings = [];
   const content = (entry) => ({
     id: `issue-${entry.number}`,
     __typename: entry.type === 'PULL_REQUEST' ? 'PullRequest' : 'Issue',
@@ -527,22 +529,30 @@ function closedBoard(entries, { reread = {} } = {}) {
             id: 'project',
             fields: {
               nodes: [
-                {
-                  id: 'field-Status',
-                  name: 'Status',
-                  options: statuses.map((name) => ({
-                    id: `option-${name}`,
-                    name,
+                ...Object.entries({
+                  Status: statuses,
+                  Priority: ['P0', 'P1', 'P2', 'P3'],
+                  Size: ['XS', 'S', 'M', 'L'],
+                }).map(([name, options]) => ({
+                  id: `field-${name}`,
+                  name,
+                  options: options.map((option) => ({
+                    id: `option-${option}`,
+                    name: option,
                   })),
-                },
+                })),
               ],
               pageInfo: { hasNextPage: false },
             },
           },
         },
       };
+    if (query.includes('labels: ["epic"]'))
+      return {
+        repository: { issues: { nodes: [], pageInfo: { hasNextPage: false } } },
+      };
     if (query.includes('items(first:')) {
-      assert.match(query, /fieldValueByName\(name: "Status"\)/);
+      listings.push(query.includes('fieldValueByName(name: "Status")'));
       return {
         node: {
           items: {
@@ -593,7 +603,9 @@ function closedBoard(entries, { reread = {} } = {}) {
     }
     if (query.includes('updateProjectV2ItemFieldValue')) {
       mutations.push(variables);
-      board.get(variables.item).status = 'Done';
+      board.get(variables.item).status = variables.option.slice(
+        'option-'.length,
+      );
       return {
         updateProjectV2ItemFieldValue: {
           projectV2Item: { id: variables.item },
@@ -602,11 +614,11 @@ function closedBoard(entries, { reread = {} } = {}) {
     }
     throw new Error('Unexpected mock query');
   };
-  return { api, board, mutations, reads };
+  return { api, board, mutations, reads, listings };
 }
 
-test('closed issues move to Done from any Status and open issues, PRs, and Done items stay', async () => {
-  const f = closedBoard([
+test('closed issues move to Done, reopened issues leave Done, and everything else stays', async () => {
+  const f = doneBoard([
     { number: 1, state: 'CLOSED', status: 'In review' },
     { number: 2, state: 'CLOSED', status: 'Ready' },
     { number: 3, state: 'CLOSED' },
@@ -614,43 +626,49 @@ test('closed issues move to Done from any Status and open issues, PRs, and Done 
     { number: 5, state: 'OPEN', status: 'In review' },
     { number: 6, state: 'MERGED', type: 'PULL_REQUEST' },
     { number: 7, state: 'CLOSED', status: 'Ready', repository: 'other/repo' },
+    { number: 8, state: 'OPEN', status: 'Done' },
+    { number: 9, state: 'OPEN' },
   ]);
   const lines = [];
   assert.deepEqual(
-    await reconcileClosed({
+    await reconcileDone({
       api: f.api,
       dryRun: false,
       log: (line) => lines.push(line),
     }),
-    { candidates: 3, updated: 3 },
+    { candidates: 4, updated: 4 },
   );
-  assert.deepEqual(f.reads, ['item-1', 'item-2', 'item-3']);
+  assert.deepEqual(f.reads, ['item-1', 'item-2', 'item-3', 'item-8']);
   assert.deepEqual(
     f.mutations,
-    ['item-1', 'item-2', 'item-3'].map((item) => ({
+    [
+      ['item-1', 'Done'],
+      ['item-2', 'Done'],
+      ['item-3', 'Done'],
+      ['item-8', 'Ready'],
+    ].map(([item, status]) => ({
       project: 'project',
       item,
       field: 'field-Status',
-      option: 'option-Done',
+      option: `option-${status}`,
     })),
   );
   assert.deepEqual(lines, [
     'Moving closed issue #1 In review -> Done',
     'Moving closed issue #2 Ready -> Done',
     'Moving closed issue #3 without Status -> Done',
-    'Closed issue reconciliation: 3 eligible, 3 updated; DRY_RUN=false',
+    'Moving reopened issue #8 Done -> Ready',
+    'Done reconciliation: 4 eligible, 4 updated; DRY_RUN=false',
   ]);
-  const again = await reconcileClosed({ api: f.api, dryRun: false, log() {} });
+  const again = await reconcileDone({ api: f.api, dryRun: false, log() {} });
   assert.deepEqual(again, { candidates: 0, updated: 0 });
 });
 
-test('closed issue reconciliation dry-runs, honors the issue filter, and re-reads before writing', async () => {
-  const dry = closedBoard([
-    { number: 1, state: 'CLOSED', status: 'In review' },
-  ]);
+test('Done reconciliation dry-runs, honors the issue filter, and re-reads before writing', async () => {
+  const dry = doneBoard([{ number: 1, state: 'CLOSED', status: 'In review' }]);
   const lines = [];
   assert.deepEqual(
-    await reconcileClosed({ api: dry.api, log: (line) => lines.push(line) }),
+    await reconcileDone({ api: dry.api, log: (line) => lines.push(line) }),
     { candidates: 1, updated: 0 },
   );
   assert.deepEqual(dry.mutations, []);
@@ -659,11 +677,11 @@ test('closed issue reconciliation dry-runs, honors the issue filter, and re-read
     'DRY_RUN would move closed issue #1 In review -> Done',
   );
 
-  const filtered = closedBoard([
+  const filtered = doneBoard([
     { number: 1, state: 'CLOSED', status: 'In review' },
     { number: 2, state: 'CLOSED', status: 'In review' },
   ]);
-  await reconcileClosed({
+  await reconcileDone({
     api: filtered.api,
     dryRun: false,
     issueNumber: 2,
@@ -675,22 +693,44 @@ test('closed issue reconciliation dry-runs, honors the issue filter, and re-read
     ['item-2'],
   );
 
-  const raced = closedBoard(
+  const raced = doneBoard(
     [
       { number: 1, state: 'CLOSED', status: 'In review' },
       { number: 2, state: 'CLOSED', status: 'In review' },
+      { number: 3, state: 'OPEN', status: 'Done' },
     ],
-    { reread: { 'item-1': { state: 'OPEN' }, 'item-2': { status: 'Done' } } },
+    {
+      reread: {
+        'item-1': { state: 'OPEN' },
+        'item-2': { status: 'Done' },
+        'item-3': { state: 'CLOSED' },
+      },
+    },
   );
   assert.deepEqual(
-    await reconcileClosed({ api: raced.api, dryRun: false, log() {} }),
+    await reconcileDone({ api: raced.api, dryRun: false, log() {} }),
     { candidates: 0, updated: 0 },
   );
   assert.deepEqual(raced.mutations, []);
 
   await assert.rejects(
-    reconcileClosed({ api: dry.api, issueNumber: 0 }),
+    reconcileDone({ api: dry.api, issueNumber: 0 }),
     /positive safe integer/,
+  );
+});
+
+test('the command-line run includes the Done pass', async () => {
+  const f = doneBoard([{ number: 1, state: 'CLOSED', status: 'In review' }]);
+  const lines = [];
+  await run({ api: f.api, dryRun: false, log: (line) => lines.push(line) });
+  assert.deepEqual(f.listings, [false, true]);
+  assert.deepEqual(
+    f.mutations.map((m) => [m.item, m.option]),
+    [['item-1', 'option-Done']],
+  );
+  assert.equal(
+    lines.at(-1),
+    'Done reconciliation: 1 eligible, 1 updated; DRY_RUN=false',
   );
 });
 
