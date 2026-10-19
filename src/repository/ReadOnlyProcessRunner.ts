@@ -1,6 +1,8 @@
-// The only way production code starts a native process: one of the pinned
-// binaries in the Action image, by absolute path, through `spawn` with
-// `shell: false` and an argument array. Every run has a deadline and caps on
+// How the review starts a native process: one of the pinned binaries in the
+// Action image, by absolute path, through `spawn` with `shell: false` and an
+// argument array. The Action entrypoint's bootstrap stub, which runs
+// `git init` before the review exists, is the one other caller of `spawn`
+// until ActionBootstrap replaces it. Every run has a deadline and caps on
 // captured stdout and stderr, and a breach kills the process group. A child
 // never inherits this process's environment. Every `git` process gets exactly
 // the normative environment and `-c` options of spec §5.3, and stderr is
@@ -9,7 +11,7 @@
 // Local fixture remotes need the file transport, which the normative options
 // refuse. The switch that allows it belongs to the test harness, outside the
 // directories production code may import, and nothing here can turn it on.
-import { spawn } from 'node:child_process';
+import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import path from 'node:path';
 import type { SecretRedactor } from '../shared/redaction.ts';
 
@@ -207,9 +209,20 @@ export class ReadOnlyProcessRunner {
       signal: outcome.signal,
       termination: outcome.termination,
       stdout: outcome.stdout,
-      stderr: this.#redactor.redactText(outcome.stderr.toString('utf8')),
+      stderr: this.#redactor.redactText(
+        completeLines(outcome.stderr.toString('utf8'), outcome.termination),
+      ),
     };
   }
+}
+
+// A run the runner killed may end its stderr partway through a line, and a
+// secret cut short there no longer matches the redactor's patterns. Such a
+// run keeps only its complete lines; a private key block stays masked from
+// its first line on.
+function completeLines(text: string, termination: ProcessTermination): string {
+  if (termination === 'exited') return text;
+  return text.slice(0, text.lastIndexOf('\n') + 1);
 }
 
 // The only `-c` entries a caller may put in front of a git subcommand, keyed
@@ -334,16 +347,43 @@ class Capture {
 // kill it together with any helper it started, such as the transport and
 // pack processes of `git fetch`. After the kill, the runner stops reading,
 // so a descendant that left the group cannot hold the run open.
+//
+// Every way a start can fail ends as a ProcessRunnerError: an error `spawn`
+// throws at once (such as ENOTDIR or E2BIG), one it emits on the next tick
+// (such as ENOENT), and a child left without pipes (EMFILE or ENFILE). The
+// raw error, which lists the arguments, never reaches the caller.
 export const nodeProcessSpawner: ProcessSpawner = (request) =>
   new Promise<SpawnOutcome>((resolve, reject) => {
-    const child = spawn(request.file, [...request.args], {
-      cwd: request.cwd,
-      env: { ...request.env },
-      shell: false,
-      detached: true,
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    let child: ChildProcessWithoutNullStreams;
+    try {
+      child = spawn(request.file, [...request.args], {
+        cwd: request.cwd,
+        env: { ...request.env },
+        shell: false,
+        detached: true,
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      reject(startFailure(error));
+      return;
+    }
+    const {
+      stdin,
+      stdout: out,
+      stderr: err,
+    } = child as Partial<
+      Pick<ChildProcessWithoutNullStreams, 'stdin' | 'stdout' | 'stderr'>
+    >;
+    if (stdin == null || out == null || err == null) {
+      // Node returns a child without pipes when it runs out of descriptors
+      // and reports the error on the next tick. This listener catches it, so
+      // it cannot become an uncaught exception.
+      child.on('error', () => undefined);
+      child.kill('SIGKILL');
+      reject(startFailure(undefined));
+      return;
+    }
     const stdout = new Capture(request.maxStdoutBytes);
     const stderr = new Capture(request.maxStderrBytes);
     let termination: ProcessTermination = 'exited';
@@ -353,34 +393,30 @@ export const nodeProcessSpawner: ProcessSpawner = (request) =>
       if (termination !== 'exited') return;
       termination = reason;
       killGroup(child.pid as number, () => child.kill('SIGKILL'));
-      child.stdout.destroy();
-      child.stderr.destroy();
+      out.destroy();
+      err.destroy();
     };
 
     const timer = setTimeout(() => stop('deadline'), request.timeoutMs);
-    child.stdout.on('data', (chunk: Buffer) => {
+    // Listening in the same tick as the spawn, so an error Node reports on
+    // the next tick (such as ENOENT) is always caught.
+    child.on('error', (error) => {
+      // After a start, an error here can only come from signalling a
+      // process that has already gone; `close` still reports the result.
+      if (settled || child.pid !== undefined) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(startFailure(error));
+    });
+    out.on('data', (chunk: Buffer) => {
       if (!stdout.add(chunk)) stop('stdout-limit');
     });
-    child.stderr.on('data', (chunk: Buffer) => {
+    err.on('data', (chunk: Buffer) => {
       if (!stderr.add(chunk)) stop('stderr-limit');
     });
     // A process that exits before reading all of its input closes the pipe;
     // its exit, not the write error, is the result.
-    child.stdin.on('error', () => undefined);
-    child.on('error', (error: NodeJS.ErrnoException) => {
-      // After a start, an error here can only come from signalling a
-      // process that has already gone; `close` still reports the result.
-      if (child.pid !== undefined || settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(
-        new ProcessRunnerError(
-          'process-start-failed',
-          'The process could not start.',
-          error.code,
-        ),
-      );
-    });
+    stdin.on('error', () => undefined);
     child.on('close', (exitCode, signal) => {
       if (settled) return;
       settled = true;
@@ -393,8 +429,20 @@ export const nodeProcessSpawner: ProcessSpawner = (request) =>
         stderr: stderr.value(),
       });
     });
-    child.stdin.end(request.stdin);
+    stdin.end(request.stdin);
   });
+
+function startFailure(error: unknown): ProcessRunnerError {
+  const code: unknown =
+    typeof error === 'object' && error !== null
+      ? (error as { code?: unknown }).code
+      : undefined;
+  return new ProcessRunnerError(
+    'process-start-failed',
+    'The process could not start.',
+    typeof code === 'string' ? code : undefined,
+  );
+}
 
 // Kills the whole process group, falling back to the process alone when the
 // group cannot be signalled. `stop` runs only after a start, so the process

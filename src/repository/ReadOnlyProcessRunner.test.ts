@@ -1,5 +1,6 @@
 import * as childProcess from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -195,6 +196,55 @@ describe('ReadOnlyProcessRunner', () => {
     });
     expect((await runner.runBinary('git', ['fetch'], limits)).stderr).toBe(
       'fatal: could not read [REDACTED:github-token] or held-secret\n',
+    );
+  });
+
+  it.each(['stderr-limit', 'deadline', 'stdout-limit'] as const)(
+    'drops the cut last stderr line of a run ended by %s, so a cut secret never shows',
+    async (termination) => {
+      const token = credentialExamples['github-token'] as string;
+      const cut = token.slice(0, 20);
+      const runner = new ReadOnlyProcessRunner({
+        home,
+        redactor: patternSecretRedactor,
+        spawner: () =>
+          Promise.resolve({
+            ...exited,
+            exitCode: null,
+            signal: 'SIGKILL',
+            termination,
+            stderr: Buffer.from(`warning: first\nfatal: token ${cut}`),
+          }),
+      });
+      const result = await runner.runBinary('git', ['fetch'], limits);
+      expect(result.stderr).toBe('warning: first\n');
+      expect(result.stderr).not.toContain(cut);
+    },
+  );
+
+  it('drops all of a killed run stderr that holds no complete line', async () => {
+    const runner = new ReadOnlyProcessRunner({
+      home,
+      redactor: patternSecretRedactor,
+      spawner: () =>
+        Promise.resolve({
+          ...exited,
+          termination: 'stderr-limit',
+          stderr: Buffer.from('ghp_partial'),
+        }),
+    });
+    expect((await runner.runBinary('git', ['fetch'], limits)).stderr).toBe('');
+  });
+
+  it('keeps the last stderr line of a run that exited by itself', async () => {
+    const runner = new ReadOnlyProcessRunner({
+      home,
+      redactor: patternSecretRedactor,
+      spawner: () =>
+        Promise.resolve({ ...exited, stderr: Buffer.from('a\nfatal: b') }),
+    });
+    expect((await runner.runBinary('git', ['fetch'], limits)).stderr).toBe(
+      'a\nfatal: b',
     );
   });
 
@@ -576,6 +626,66 @@ describe('nodeProcessSpawner', () => {
       systemCode: 'ENOENT',
     });
     expect((error as Error).message).not.toContain('missing-binary');
+  });
+
+  it('rejects with a runner error when spawn throws at once', async () => {
+    const file = path.join(directory, 'not-a-directory');
+    writeFileSync(file, '');
+    const error = await rejection(
+      nodeProcessSpawner(request('0', { cwd: file })),
+    );
+    expect(error).toBeInstanceOf(ProcessRunnerError);
+    expect(error).toMatchObject({ code: 'process-start-failed' });
+  });
+
+  it('keeps only the system code of a thrown start error', async () => {
+    const spawn = vi.mocked(childProcess.spawn);
+    spawn.mockImplementationOnce(() => {
+      throw Object.assign(new Error('spawn E2BIG with secret args'), {
+        code: 'E2BIG',
+      });
+    });
+    const coded = await rejection(nodeProcessSpawner(request('0')));
+    spawn.mockImplementationOnce(() => {
+      throw 'not an error';
+    });
+    const uncoded = await rejection(nodeProcessSpawner(request('0')));
+    spawn.mockImplementationOnce(() => {
+      throw Object.assign(new Error('odd'), { code: 7 });
+    });
+    const numeric = await rejection(nodeProcessSpawner(request('0')));
+    expect(coded).toMatchObject({
+      code: 'process-start-failed',
+      systemCode: 'E2BIG',
+      message: 'The process could not start.',
+    });
+    expect(uncoded).toMatchObject({ code: 'process-start-failed' });
+    expect((uncoded as ProcessRunnerError).systemCode).toBeUndefined();
+    expect((numeric as ProcessRunnerError).systemCode).toBeUndefined();
+  });
+
+  it('rejects, and swallows the later error, when the child has no pipes', async () => {
+    // What Node returns when it runs out of file descriptors.
+    const child = Object.assign(new EventEmitter(), {
+      pid: undefined,
+      stdin: null,
+      stdout: null,
+      stderr: null,
+      kill: vi.fn(() => true),
+    });
+    vi.mocked(childProcess.spawn).mockImplementationOnce(
+      () => child as unknown as ReturnType<typeof childProcess.spawn>,
+    );
+    const error = await rejection(nodeProcessSpawner(request('0')));
+    expect(error).toMatchObject({ code: 'process-start-failed' });
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+    // The deferred error finds a listener and settles nothing twice.
+    expect(() =>
+      child.emit(
+        'error',
+        Object.assign(new Error('EMFILE'), { code: 'EMFILE' }),
+      ),
+    ).not.toThrow();
   });
 });
 
