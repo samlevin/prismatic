@@ -11,9 +11,9 @@ import { securityScenarios } from '../../evals/fixtures/security/scenarios.ts';
 import type { SecurityScenario } from '../../evals/fixtures/security/types.ts';
 import {
   buildRepository,
-  writeBareRepository,
   type BuiltRepository,
-} from './fixtureRepository.ts';
+} from '../../evals/fixtures/security/repositoryObjects.ts';
+import { writeBareRepository } from './fixtureRepository.ts';
 
 export const baseRepositoryName = 'acme/widgets';
 

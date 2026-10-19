@@ -167,6 +167,14 @@ export const credentialSamples: readonly CredentialSample[] = [
     shape: 'credential',
     value: randomText(40, 37),
   },
+  {
+    // The scenario assigns it to a name that does not look secret, such as a
+    // build hash.
+    name: 'random literal under an ordinary name',
+    row: 'masked-only',
+    shape: 'benign',
+    value: randomText(40, 38),
+  },
 ];
 
 export function credentialSample(name: string): CredentialSample {

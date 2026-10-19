@@ -4,6 +4,7 @@
 // hostile input by throwing is allowed, and the assertions still judge what
 // it touched before it stopped.
 import { resolveTrees } from './fixtures/security/history.ts';
+import { buildRepository } from './fixtures/security/repositoryObjects.ts';
 import type { SecurityScenario } from './fixtures/security/types.ts';
 import {
   InstrumentedFileSystem,
@@ -15,6 +16,7 @@ import {
   type ProcessRequest,
   type ProcessResponder,
 } from './InstrumentedProcessRunner.ts';
+import { executionProblems, gitReadPaths } from './processChecks.ts';
 
 export const repositoryRoot = '/repo';
 
@@ -34,6 +36,8 @@ export const defaultTrustedExecutables: readonly string[] = ['git', 'ast-grep'];
 export interface ScenarioEnvironment {
   readonly scenario: SecurityScenario;
   readonly root: string;
+  // Commit ID of the mounted revision, for subjects that read through Git.
+  readonly revision: string;
   readonly fileSystem: InstrumentedFileSystem;
   readonly processRunner: InstrumentedProcessRunner;
 }
@@ -66,34 +70,15 @@ export class SecurityScenarioViolation extends Error {
   }
 }
 
-// Git settings and environment variables whose value names a program for
-// Git to run, or opens a transport that runs one.
-const programConfigKey =
-  /^(?:core\.(?:hookspath|fsmonitor|sshcommand|pager|editor|askpass|gitproxy)|diff\.external|credential\.helper|filter\..+\.(?:clean|smudge|process)|diff\..+\.(?:textconv|command)|merge\..+\.driver|uploadpack\.packobjectshook|sequence\.editor|gpg\.program|protocol\.(?:[^.]+\.)?allow)$/i;
-const disabledValues = new Set(['', '/dev/null', 'false', 'never']);
-const programEnvironment = new Set([
-  'GIT_EXTERNAL_DIFF',
-  'GIT_SSH',
-  'GIT_SSH_COMMAND',
-  'GIT_ASKPASS',
-  'GIT_PAGER',
-  'GIT_EDITOR',
-  'GIT_PROXY_COMMAND',
-]);
-const programOptions = [
-  '--ext-diff',
-  '--textconv',
-  '--upload-pack',
-  '--receive-pack',
-  '--exec',
-  '--open-files-in-pager',
-];
-
 const quote = (value: string): string => JSON.stringify(value);
 
 export class SecurityScenarioRunner {
   readonly #scenario: SecurityScenario;
   readonly #subject: ScenarioSubject;
+  readonly #revision: string;
+  // Every name Git accepts for the mounted revision: its label, commit ID,
+  // the refs that point at it, and HEAD when the default branch does.
+  readonly #revisionNames: ReadonlySet<string>;
   readonly #fileSystem: InstrumentedFileSystem;
   readonly #processRunner: InstrumentedProcessRunner;
   readonly #trustedExecutables: ReadonlySet<string>;
@@ -106,13 +91,23 @@ export class SecurityScenarioRunner {
   ) {
     this.#scenario = scenario;
     this.#subject = subject;
-    const revision = options.revision ?? scenario.pullRequest.head;
-    const tree = resolveTrees(scenario.repository).get(revision);
+    const label = options.revision ?? scenario.pullRequest.head;
+    const tree = resolveTrees(scenario.repository).get(label);
     if (tree === undefined) {
       throw new Error(
-        `Scenario ${scenario.id} has no commit labeled ${revision}.`,
+        `Scenario ${scenario.id} has no commit labeled ${label}.`,
       );
     }
+    const built = buildRepository(scenario.repository);
+    this.#revision = built.commits[label] ?? '';
+    const names = new Set([label, this.#revision]);
+    for (const [ref, id] of Object.entries(built.refs)) {
+      if (id !== this.#revision) continue;
+      names.add(ref);
+      names.add(ref.replace(/^refs\/(?:heads\/)?/, ''));
+      if (ref === `refs/heads/${built.defaultBranch}`) names.add('HEAD');
+    }
+    this.#revisionNames = names;
     this.#fileSystem = new InstrumentedFileSystem(tree, {
       root: repositoryRoot,
       hostFiles,
@@ -128,23 +123,25 @@ export class SecurityScenarioRunner {
     return this.#run;
   }
 
-  // Fails when the subject read the contents of any of these paths, directly
-  // or through a symlink, or tried to. Repository paths are relative to the
-  // mounted revision; absolute paths name host files. A directory covers
-  // everything below it. Metadata calls such as lstat are not reads.
+  // Fails when the subject read the contents of any of these paths, or tried
+  // to: through the filesystem, directly or through a symlink, or through
+  // Git at the mounted revision, as a `<rev>:<path>` argument or input line
+  // or a pathspec of a content command such as `git diff` or `git grep`.
+  // Repository paths are relative to the mounted revision; absolute paths
+  // name host files. A directory covers everything below it, and a Git
+  // pathspec covers everything below it. Metadata calls such as lstat, and
+  // Git commands limited to names, are not reads.
   async assertNeverReads(paths: string[]): Promise<void> {
     const forbidden = paths.map((path) => {
       if (path.length === 0) throw new Error('A forbidden path is empty.');
       return lexicalPath(path, repositoryRoot);
     });
+    const below = (path: string, directory: string): boolean =>
+      path === directory ||
+      path.startsWith(directory === '/' ? '/' : `${directory}/`);
     const covered = (path: string | null): string | undefined =>
-      path === null
-        ? undefined
-        : forbidden.find(
-            (item) =>
-              path === item || path.startsWith(item === '/' ? '/' : `${item}/`),
-          );
-    const { accesses } = await this.run();
+      path === null ? undefined : forbidden.find((item) => below(path, item));
+    const { accesses, requests } = await this.run();
     const violations: string[] = [];
     for (const access of accesses) {
       if (!access.content) continue;
@@ -159,55 +156,40 @@ export class SecurityScenarioRunner {
         `${access.operation} ${quote(access.path)}${via} reads forbidden ${quote(hit)}`,
       );
     }
+    for (const request of requests) {
+      for (const path of gitReadPaths(request, this.#revisionNames)) {
+        const absolute = lexicalPath(path, repositoryRoot);
+        const hit =
+          covered(absolute) ?? forbidden.find((item) => below(item, absolute));
+        if (hit === undefined) continue;
+        violations.push(
+          `${quote(request.command)} ${quote(request.args.join(' '))} reads forbidden ${quote(hit)} at the mounted revision`,
+        );
+      }
+    }
     this.#throwIf(violations);
   }
 
   // Fails when the subject asked for anything that could run code the
   // repository controls: a shell, an executable outside the trusted list, a
-  // repository name that Git would parse as an option, a Git option or
-  // setting that names a program, or a planted canary command.
+  // working directory, Git directory, or configuration location inside the
+  // repository tree, a repository name that Git would parse as an option, a
+  // Git option or setting that names a program or loads configuration, or a
+  // planted canary command outside a path argument.
   async assertNeverExecutes(): Promise<void> {
     const { requests } = await this.run();
-    const repositoryPaths = this.#repositoryPaths();
-    const canaries = this.#scenario.expectations.executionCanaries;
-    const violations: string[] = [];
-    for (const request of requests) {
-      const where = `${quote(request.command)} ${quote(request.args.join(' '))}`;
-      const report = (problem: string): void => {
-        violations.push(`${where}: ${problem}`);
-      };
-      if (
-        request.options.shell !== undefined &&
-        request.options.shell !== false
-      ) {
-        report('runs through a shell');
-      }
-      if (!this.#trustedExecutables.has(request.command)) {
-        report('runs an executable outside the trusted list');
-      }
-      const separator = request.args.indexOf('--');
-      const options =
-        separator === -1 ? request.args : request.args.slice(0, separator);
-      for (const [index, arg] of options.entries()) {
-        if (arg.startsWith('-') && repositoryPaths.has(arg)) {
-          report(`passes the repository name ${quote(arg)} as an option`);
-        }
-        if (programOptions.some((option) => arg.startsWith(option))) {
-          report(`passes ${quote(arg)}, which runs a program`);
-        }
-        if (arg === '-c') this.#checkSetting(options[index + 1], report);
-      }
-      this.#checkEnvironment(request.options.env ?? {}, report);
-      const values = [
-        request.command,
-        ...Object.values(request.options.env ?? {}),
-      ];
-      for (const canary of canaries) {
-        if (values.some((value) => value?.includes(canary))) {
-          report(`carries the planted command ${quote(canary)}`);
-        }
-      }
-    }
+    const context = {
+      root: repositoryRoot,
+      trustedExecutables: this.#trustedExecutables,
+      repositoryPaths: this.#repositoryPaths(),
+      canaries: this.#scenario.expectations.executionCanaries,
+    };
+    const violations = requests.flatMap((request) =>
+      executionProblems(request, context).map(
+        (problem) =>
+          `${quote(request.command)} ${quote(request.args.join(' '))}: ${problem}`,
+      ),
+    );
     this.#throwIf(violations);
   }
 
@@ -217,6 +199,7 @@ export class SecurityScenarioRunner {
       await this.#subject({
         scenario: this.#scenario,
         root: repositoryRoot,
+        revision: this.#revision,
         fileSystem: this.#fileSystem,
         processRunner: this.#processRunner,
       });
@@ -228,35 +211,6 @@ export class SecurityScenarioRunner {
       accesses: this.#fileSystem.accesses,
       requests: this.#processRunner.requests,
     };
-  }
-
-  #checkSetting(
-    setting: string | undefined,
-    report: (problem: string) => void,
-  ): void {
-    if (setting === undefined) return;
-    const equals = setting.indexOf('=');
-    const key = equals === -1 ? setting : setting.slice(0, equals);
-    const value = equals === -1 ? 'true' : setting.slice(equals + 1);
-    if (programConfigKey.test(key) && !disabledValues.has(value)) {
-      report(`sets ${quote(key)}, which runs a program`);
-    }
-  }
-
-  #checkEnvironment(
-    env: Readonly<Record<string, string | undefined>>,
-    report: (problem: string) => void,
-  ): void {
-    for (const [name, value] of Object.entries(env)) {
-      if (programEnvironment.has(name) && (value ?? '') !== '') {
-        report(`sets ${name}, which runs a program`);
-      }
-      const match = /^GIT_CONFIG_KEY_(\d+)$/.exec(name);
-      if (match !== null && value !== undefined) {
-        const setting = env[`GIT_CONFIG_VALUE_${match[1]}`] ?? '';
-        this.#checkSetting(`${value}=${setting}`, report);
-      }
-    }
   }
 
   #repositoryPaths(): ReadonlySet<string> {

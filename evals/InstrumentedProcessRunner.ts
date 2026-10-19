@@ -6,6 +6,9 @@ export interface ProcessOptions {
   readonly shell?: boolean | string;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
+  // Text written to the process's standard input, such as the object names
+  // `git cat-file --batch` reads.
+  readonly input?: string;
 }
 
 export interface ProcessRequest {

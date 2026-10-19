@@ -19,7 +19,7 @@ import {
   main,
   renderPayloads,
 } from './buildSecurityFixtures.ts';
-import { buildRepository } from './fixtureRepository.ts';
+import { buildRepository } from '../../evals/fixtures/security/repositoryObjects.ts';
 
 const scratch = mkdtempSync(path.join(tmpdir(), 'prism-corpus-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));

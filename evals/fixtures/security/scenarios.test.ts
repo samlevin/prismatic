@@ -112,13 +112,14 @@ describe('the corpus', () => {
 });
 
 describe('credential samples', () => {
-  it('has a credential-shaped and a benign sample for every published row', () => {
+  it('has a credential-shaped and a benign sample for every detector row', () => {
     for (const row of [
       'github-token',
       'saas-secret',
       'aws-access-key-id',
       'private-key',
       'connection-string',
+      'masked-only',
     ]) {
       const shapes = credentialSamples
         .filter((sample) => sample.row === row)
