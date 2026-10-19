@@ -378,9 +378,9 @@ export const nodeProcessSpawner: ProcessSpawner = (request) =>
     if (stdin == null || out == null || err == null) {
       // Node returns a child without pipes when it runs out of descriptors
       // and reports the error on the next tick. This listener catches it, so
-      // it cannot become an uncaught exception.
+      // it cannot become an uncaught exception. Nothing started, so there is
+      // nothing to kill, and Node closes its handle on that same tick.
       child.on('error', () => undefined);
-      child.kill('SIGKILL');
       reject(startFailure(undefined));
       return;
     }
