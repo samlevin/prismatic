@@ -116,8 +116,8 @@ export function planStep(
 
 export interface RunResult {
   readonly records: readonly StepRecord[];
-  // Local count against provider count of each distinct request, per
-  // tokenizer candidate.
+  // Local count against provider count of each distinct full-schema
+  // request, per tokenizer candidate.
   readonly countSamples: Readonly<Record<string, readonly CountSample[]>>;
 }
 
@@ -156,6 +156,7 @@ export async function runScenarios(
   const samples: Record<string, CountSample[]> = Object.fromEntries(
     options.candidates.map((c) => [c.id, []]),
   );
+  const sampled = new Set<string>();
   const provider = options.provider;
   const counter = provider === null ? null : new Counter(provider);
   for (const scenario of scenarios) {
@@ -214,8 +215,14 @@ export async function runScenarios(
       const sincePreviousMs =
         previousEnd === null ? null : started - previousEnd;
       try {
-        providerInputTokens = await counter.count(countParams(planned.request));
-        for (const candidate of options.candidates) {
+        const fullCount = countParams(planned.request);
+        providerInputTokens = await counter.count(fullCount);
+        // One sample per distinct request, and only under the full schema,
+        // so the fitted framing is the same request overhead throughout.
+        const sampleKey = canonicalJson(fullCount);
+        const sample = step.schema === 'full' && !sampled.has(sampleKey);
+        sampled.add(sampleKey);
+        for (const candidate of sample ? options.candidates : []) {
           samples[candidate.id]?.push({
             label,
             local: planned.blocks.reduce(

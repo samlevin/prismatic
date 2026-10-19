@@ -160,11 +160,22 @@ describe('runScenarios', () => {
     ]);
     // Identical requests are counted once.
     expect(provider.countInputTokens).toHaveBeenCalledTimes(5);
-    expect(result.countSamples['words']).toHaveLength(3);
+    // Three identical requests give one tokenizer sample.
+    expect(result.countSamples['words']).toHaveLength(1);
+    expect(result.countSamples['words']?.[0]?.label).toBe('cold-warm/cold');
     expect(budget.snapshot().settledUsd).toBeCloseTo(
       result.records.reduce((sum, r) => sum + (r.cost?.totalUsd ?? 0), 0),
       12,
     );
+  });
+
+  test('samples the tokenizer only under the full schema', async () => {
+    const variants = scenarios.find((s) => s.id === 'schema-variants');
+    if (variants === undefined) throw new Error('no scenario');
+    const provider = fakeProvider((_r, n) => response(`resp_${n}`, 0, 0));
+    const result = await runScenarios([variants], options({ provider }));
+    expect(result.records).toHaveLength(2);
+    expect(result.countSamples['words']).toEqual([]);
   });
 
   test('refuses a step the budget cannot cover and sends nothing for it', async () => {

@@ -43,7 +43,7 @@ Facts read from the SDK 7.39.0 type definitions, which the live run must confirm
 
 ## Method
 
-Each scenario renders seeded synthetic material in the five §9.3 blocks: about 2,200 tokens of instructions, 1,900 of rules, 5,800 of block 3 source, 5,800 of block 4 source and 700 of suffix, about 16,400 in all by `o200k_base`. The short-prefix variant keeps blocks 1 to 4 under 1,024 tokens inside a request of about 4,300. The spike turns on both BP3 and BP4 so every boundary is measured; production keeps them off until the measurements justify them.
+Each scenario renders seeded synthetic material in the five §9.3 blocks: about 2,200 tokens of instructions, 1,900 of rules, 5,800 of block 3 source, 5,800 of block 4 source and 700 of suffix, about 16,400 in all by `o200k_base`. The short-prefix variant keeps blocks 1 to 4 under 1,024 tokens inside a request of about 4,300. Its scenario sends that request once with no breakpoint, as the planner decides, and twice with breakpoints forced onto the short prefix, to see whether the provider ignores them, rejects the request, or caches the prefix anyway. The spike turns on both BP3 and BP4 so every boundary is measured; production keeps them off until the measurements justify them.
 
 For every step the run records:
 
@@ -60,9 +60,9 @@ Attribution is labeled `inferred` everywhere. It matches whole-response counters
 
 Costs use the rates implied by the §9.5 worked example: $2.00 per million input tokens, $2.50 for cache writes, $0.10 for cached reads and $10.00 for output, below 272K input. Check them against the current pricing page before a live run and update `experiments/cache/lib/pricing.ts` if they differ. The long-context row is unknown, and no scenario comes near it.
 
-The evaluation budget is explicit. A live run requires `--budget-usd`. Every request reserves its worst case before it is sent: all planned input at the write rate, scaled by 1.1 for tokenizer error, plus the full output ceiling. A request that does not fit is skipped and recorded as `refused-budget`. A request that errors or returns no usage keeps its whole reservation. The full matrix is 25 requests with a planned worst case of $3.07.
+The evaluation budget is explicit. A live run requires `--budget-usd`. Every request reserves its worst case before it is sent: all planned input at the write rate, scaled by 1.1 for tokenizer error, plus the full output ceiling. A request that does not fit is skipped and recorded as `refused-budget`. A request that errors or returns no usage keeps its whole reservation. The full matrix is 26 requests with a planned worst case of $3.16.
 
-Tokenizer selection compares `o200k_base`, `cl100k_base` and a four-bytes-per-token baseline against the provider's input-token count for every distinct request. The selected candidate has the smallest worst-case error in either direction. Its worst under-count is the input margin the allocator must plan with. `js-tiktoken` 1.0.21 maps no `gpt-6` model to an encoding, so the choice has to come from these measurements.
+Tokenizer selection compares `o200k_base`, `cl100k_base` and a four-bytes-per-token baseline against the provider's input-token count, with one sample per distinct request that uses the full schema. The provider counts the complete request, so its count includes message framing and the response-format schema on top of the block text. For each candidate the run fits provider = slope * local + intercept by least squares. The intercept is the fixed framing in tokens and the slope is the tokenizer's proportional error, so a fixed overhead never reads as a percentage error on a short request. The selected candidate leaves the smallest worst residual, with ties going to the slope nearer 1. The allocator plans with that slope and intercept plus the fit's worst under-prediction as a margin. The results file keeps every sample, so the selection can be redone from it. `js-tiktoken` 1.0.21 maps no `gpt-6` model to an encoding, so the choice has to come from these measurements.
 
 ## Running the live measurements
 

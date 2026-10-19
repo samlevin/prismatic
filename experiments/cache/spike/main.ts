@@ -76,7 +76,7 @@ async function main(argv: readonly string[]): Promise<number> {
     inputMargin: 1.1,
     attributionTolerance: 0.02,
     settleMs,
-    provider: dryRun ? null : openAIProvider(apiKey),
+    provider: dryRun ? null : openAIProvider(apiKey, globalThis.fetch),
     redactor: createSecretRedactor([apiKey]),
     now: () => performance.now(),
     sleep: (ms) => sleep(ms),
@@ -109,6 +109,7 @@ async function main(argv: readonly string[]): Promise<number> {
         plannedWorstCaseUsd,
         budget: budget.snapshot(),
         tokenizerMargins: margins,
+        tokenizerSamples: result.countSamples,
         selectedTokenizer: selectTokenizer(margins)?.tokenizer ?? null,
         totals: totalsByScenario(result.records),
         scenarios: selected.map(({ id, criteria, title, hypothesis }) => ({
