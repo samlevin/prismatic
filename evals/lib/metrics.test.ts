@@ -205,7 +205,7 @@ describe('scoreRun', () => {
     expect(score.falseFindings).toBe(1);
   });
 
-  test('does not count a dismissal of a finding published only with unrelated causality', () => {
+  test('counts a dismissed finding as resurfacing whatever its causality', () => {
     const run = perfectRun();
     const first = {
       ...(run.rounds[0] as ObservedRound),
@@ -240,7 +240,7 @@ describe('scoreRun', () => {
       { ...run, rounds: [first, run.rounds[1] as ObservedRound, third] },
       rates,
     );
-    expect(score.dismissedResurfaced).toBe(0);
+    expect(score.dismissedResurfaced).toBe(1);
   });
 
   test('reports end-to-end severe recall over ineligible defects too', () => {
