@@ -214,11 +214,16 @@ function toSnapshot(
   identity: PrIdentity,
 ): Snapshot | undefined {
   const snapshot = value as Partial<Snapshot>;
+  const cursor = snapshot.journal as Partial<JournalCursor> | null | undefined;
   return snapshot.kind === 'snapshot' &&
     snapshot.repoId === identity.repoId &&
     snapshot.prNumber === identity.prNumber &&
     Number.isSafeInteger(snapshot.generation) &&
-    typeof snapshot.journal === 'object'
+    typeof cursor === 'object' &&
+    cursor !== null &&
+    Number.isSafeInteger(cursor.commentId) &&
+    Number.isSafeInteger(cursor.recordCount) &&
+    typeof cursor.prefixDigest === 'string'
     ? (snapshot as Snapshot)
     : undefined;
 }
@@ -255,6 +260,20 @@ export async function runAttempt(
     context.identity,
     state.view,
   );
+
+  // A pending record for another head can never be resumed: its remaining
+  // effects would publish stale conclusions. Retire them before going on.
+  for (const key of state.ledger.manifests.keys()) {
+    const pending = state.ledger.record(key);
+    if (
+      pending?.status === 'complete' &&
+      pending.record.headSha !== attempt.review.headSha &&
+      !state.ledger.abandoned.has(key) &&
+      pending.record.effects.some((e) => !state.ledger.receipts.has(e.id))
+    ) {
+      await abandon(writer, pending.record, state.ledger.receipts);
+    }
+  }
 
   // A validated record resumes without inference.
   const assembled = state.ledger.record(round);
@@ -303,8 +322,9 @@ export async function runAttempt(
     await writer.append([settlement]);
     return { kind: 'inference-failed', attemptId: attemptKey };
   }
-  const findings: Finding[] = result.findings.map((draft) => ({
-    id: sha256(canonicalJson(['finding', draft.title, draft.anchor])),
+  // The ordinal keeps two drafts with the same title and anchor distinct.
+  const findings: Finding[] = result.findings.map((draft, index) => ({
+    id: sha256(canonicalJson(['finding', index, draft.title, draft.anchor])),
     ...draft,
   }));
   const record: PublicationRecord = {
@@ -319,7 +339,16 @@ export async function runAttempt(
     usage: result.usage,
     effects: planEffects(round, findings, context.config),
   };
-  const { chunks, manifest } = partitionRecord(record);
+  let partitioned: ReturnType<typeof partitionRecord>;
+  try {
+    partitioned = partitionRecord(record);
+  } catch {
+    // A response the record cannot hold is a definitive failure with known
+    // usage, not an uncertain one.
+    await writer.append([settlement]);
+    return { kind: 'inference-failed', attemptId: attemptKey };
+  }
+  const { chunks, manifest } = partitioned;
   // Chunks first, then the manifest with the settlement, so a run that dies
   // between them leaves no record that can authorize publication.
   for (const chunk of chunks) {
