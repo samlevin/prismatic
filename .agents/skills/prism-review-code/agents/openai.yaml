@@ -1,7 +1,7 @@
 # Generated from .agents/workflows/review-code.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`.
 interface:
   display_name: 'Prismatic: Review code'
-  short_description: Read-only review of a Prismatic PR or branch by prism-code-reviewer
+  short_description: Review a Prismatic PR or branch with prism-code-reviewer and post the review to an open PR
   default_prompt: Use $prism-review-code to review this Prismatic pull request or branch.
 policy:
   allow_implicit_invocation: true

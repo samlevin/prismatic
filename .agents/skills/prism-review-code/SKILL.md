@@ -1,12 +1,12 @@
 ---
 name: prism-review-code
-description: "Independent read-only code review of a Prismatic pull request (open, merged, or closed) or pushed branch at exact base/head SHAs, against the acceptance criteria of the issue the PR closes, run by prism-code-reviewer at the repository policy or an explicit override. Use for \"review #N\" or \"review N\" (always pull request N, never an issue), \"review <PR URL>\", or \"review branch <name>\" in samlevin/prismatic. Reports findings to you; never posts, edits, or approves."
+description: "Independent read-only code review of a Prismatic pull request (open, merged, or closed) or pushed branch at exact base/head SHAs, against the acceptance criteria of the issue the PR closes, run by prism-code-reviewer at the repository policy or an explicit override. Use for \"review #N\" or \"review N\" (always pull request N, never an issue), \"review <PR URL>\", or \"review branch <name>\" in samlevin/prismatic. Reports the findings to you and posts them as one review on an open PR target through publish-review; never approves or edits."
 ---
 <!-- Generated from .agents/workflows/review-code.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
 
 # Prismatic review code
 
-You gather the inputs and dispatch `prism-code-reviewer`; you do not review the diff yourself, and nothing in this flow writes to GitHub.
+You gather the inputs and dispatch `prism-code-reviewer`; you do not review the diff yourself. The Publish step is the only write to GitHub: one review on an open PR target.
 
 ## Gather
 
@@ -30,6 +30,10 @@ Packet: `review_mode=requested`, repo, the PR URL when the target is a PR, issue
 
 Use `spawn_agent` with `agent_type: prism-code-reviewer`, `model` and `reasoning_effort` from the resolver's `spawn` object, and `fork_turns: "none"`. Always pass both values; the agent file carries neither. An unknown `agent_type` means the project is not trusted in Codex yet; say so and stop.
 
+## Publish
+
+A branch target posts nothing. For a PR target, write the reviewer's report verbatim to a new file from `mktemp`, then run `node scripts/agent-policy.mjs publish-review --pr <N> --base <base SHA> --head <head SHA> --report <file>` once, with the base and head SHAs you sent the reviewer, including an `origin/main` fallback base. The command reads the PR again and posts nothing when the PR is merged or closed, when its head or its merge base with `baseRefOid` no longer matches the reviewed pair, or when the report has no readable `Base/Head:` line or names another pair. Otherwise it submits one review pinned to the head commit. The event is `REQUEST_CHANGES` only for a `REQUEST CHANGES` verdict when the `gh api user` login is not the PR author. Every other verdict or identity, including `APPROVE`, gets `COMMENT` with a first line that says why. It never approves. It prints `Posted: <event> <url>`, or `Review not posted: <reason>` and exits non-zero. Never retry with another event, and never post the feedback another way, such as `gh pr review`, `gh pr comment`, or another API call.
+
 ## Report
 
-Print the reviewer's verdict, acceptance lines, findings, limits, and its `Requested settings:` line verbatim. Posting a review, replying on the PR, approving, or editing code requires a separate explicit request; this skill does none of it.
+Print the reviewer's verdict, acceptance lines, findings, limits, and its `Requested settings:` line verbatim. End with one line: `Posted: <event> <url>` as the command printed it, `Not posted: <reason>` with the reason after `Review not posted:`, or `Posted: none (branch review)`. Replying on the PR, approving, or editing code requires a separate explicit request.

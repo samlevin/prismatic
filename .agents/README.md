@@ -12,7 +12,7 @@ This directory holds the sources of the delivery agents and skills this reposito
 | `../.codex/agents/prism-*.toml` | Generated Codex custom agents |
 | `../.claude/agents/prism-*.md` | Generated Claude Code subagents |
 | `../.claude/skills/prism-*/` | Generated Claude Code skills |
-| `../scripts/agent-policy.mjs` | Resolver (`resolve`), generator (`generate`), and drift check (`check`) |
+| `../scripts/agent-policy.mjs` | Resolver (`resolve`), generator (`generate`), drift check (`check`), and `publish-review`, which posts a `prism-review-code` report as one review on an open PR |
 | `issue-creation.md` | Tool-agnostic issue filing adapter, read by `prism-create-github-issue` |
 | `spec-slicing.md` | Specification format and ownership rules that `prism-spec-to-issues` files from; changes with that skill |
 
@@ -24,7 +24,7 @@ Sources never name the repository. They use `{{placeholders}}`, which the genera
 
 Claude Code loads `.claude/agents/` and `.claude/skills/` from the repository root, a nested directory, and a linked worktree, with no trust step. Codex loads `.agents/skills/` everywhere, but `.codex/agents/` only after the project is trusted in `~/.codex/config.toml`; until then the skills report an unknown `agent_type` and stop. `/prism-review-security` and `$prism-review-security` run only when a person asks for them by name.
 
-You need the tool itself, `gh` with authentication, the `gh stack` extension for stacked branches, and `npm ci` for the generator and checks. The resolver runs without `node_modules`.
+You need the tool itself, `gh` with authentication, the `gh stack` extension (`github/gh-stack`) for stacked branches, and `npm ci` for the generator and checks. When a delivery needs a stack and the extension is missing, `prism-implement` asks you to run `! gh extension install github/gh-stack` and waits for you; no agent installs it. The resolver runs without `node_modules`.
 
 ## Requested settings in reports
 

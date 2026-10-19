@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   binding,
   check,
@@ -11,6 +13,7 @@ import {
   parseSource,
   placeholders,
   prefix,
+  publishReview,
   render,
   renderBody,
   renderRole,
@@ -947,4 +950,472 @@ test('a role without a policy entry or source is rejected', () => {
     source.replace('name: sample', 'name: extra'),
   );
   assert.throws(() => render(base), /Role extra has no entry/);
+});
+
+const REPO = policy.binding.repository;
+const BASE = 'a'.repeat(40);
+const HEAD = 'b'.repeat(40);
+const URL_POSTED = `https://github.com/${REPO}/pull/7#pullrequestreview-1`;
+
+function reviewReport(verdict, pair = `${BASE}..${HEAD}`) {
+  return `Verdict: ${verdict}\nBase/Head: ${pair}\nAcceptance: met\nFindings: none\nLimits: tests read, not run.\nRequested settings: Policy: tool=claude role=${PREFIX}code-reviewer model=opus effort=high (model: policy, effort: policy)\n`;
+}
+
+function reportFile(text) {
+  const path = join(mkdtempSync(join(tmpdir(), 'publish-review-')), 'r.md');
+  writeFileSync(path, text);
+  return path;
+}
+
+// A gh stand-in keyed by the REST path. A function value receives the gh
+// arguments; `null` makes the call fail with an HTTP 404 or the given status.
+function fakeGh(overrides = {}) {
+  const routes = {
+    [`repos/${REPO}/pulls/7`]: {
+      state: 'open',
+      merged_at: null,
+      head: { sha: HEAD },
+      base: { sha: 'c'.repeat(40), ref: 'main' },
+      user: { login: 'author' },
+    },
+    [`repos/${REPO}/compare/${'c'.repeat(40)}...${HEAD}?per_page=1`]: {
+      merge_base_commit: { sha: BASE },
+    },
+    user: { login: 'reviewer' },
+    [`repos/${REPO}/pulls/7/reviews`]: {
+      html_url: URL_POSTED,
+      state: 'COMMENTED',
+    },
+    ...overrides,
+  };
+  const calls = [];
+  const run = (command, args) => {
+    assert.equal(command, 'gh');
+    assert.deepEqual(args.slice(0, 2), ['api', '--include']);
+    const rest = args.slice(2);
+    const path = rest.find((arg) => arg === 'user' || arg.startsWith('repos/'));
+    calls.push(rest);
+    const route = routes[path];
+    if (route === undefined) assert.fail(`unexpected gh call: ${path}`);
+    if (route === null || typeof route === 'number')
+      throw Object.assign(new Error('gh failed'), {
+        status: 1,
+        stdout: `HTTP/2.0 ${route ?? 404} Error\n\n${JSON.stringify({ message: route ? 'Unprocessable Entity' : 'Not Found' })}`,
+      });
+    const body = typeof route === 'function' ? route(rest) : route;
+    return `HTTP/2.0 200 OK\n\n${JSON.stringify(body)}`;
+  };
+  return Object.assign(run, { calls });
+}
+
+function publish(report, run, extra = []) {
+  return publishReview(
+    [
+      '--pr',
+      '7',
+      '--base',
+      BASE,
+      '--head',
+      HEAD,
+      '--report',
+      reportFile(report),
+      ...extra,
+    ],
+    { run },
+  );
+}
+
+// The fields of the review submission, from the `-f name=value` arguments.
+function submitted(run) {
+  const call = run.calls.find((args) => args.includes('POST'));
+  if (!call) return undefined;
+  const fields = {};
+  for (let i = 0; i < call.length; i += 1)
+    if (call[i] === '-f') {
+      const [name, ...value] = call[i + 1].split('=');
+      fields[name] = value.join('=');
+    }
+  return fields;
+}
+
+test('publish-review requests changes only when the poster is not the PR author', () => {
+  const run = fakeGh();
+  const report = reviewReport('REQUEST CHANGES');
+  assert.deepEqual(publish(report, run), {
+    status: 0,
+    line: `Posted: REQUEST_CHANGES ${URL_POSTED}`,
+  });
+  assert.deepEqual(
+    run.calls.map((args) =>
+      args.find((arg) => arg === 'user' || arg.startsWith('repos/')),
+    ),
+    [
+      `repos/${REPO}/pulls/7`,
+      `repos/${REPO}/compare/${'c'.repeat(40)}...${HEAD}?per_page=1`,
+      'user',
+      `repos/${REPO}/pulls/7/reviews`,
+    ],
+  );
+  assert.deepEqual(submitted(run), {
+    commit_id: HEAD,
+    event: 'REQUEST_CHANGES',
+    body: report,
+  });
+
+  const own = fakeGh({ user: { login: 'author' } });
+  assert.deepEqual(publish(report, own), {
+    status: 0,
+    line: `Posted: COMMENT ${URL_POSTED}`,
+  });
+  assert.equal(submitted(own).event, 'COMMENT');
+  assert.equal(
+    submitted(own).body,
+    `Verdict REQUEST CHANGES is posted as a comment because GitHub does not let author request changes on their own pull request.\n\n${report}`,
+  );
+});
+
+test('publish-review comments when the posting identity is unknown', () => {
+  for (const user of [null, 403, {}]) {
+    const run = fakeGh({ user });
+    assert.deepEqual(publish(reviewReport('REQUEST CHANGES'), run), {
+      status: 0,
+      line: `Posted: COMMENT ${URL_POSTED}`,
+    });
+    assert.match(
+      submitted(run).body,
+      /^Verdict REQUEST CHANGES is posted as a comment because the posting account could not be identified/,
+    );
+  }
+});
+
+test('publish-review never approves and says why the event differs', () => {
+  for (const [verdict, reason] of [
+    ['APPROVE', /because agent reviews never approve\./],
+    ['BLOCKED', /because it is not a review decision\./],
+  ]) {
+    const run = fakeGh();
+    assert.deepEqual(publish(reviewReport(verdict), run), {
+      status: 0,
+      line: `Posted: COMMENT ${URL_POSTED}`,
+    });
+    const fields = submitted(run);
+    assert.equal(fields.event, 'COMMENT');
+    assert.equal(fields.commit_id, HEAD);
+    assert.match(fields.body.split('\n')[0], reason);
+    assert.ok(fields.body.endsWith(reviewReport(verdict)));
+    assert.ok(!run.calls.flat().includes('event=APPROVE'));
+  }
+});
+
+test('publish-review posts nothing to a merged or closed pull request', () => {
+  for (const [merged, word] of [
+    ['2026-10-01T00:00:00Z', 'merged'],
+    [null, 'closed'],
+  ]) {
+    const run = fakeGh({
+      [`repos/${REPO}/pulls/7`]: {
+        state: 'closed',
+        merged_at: merged,
+        head: { sha: HEAD },
+        base: { sha: 'c'.repeat(40), ref: 'gone' },
+        user: { login: 'author' },
+      },
+    });
+    assert.deepEqual(publish(reviewReport('REQUEST CHANGES'), run), {
+      status: 1,
+      line: `Review not posted: pull request #7 is ${word}; reviews post only to open pull requests`,
+    });
+    assert.equal(submitted(run), undefined);
+  }
+});
+
+test('publish-review posts nothing when the head or merge base moved', () => {
+  const pull = {
+    state: 'open',
+    merged_at: null,
+    head: { sha: 'd'.repeat(40) },
+    base: { sha: 'c'.repeat(40), ref: 'main' },
+    user: { login: 'author' },
+  };
+  const headMoved = fakeGh({ [`repos/${REPO}/pulls/7`]: pull });
+  assert.deepEqual(publish(reviewReport('APPROVE'), headMoved), {
+    status: 1,
+    line: `Review not posted: pull request #7 head is now ${'d'.repeat(40)}, not the reviewed ${HEAD}`,
+  });
+  assert.equal(headMoved.calls.length, 1);
+  const baseMoved = fakeGh({
+    [`repos/${REPO}/compare/${'c'.repeat(40)}...${HEAD}?per_page=1`]: {
+      merge_base_commit: { sha: 'e'.repeat(40) },
+    },
+  });
+  assert.deepEqual(publish(reviewReport('APPROVE'), baseMoved), {
+    status: 1,
+    line: `Review not posted: pull request #7 now has merge base ${'e'.repeat(40)} with main, not the reviewed ${BASE}`,
+  });
+  assert.equal(submitted(baseMoved), undefined);
+});
+
+test('publish-review posts nothing for a report without the reviewed pair', () => {
+  for (const [report, reason] of [
+    [
+      reviewReport('APPROVE').replace(/^Base\/Head:.*\n/m, ''),
+      'the report has no readable Base/Head line',
+    ],
+    [
+      reviewReport('APPROVE', `${BASE} to ${HEAD}`),
+      'the report has no readable Base/Head line',
+    ],
+    [
+      reviewReport('APPROVE', `${BASE}..${'f'.repeat(40)}`),
+      `the report names ${BASE}..${'f'.repeat(40)}, not the reviewed ${BASE}..${HEAD}`,
+    ],
+    [
+      reviewReport('APPROVE').replace(/^Verdict:.*\n/m, ''),
+      'the report has no readable Verdict line',
+    ],
+  ]) {
+    const run = fakeGh();
+    assert.deepEqual(publish(report, run), {
+      status: 1,
+      line: `Review not posted: ${reason}`,
+    });
+    assert.equal(run.calls.length, 0);
+  }
+});
+
+test('publish-review reports a failed submission without retrying', () => {
+  const run = fakeGh({ [`repos/${REPO}/pulls/7/reviews`]: 422 });
+  const result = publish(reviewReport('REQUEST CHANGES'), run);
+  assert.equal(result.status, 1);
+  assert.equal(
+    result.line,
+    'Review not posted: GitHub API request failed: HTTP 422: Unprocessable Entity.',
+  );
+  assert.equal(run.calls.filter((args) => args.includes('POST')).length, 1);
+});
+
+test('publish-review prefixes every early failure and calls no gh', () => {
+  const base = mkdtempSync(join(tmpdir(), 'agent-policy-'));
+  mkdirSync(join(base, '.agents'), { recursive: true });
+  writeFileSync(join(base, '.agents/policy.json'), '{}');
+  const run = fakeGh();
+  const args = ['--pr', '7', '--base', BASE, '--head', HEAD, '--report', 'r'];
+  assert.deepEqual(publishReview(args, { base, run }), {
+    status: 1,
+    line: 'Review not posted: policy.json binding is missing binding',
+  });
+  for (const bad of [
+    args.slice(2),
+    ['--pr', 'x', ...args.slice(2)],
+    [...args.slice(0, 3), 'abc123', ...args.slice(4)],
+    args.slice(0, 6),
+  ])
+    assert.match(
+      publishReview(bad, { run }).line,
+      /^Review not posted: usage: publish-review --pr <N>/,
+    );
+  assert.match(
+    publishReview([...args.slice(0, 7), join(base, 'missing.md')], { run })
+      .line,
+    /^Review not posted: cannot read the report .*missing\.md: ENOENT$/,
+  );
+  assert.equal(run.calls.length, 0);
+  let failure;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        fileURLToPath(new URL('./agent-policy.mjs', import.meta.url)),
+        'publish-review',
+        '--pr',
+        '7',
+      ],
+      { encoding: 'utf8', stdio: 'pipe' },
+    );
+  } catch (error) {
+    failure = error;
+  }
+  assert.equal(failure?.status, 1);
+  assert.match(failure.stderr, /^Review not posted: usage: publish-review/);
+});
+
+test('the review-code skill posts PR reviews only through publish-review', () => {
+  const files = render();
+  for (const path of [
+    `.claude/skills/${PREFIX}review-code/SKILL.md`,
+    `.agents/skills/${PREFIX}review-code/SKILL.md`,
+  ]) {
+    const skill = files.get(path);
+    const publishStep = section(skill, 'Publish');
+    assert.match(publishStep, /^A branch target posts nothing\./m, path);
+    assert.ok(
+      publishStep.includes(
+        '`node scripts/agent-policy.mjs publish-review --pr <N> --base <base SHA> --head <head SHA> --report <file>` once, with the base and head SHAs you sent the reviewer',
+      ),
+      path,
+    );
+    assert.match(publishStep, /It never approves\./, path);
+    assert.match(
+      publishStep,
+      /Never retry with another event, and never post the feedback another way/,
+      path,
+    );
+    assert.ok(
+      section(skill, 'Report').includes(
+        'End with one line: `Posted: <event> <url>` as the command printed it, `Not posted: <reason>` with the reason after `Review not posted:`, or `Posted: none (branch review)`.',
+      ),
+      path,
+    );
+    assert.doesNotMatch(skill, /nothing in this flow writes to GitHub/, path);
+    assert.doesNotMatch(skill, /never posts/, path);
+    assert.match(
+      skill,
+      /^description: .*posts them as one review on an open PR target through publish-review; never approves or edits\./m,
+      path,
+    );
+  }
+  assert.match(
+    files.get(`.agents/skills/${PREFIX}review-code/agents/openai.yaml`),
+    /short_description: .*post the review to an open PR/,
+  );
+  for (const path of [
+    `.claude/agents/${PREFIX}code-reviewer.md`,
+    `.codex/agents/${PREFIX}code-reviewer.toml`,
+  ]) {
+    const reviewer = files.get(path);
+    assert.match(
+      reviewer,
+      /posts your report as one review through `publish-review` after you return[^\n]*A `pre_pr` report is never posted\./,
+      path,
+    );
+    assert.match(reviewer, /^Base\/Head: <sha>\.\.<sha>$/m, path);
+    assert.match(
+      reviewer,
+      /^tools: Bash, Read, Grep, Glob$|^default_permissions = ":read-only"$/m,
+      path,
+    );
+  }
+  for (const path of [
+    `.claude/agents/${PREFIX}implementer.md`,
+    `.codex/agents/${PREFIX}implementer.toml`,
+  ])
+    assert.doesNotMatch(files.get(path), /publish-review/, path);
+  const agentsMd = readFileSync(
+    new URL('../AGENTS.md', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    agentsMd,
+    /`prism-code-reviewer` \(read-only, reports to you\); the skill posts the report as one review on an open PR target \|/,
+  );
+  assert.match(
+    readFileSync(new URL('../.agents/README.md', import.meta.url), 'utf8'),
+    /`publish-review`, which posts a `prism-review-code` report as one review on an open PR/,
+  );
+});
+
+const STACK_CHECK =
+  'run `gh stack --help`. If it exits non-zero, run `gh --version`';
+
+test('stacking checks for gh stack and only the implement skill prompts the install', () => {
+  const files = render();
+  for (const role of ['implementer', 'stack-manager', 'orchestrator'])
+    for (const path of [
+      `.claude/agents/${PREFIX}${role}.md`,
+      `.codex/agents/${PREFIX}${role}.toml`,
+    ]) {
+      const text = files.get(path);
+      assert.ok(text.includes(STACK_CHECK), path);
+      assert.ok(text.includes('`BLOCKED: gh stack not installed`'), path);
+      assert.match(
+        returnParagraph(text),
+        /BLOCKED: gh stack not installed/,
+        path,
+      );
+      assert.match(text, /never install the extension/i, path);
+    }
+  for (const path of [
+    `.claude/agents/${PREFIX}implementer.md`,
+    `.codex/agents/${PREFIX}implementer.toml`,
+  ]) {
+    const implementer = files.get(path);
+    assert.match(
+      implementer,
+      /before you create a branch on an unmerged base or when you decide to split, run `gh stack --help`/,
+      path,
+    );
+    assert.match(
+      implementer,
+      /Do not create, rebase, or push a branch or open a PR first/,
+      path,
+    );
+    assert.match(implementer, /resume with the same claim and worktree/, path);
+  }
+  for (const root of ['.claude/skills', '.agents/skills']) {
+    const skill = files.get(`${root}/${PREFIX}implement/SKILL.md`);
+    const check = section(skill, 'Check gh stack');
+    assert.ok(check.includes('`gh stack --help`'), root);
+    assert.ok(
+      check.includes('Run `! gh extension install github/gh-stack` here'),
+      root,
+    );
+    assert.match(
+      check,
+      /Wait for the user to confirm; do not rely on reading the install output\./,
+      root,
+    );
+    assert.match(
+      check,
+      /Then run `gh stack --help` again\. Continue only when it exits zero, and otherwise give the prompt again\./,
+      root,
+    );
+    assert.match(check, /Never run `gh extension install` yourself\./, root);
+    assert.match(check, /continue that same agent/, root);
+    assert.ok(
+      skill.indexOf('## Check gh stack') < skill.indexOf('## Dispatch'),
+      root,
+    );
+  }
+  for (const [path, text] of files)
+    if (!path.includes(`/${PREFIX}implement/`))
+      assert.doesNotMatch(text, /! gh extension install/, path);
+});
+
+test('no role or skill describes a manual stacking fallback', () => {
+  const files = render();
+  for (const [path, text] of files) {
+    assert.doesNotMatch(
+      text,
+      /updateRefs|force-with-lease|git push --force|fall back to fetching/,
+      path,
+    );
+    for (const line of text.split('\n').filter((l) => l.includes('gh pr edit')))
+      assert.match(line, /Never set a PR base with `gh pr edit --base`/, path);
+  }
+  for (const path of [
+    `.claude/agents/${PREFIX}stack-manager.md`,
+    `.codex/agents/${PREFIX}stack-manager.toml`,
+  ]) {
+    const manager = files.get(path);
+    assert.match(
+      manager,
+      /Every build, link, cascade, and push goes through `gh stack`\./,
+      path,
+    );
+    assert.match(
+      manager,
+      /never rebase, reset, or force-push a stacked branch with plain `git`/,
+      path,
+    );
+    assert.doesNotMatch(manager, /fallback/i, path);
+  }
+  for (const path of [
+    `.claude/agents/${PREFIX}implementer.md`,
+    `.codex/agents/${PREFIX}implementer.toml`,
+  ])
+    assert.match(
+      files.get(path),
+      /Build, link, and cascade it only through \S+stack-manager with `gh stack`\. Never set a PR base with `gh pr edit --base` or the API, and never rebase a stacked branch yourself\./,
+      path,
+    );
 });
