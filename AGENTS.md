@@ -22,8 +22,13 @@ CI picks its checks from the changed files, as CONTRIBUTING.md describes. Tests 
 - When a leaf depends on an unmerged prerequisite PR that is open, ready for review, passing checks, and pre-PR approved, stack on it without asking: create the worktree from fresh `origin/main`, base the branch on the prerequisite branch, and record its head SHA in your claim. Split one leaf into stacked layers only when each layer is reviewable on its own; line count alone does not require a stack.
 - Hand off after the final push. Include acceptance criteria, verified prerequisites, repo, branch, worktree path, the head SHA, and the base SHA from `git merge-base <base> HEAD`. Rework handoffs include the existing PR URL.
 - Use independent code review for changes across components, shared contracts, security boundaries, and other substantial behavior changes. Always use it, however small the diff, for any change to `.agents/`, `.claude/`, `.codex/`, `AGENTS.md`, `scripts/agent-policy*`, or `.github/workflows/`. Elsewhere, skip it for localized low-risk changes, documentation, and mechanical edits. Reviewers check the diff and relevant callers against the supplied criteria. They may run read-only `git` and `gh` commands, but never edit files or run project code.
-- Docs, READMEs, specs, agent instructions, and code comments describe the current state: what exists and how to set it up and run it. The history of changes and fixes goes in PR bodies, commit messages, and changelogs. A code comment may keep prior context only to explain an established regression the code must not reintroduce.
 - Report what changed, the PR URL, checks and results, and any concrete blocker. Report current CI status without waiting for, polling, or rerunning remote CI.
+
+## Code and comments
+
+- Match the surrounding code's naming, idiom, and comment density. Add no checks for cases that cannot happen, no one-use helpers or wrappers, and no options nobody asked for.
+- Comment only what the code cannot say: a constraint, a workaround, or an invariant. Keep it to one line. No comments that restate the code, no section banners, and no docstrings on obvious functions.
+- Docs, specs, agent instructions, and comments describe the current state. Change history goes in PR bodies and commit messages. A comment may cite past behavior only to guard against a known regression.
 
 ## Repository agent workflows
 
