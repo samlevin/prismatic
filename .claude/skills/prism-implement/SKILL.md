@@ -1,6 +1,6 @@
 ---
 name: prism-implement
-description: 'Deliver an Prismatic GitHub issue or rework an Prismatic PR with the repository''s namespaced agents. Use for "implement #N", "implement <issue URL>", "rework <PR URL>", or "deliver this epic" in samlevin/prismatic. Routes a container to prism-orchestrator (serial, one leaf at a time) and a leaf or PR to prism-implementer, applying the repository model/effort policy or an explicit prompt override.'
+description: 'Deliver an Prismatic GitHub issue or rework an Prismatic PR with the repository''s namespaced agents. Use for "implement #N", "implement <issue URL>", "rework <PR URL>", or "deliver this epic" in samlevin/prismatic. Routes a container to prism-orchestrator (one leaf at a time except across recorded independence groups) and a leaf or PR to prism-implementer, applying the repository model/effort policy or an explicit prompt override.'
 argument-hint: <#N | issue URL | PR URL> [model <name>] [effort <level>] [reviewer|stack ...]
 ---
 <!-- Generated from .agents/workflows/implement.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
