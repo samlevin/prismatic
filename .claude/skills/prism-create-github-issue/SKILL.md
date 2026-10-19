@@ -26,7 +26,7 @@ Search for duplicates first (`gh api -X GET search/issues -f q='repo:samlevin/pr
 
 ## Triage
 
-Resolve the triager settings with `node scripts/agent-policy.mjs resolve --tool <tool> --role issue-triager`, adding `--model` or `--effort` only for a `triager` override in the request. If it exits non-zero, stop and report its message. Spawn one `prism-issue-triager` for the batch with the resolved model and effort. Send only the drafts (ref, title, body), accepted decisions, the discovered label and option lists, and the `Policy:` line (`Policy: tool=<tool> role=prism-issue-triager model=<model> effort=<effort> (model: <source>, effort: <source>)`). Do not send the transcript or your intended verdict. Apply its severity, Priority, Size, and labels. On SPLIT_REQUIRED, split and re-triage only the affected drafts. There is no second pass otherwise. Never triage yourself in place of the triager.
+Resolve the triager settings with `node scripts/agent-policy.mjs resolve --tool <tool> --role issue-triager`, adding `--model` or `--effort` only for a `triager` override in the request. If it exits non-zero, stop and report its message. Spawn one `prism-issue-triager` for the batch with the resolved model and effort. Send only the drafts (ref, title, body), their planned parent and blocked-by edges, accepted decisions, the discovered label and option lists, and the `Policy:` line (`Policy: tool=<tool> role=prism-issue-triager model=<model> effort=<effort> (model: <source>, effort: <source>)`). Do not send the transcript or your intended verdict. Apply its severity, Priority, Size, labels, and independence groups. On SPLIT_REQUIRED, split and re-triage only the affected drafts, plus every leaf draft under a parent the split adds leaves to, so that parent's groups are computed as a whole. A later `groups` line for a parent replaces the earlier one; never merge them. There is no second pass otherwise. Never triage yourself in place of the triager.
 
 Spawn with the Agent tool: `subagent_type: prism-issue-triager`, passing `model` and `effort` from the resolver explicitly.
 
@@ -34,8 +34,19 @@ Spawn with the Agent tool: `subagent_type: prism-issue-triager`, passing `model`
 
 "Draft", "suggest", or "plan" means show the drafts and write nothing. "Create", "file", or "open" authorizes publishing the requested issues and necessary sub-issues, nothing more: no implementation, credentials, or tracker configuration. Load the prism-plain-language skill before writing bodies. Preflight template fields, labels, options, and project access. A missing item is a blocker; do not create configuration as a side effect.
 
-Order: parents, then children, then native parent links, then blocked-by edges (add the edge on the blocked issue, naming the blocker; reject cycles), then Priority and Size on each issue's project item once repository automation has added it with Status Inbox (wait for both; never add the item or set its Status yourself), then the adapter's post-create commands (`node scripts/issue-triage.mjs --apply --issue N` per new issue and `node scripts/issue-containers.mjs --apply --issue N` per new top-level container, after the batch's relationships are complete). Milestone and assignee only when requested or required by policy. Record each URL as it succeeds. On an ambiguous failure, search before retrying and repair rather than duplicate. REST mechanics: [references/github-operations.md](references/github-operations.md), read only when needed.
+Order: parents, then children, then native parent links, then blocked-by edges (add the edge on the blocked issue, naming the blocker; reject cycles), then the independence record on each parent the triager returned groups for, then Priority and Size on each issue's project item once repository automation has added it with Status Inbox (wait for both; never add the item or set its Status yourself), then the adapter's post-create commands (`node scripts/issue-triage.mjs --apply --issue N` per new issue and `node scripts/issue-containers.mjs --apply --issue N` per new top-level container, after the batch's relationships are complete). Milestone and assignee only when requested or required by policy. Record each URL as it succeeds. On an ambiguous failure, search before retrying and repair rather than duplicate. REST mechanics: [references/github-operations.md](references/github-operations.md), read only when needed.
+
+Independence record: append this section to the parent's body, with one list item of real issue numbers per group. prism-orchestrator runs leaves the record does not list one at a time.
+
+```markdown
+### Independence groups
+
+<!-- prism-independence-groups -->
+- #12 #14
+- #13
+<!-- /prism-independence-groups -->
+```
 
 ## Verify and return
 
-Read back bodies, labels, parent and dependency direction, project membership, and fields. Return URLs, the hierarchy, dependencies, the triager's `Requested settings:` line verbatim, and any partial result or uncertainty, compactly. An issue whose project item never appeared is unfinished; say so.
+Read back bodies and independence records, labels, parent and dependency direction, project membership, and fields. Return URLs, the hierarchy, dependencies, the triager's `Requested settings:` line verbatim, and any partial result or uncertainty, compactly. An issue whose project item never appeared is unfinished; say so.

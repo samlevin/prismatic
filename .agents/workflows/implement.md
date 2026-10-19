@@ -1,6 +1,6 @@
 ---
 name: implement
-description: "Deliver an {{label}} GitHub issue or rework an {{label}} PR with the repository's namespaced agents. Use for \"implement #N\", \"implement <issue URL>\", \"rework <PR URL>\", or \"deliver this epic\" in {{repository}}. Routes a container to {{prefix}}orchestrator (serial, one leaf at a time) and a leaf or PR to {{prefix}}implementer, applying the repository model/effort policy or an explicit prompt override."
+description: "Deliver an {{label}} GitHub issue or rework an {{label}} PR with the repository's namespaced agents. Use for \"implement #N\", \"implement <issue URL>\", \"rework <PR URL>\", or \"deliver this epic\" in {{repository}}. Routes a container to {{prefix}}orchestrator (one leaf at a time except across recorded independence groups) and a leaf or PR to {{prefix}}implementer, applying the repository model/effort policy or an explicit prompt override."
 argument-hint: "<#N | issue URL | PR URL> [model <name>] [effort <level>] [reviewer|stack ...]"
 codex:
   display_name: "{{label}}: Implement"

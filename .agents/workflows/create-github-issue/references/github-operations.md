@@ -10,6 +10,8 @@ Relationships use the REST `id` from the create response, never the displayed nu
 - Parent: `gh api -X POST repos/R/issues/PARENT/sub_issues -F sub_issue_id=CHILD_ID`.
 - Blocked by: `gh api -X POST repos/R/issues/N/dependencies/blocked_by -F issue_id=BLOCKER_ID`. N is the blocked issue and BLOCKER_ID is the blocker's `id`; do not reverse the direction.
 
+Independence record: `gh api repos/R/issues/PARENT --jq .body > /abs/parent.md`, append the section, then `gh api -X PATCH repos/R/issues/PARENT -F body=@/abs/parent.md --jq .html_url`. Replace an existing section instead of appending a second one.
+
 Project: select it by owner and number, never by title. Never add an issue to the project or set its Status yourself; a repository workflow adds every new issue when it opens and sets Status to Inbox.
 `gh api users/{{project.owner}}/projectsV2/P/fields --jq '.[] | {id, name, options: [.options[]? | {id, name: .name.raw}]}'` gives the field IDs and option IDs.
 Find the item the workflow added: `gh api 'users/{{project.owner}}/projectsV2/P/items?per_page=100&fields=STATUS_FIELD_ID' --paginate --jq '.[] | select(.content.id == ISSUE_ID) | {item: .id, status: ([.fields[] | select(.name == "Status") | .value.name.raw] | first)}'`, where ISSUE_ID is the REST `id` from the create. One listing covers every issue in the batch. The item is ready once its Status is set. Check every 10 seconds for up to 3 minutes. If it never appears or never gets a Status, keep the issue, skip its field edits, and report it as unfinished with what is missing: not on the project, or on it with no Status, Priority, or Size.

@@ -42,7 +42,7 @@
       }
     },
     "orchestration": {
-      "summary": "Serial dispatch of a container's executable leaves",
+      "summary": "Dispatch of a container's executable leaves, concurrent only across recorded independence groups",
       "claude": {
         "model": "sonnet",
         "effort": "medium"
