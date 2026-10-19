@@ -9,4 +9,6 @@
 #     update will remove it.
 #   expired_at: a YYYY-MM-DD date at most 30 days away. Trivy stops ignoring
 #     the entry on that date, so the scan fails again until someone looks.
+#
+# tooling/security/TrivyIgnoreCheck.ts enforces these rules in CI.
 vulnerabilities: []

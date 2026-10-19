@@ -163,6 +163,33 @@ describe('auditSource', () => {
     ]);
   });
 
+  test('refuses constructor and process loaders read by a destructuring assignment', () => {
+    expect(rules('({ constructor: F } = async () => {});')).toEqual([
+      'dynamic-code',
+    ]);
+    expect(rules("({ 'constructor': F } = (f));")).toEqual(['dynamic-code']);
+    expect(rules('({ constructor } = f);')).toEqual(['dynamic-code']);
+    expect(rules('[{ constructor: F }] = list;')).toEqual(['dynamic-code']);
+    expect(rules('({ a: { constructor: F } } = f);')).toEqual(['dynamic-code']);
+    expect(rules('for ({ constructor: F } of list);')).toEqual([
+      'dynamic-code',
+    ]);
+    expect(rules('for ({ constructor: F } in list);')).toEqual([
+      'dynamic-code',
+    ]);
+    expect(rules('({ binding: b } = process);')).toEqual(['process-loader']);
+    expect(rules('({ dlopen } = (globalThis.process));')).toEqual([
+      'process-loader',
+    ]);
+    expect(rules('({ binding: b } = other);')).toEqual([]);
+    expect(rules('({ a: { binding: b } } = process);')).toEqual([]);
+    expect(rules('for ({ binding: b } of list);')).toEqual([]);
+    expect(rules('({ [key]: F } = f);')).toEqual([]);
+    expect(rules('x += { constructor: 1 };')).toEqual([]);
+    expect(rules('const list = [{ constructor: 1 }];')).toEqual([]);
+    expect(rules('const a = { b: { constructor: 1 } };')).toEqual([]);
+  });
+
   test('allows the constructor name and constructor declarations', () => {
     expect(rules('const kind = error.constructor.name;')).toEqual([]);
     expect(rules('class A { constructor() {} }')).toEqual([]);

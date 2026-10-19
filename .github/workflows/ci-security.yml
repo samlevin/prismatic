@@ -121,6 +121,12 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .tool-versions
+          cache: npm
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      # Trivy honors any expiry, so this check keeps each ignore short.
+      - name: Check the image vulnerability ignore list
+        run: node tooling/security/TrivyIgnoreCheck.ts
       - name: Install the pinned Trivy
         run: |
           sh docker/fetch-pinned.sh tooling/security/tools.lock trivy linux/amd64 "$RUNNER_TEMP/trivy.tar.gz"
@@ -148,8 +154,8 @@ jobs:
       - name: Scan the image for secrets
         if: ${{ !cancelled() }}
         run: trivy image --cache-dir "$RUNNER_TEMP/trivy-cache" --scanners secret --exit-code 1 "$IMAGE"
-      # tooling/security/trivy-ignore.yaml holds expiring entries for fixed
-      # vulnerabilities that no base image update has picked up yet.
+      # tooling/security/trivy-ignore.yaml holds entries, checked above, for
+      # fixed vulnerabilities that no base image update has picked up yet.
       - name: Scan the image for fixable high and critical vulnerabilities
         if: ${{ !cancelled() }}
         run: trivy image --cache-dir "$RUNNER_TEMP/trivy-cache" --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --ignorefile tooling/security/trivy-ignore.yaml --exit-code 1 "$IMAGE"

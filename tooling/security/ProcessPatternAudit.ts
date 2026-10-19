@@ -128,6 +128,50 @@ function isProcessObject(node: ts.Expression): boolean {
   );
 }
 
+function withoutParentheses(node: ts.Expression): ts.Expression {
+  while (ts.isParenthesizedExpression(node)) node = node.expression;
+  return node;
+}
+
+// When an object literal is the target of a destructuring assignment, such as
+// `({ a } = value)` or `for ({ a } of values)`, returns the value it reads
+// from: `value`, or undefined when the literal is nested in a larger pattern
+// or a loop. Returns null for an ordinary object literal.
+function assignmentSource(
+  literal: ts.ObjectLiteralExpression,
+): { readonly value: ts.Expression | undefined } | null {
+  let target: ts.Expression = literal;
+  let direct = true;
+  for (;;) {
+    const parent = target.parent;
+    if (ts.isParenthesizedExpression(parent)) target = parent;
+    else if (ts.isArrayLiteralExpression(parent)) {
+      target = parent;
+      direct = false;
+    } else if (
+      ts.isPropertyAssignment(parent) &&
+      parent.initializer === target &&
+      ts.isObjectLiteralExpression(parent.parent)
+    ) {
+      target = parent.parent;
+      direct = false;
+    } else break;
+  }
+  const parent = target.parent;
+  if (
+    ts.isBinaryExpression(parent) &&
+    parent.left === target &&
+    parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+  )
+    return { value: direct ? withoutParentheses(parent.right) : undefined };
+  if (
+    (ts.isForOfStatement(parent) || ts.isForInStatement(parent)) &&
+    parent.initializer === target
+  )
+    return { value: undefined };
+  return null;
+}
+
 // An identifier that names a property, a declaration, or a type rather than
 // reading a value. `{ eval }` reads eval, so shorthand properties do not count.
 function isNameOnly(node: ts.Identifier): boolean {
@@ -214,7 +258,28 @@ export function auditSource(
     }
   };
 
+  // A property read by a destructuring assignment, which TypeScript parses as
+  // an object literal rather than a binding pattern.
+  const checkAssignedProperty = (
+    node: ts.PropertyAssignment | ts.ShorthandPropertyAssignment,
+  ) => {
+    if (!ts.isObjectLiteralExpression(node.parent)) return;
+    const source = assignmentSource(node.parent);
+    const name = propertyName(node.name);
+    if (source === null || name === undefined) return;
+    if (name === 'constructor')
+      report(node, 'dynamic-code', constructorMessage);
+    else if (
+      processLoaders.has(name) &&
+      source.value !== undefined &&
+      isProcessObject(source.value)
+    )
+      report(node, 'process-loader', `uses process.${name}`);
+  };
+
   const visit = (node: ts.Node): void => {
+    if (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node))
+      checkAssignedProperty(node);
     if (
       (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
       node.moduleSpecifier !== undefined &&

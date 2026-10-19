@@ -161,20 +161,22 @@ test('the image job installs a checksum-pinned scanner and fails on secrets and 
   assert.equal(upload.with['if-no-files-found'], 'error');
 });
 
-test('every image vulnerability ignore explains itself and expires', () => {
-  const ignores = parse(repositoryFile('tooling/security/trivy-ignore.yaml'));
-  assert.deepEqual(Object.keys(ignores), ['vulnerabilities']);
-  assert.ok(Array.isArray(ignores.vulnerabilities));
-  for (const entry of ignores.vulnerabilities) {
-    assert.deepEqual(
-      Object.keys(entry).sort(),
-      ['expired_at', 'id', 'statement'],
-      JSON.stringify(entry),
-    );
-    assert.match(entry.id, /^(?:CVE-\d{4}-\d+|GHSA(?:-[a-z0-9]{4}){3})$/);
-    assert.ok(entry.statement.trim().length > 0, entry.id);
-    assert.match(String(entry.expired_at), /^\d{4}-\d{2}-\d{2}$/, entry.id);
-  }
+test('the image job checks the vulnerability ignore list before scanning with it', () => {
+  const names = steps('scan-image').map((step) => step.name);
+  const check = names.indexOf('Check the image vulnerability ignore list');
+  assert.ok(check >= 0);
+  assert.equal(
+    steps('scan-image')[check].run,
+    'node tooling/security/TrivyIgnoreCheck.ts',
+  );
+  assert.equal(steps('scan-image')[check].if, undefined);
+  assert.equal(steps('scan-image')[check - 1].run, 'npm ci --ignore-scripts');
+  assert.ok(
+    check <
+      names.indexOf(
+        'Scan the image for fixable high and critical vulnerabilities',
+      ),
+  );
 });
 
 test('tools.lock entries are pinned the way fetch-pinned.sh requires', () => {

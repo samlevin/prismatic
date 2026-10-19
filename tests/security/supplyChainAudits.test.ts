@@ -62,6 +62,12 @@ describe('ProcessPatternAudit evasion attempts', () => {
     ['const { constructor: F } = () => {};', 'dynamic-code'],
     ["Reflect.get(Reflect.getPrototypeOf(f), 'constructor');", 'dynamic-code'],
     ["Reflect.get(globalThis, 'Fun\\u0063tion')(code);", 'dynamic-code'],
+    [
+      'let F;\n({ constructor: F } = async () => {});\nF(code)();',
+      'dynamic-code',
+    ],
+    ['({ constructor } = (() => {}));', 'dynamic-code'],
+    ['({ binding: load } = process);', 'process-loader'],
   ])('flags %s', (source, rule) => {
     expect(flagged(source)).toContain(rule);
   });
