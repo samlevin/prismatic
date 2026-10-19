@@ -11,6 +11,22 @@ const PAGE = 'pageInfo { hasNextPage endCursor }';
 const CONTENT = `id type project { id } content {
   __typename ... on Issue { id number state repository { nameWithOwner } }
 }`;
+// Nested connections come inside their page query, so a sweep costs a few
+// GraphQL points whatever the project size. A nested connection gets its own
+// query only when it has another page.
+const NESTED = 50;
+const VALUE = `... on ProjectV2ItemFieldSingleSelectValue { optionId field {
+  ... on ProjectV2SingleSelectField { id }
+} }`;
+const LABELS = `labels(first: ${NESTED}) { nodes { id name } ${PAGE} }`;
+const ITEM = `id type project { id }
+  fieldValues(first: ${NESTED}) { nodes { ${VALUE} } ${PAGE} }
+  content { __typename ... on Issue {
+    id number state repository { nameWithOwner } ${LABELS}
+  } }`;
+// A sweep is skipped when fewer GraphQL points than this remain in the
+// token's hourly budget, which people and local agents share.
+export const MIN_REMAINING = 1000;
 
 export function eligible(item) {
   const severity = item.labels.filter((label) => label.startsWith('severity:'));
@@ -27,10 +43,11 @@ export function eligible(item) {
   );
 }
 
-export async function paginate(fetchPage) {
+// Collects every node of a connection, starting after `cursor` when one is
+// given.
+export async function paginate(fetchPage, cursor = null) {
   const nodes = [];
-  let cursor = null;
-  const seen = new Set();
+  const seen = new Set(cursor ? [cursor] : []);
   while (true) {
     const connection = await fetchPage(cursor);
     if (!connection) throw new Error('Missing GraphQL connection');
@@ -41,6 +58,35 @@ export async function paginate(fetchPage) {
       throw new Error('Pagination cursor did not advance');
     seen.add(cursor);
   }
+}
+
+// Returns every node of a connection fetched inside another query, reading
+// the pages after the first through `node(id)` only when there are more.
+export async function nestedNodes(
+  api,
+  { id, type, field, selection, connection },
+) {
+  if (!connection) throw new Error(`Missing GraphQL connection ${field}`);
+  const nodes = connection.nodes.filter(Boolean);
+  if (!connection.pageInfo.hasNextPage) return nodes;
+  const rest = await paginate(async (cursor) => {
+    const data = await api(
+      `query($id: ID!, $cursor: String) { node(id: $id) { ... on ${type} {
+        ${field}(first: 100, after: $cursor) { nodes { ${selection} } ${PAGE} }
+      } } }`,
+      { id, cursor },
+    );
+    return data.node?.[field];
+  }, connection.pageInfo.endCursor);
+  return [...nodes, ...rest];
+}
+
+export function checkIssueNumber(issueNumber) {
+  if (
+    issueNumber !== undefined &&
+    (!Number.isSafeInteger(issueNumber) || issueNumber <= 0)
+  )
+    throw new Error('--issue requires a positive safe integer');
 }
 
 export async function discover(
@@ -77,16 +123,99 @@ export async function discover(
   return { projectId, fields: selected };
 }
 
-export async function listItems(api, projectId) {
-  return paginate(async (cursor) => {
+// Turns a project item read with ITEM into the shape readItem returns: the
+// discovered fields by name and the issue's label names.
+async function itemFields(api, item, context) {
+  if (!item?.id || item.project?.id !== context.projectId) return null;
+  const values = await nestedNodes(api, {
+    id: item.id,
+    type: 'ProjectV2Item',
+    field: 'fieldValues',
+    selection: VALUE,
+    connection: item.fieldValues,
+  });
+  const fields = {};
+  for (const [name, field] of Object.entries(context.fields)) {
+    const value = values.find((value) => value.field?.id === field.id);
+    fields[name] = field.options.find(
+      (option) => option.id === value?.optionId,
+    )?.name;
+  }
+  let labels = [];
+  if (item.type === 'ISSUE' && item.content?.__typename === 'Issue')
+    labels = (
+      await nestedNodes(api, {
+        id: item.content.id,
+        type: 'Issue',
+        field: 'labels',
+        selection: 'id name',
+        connection: item.content.labels,
+      })
+    ).map((label) => label.name);
+  const read = { ...item, fields, labels };
+  delete read.fieldValues;
+  return read;
+}
+
+// Lists every project item with its field values and labels, 100 items a
+// query.
+export async function listItems(api, context) {
+  const items = await paginate(async (cursor) => {
     const data = await api(
       `query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2 {
-        items(first: 100, after: $cursor) { nodes { ${CONTENT} } ${PAGE} }
+        items(first: 100, after: $cursor) { nodes { ${ITEM} } ${PAGE} }
       } } }`,
-      { id: projectId, cursor },
+      { id: context.projectId, cursor },
     );
     return data.node?.items;
   });
+  const result = [];
+  for (const item of items) {
+    const read = await itemFields(api, item, context);
+    if (read) result.push(read);
+  }
+  return result;
+}
+
+// Reads one issue with its labels and its item on the project, or returns
+// null when the issue does not exist. `item` is null when the issue is not on
+// the project.
+export async function readIssue(api, number, context) {
+  const data = await api(
+    `query($number: Int!) { repository(owner: "samlevin", name: "prismatic") {
+      issue(number: $number) { id number state repository { nameWithOwner }
+        ${LABELS} projectItems(first: 20) { nodes { ${ITEM} } ${PAGE} }
+      }
+    } }`,
+    { number },
+  );
+  const issue = data.repository?.issue;
+  if (!issue) return null;
+  const labels = await nestedNodes(api, {
+    id: issue.id,
+    type: 'Issue',
+    field: 'labels',
+    selection: 'id name',
+    connection: issue.labels,
+  });
+  const items = await nestedNodes(api, {
+    id: issue.id,
+    type: 'Issue',
+    field: 'projectItems',
+    selection: ITEM,
+    connection: issue.projectItems,
+  });
+  const listed = items.find((item) => item.project?.id === context.projectId);
+  return {
+    issue: { id: issue.id, number: issue.number, labels },
+    item: listed ? await itemFields(api, listed, context) : null,
+  };
+}
+
+async function itemsInScope(api, context, issueNumber) {
+  if (issueNumber === undefined) return listItems(api, context);
+  const found = await readIssue(api, issueNumber, context);
+  return found?.item ? [found.item] : [];
 }
 
 export async function readItem(api, id, context) {
@@ -95,9 +224,7 @@ export async function readItem(api, id, context) {
     const data = await api(
       `query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2Item {
         ${CONTENT} fieldValues(first: 100, after: $cursor) { nodes {
-          ... on ProjectV2ItemFieldSingleSelectValue { optionId field {
-            ... on ProjectV2SingleSelectField { id }
-          } }
+          ${VALUE}
         } ${PAGE} }
       } } }`,
       { id, cursor },
@@ -152,38 +279,30 @@ export async function updateProjectStatus(api, context, itemId, status) {
   );
 }
 
+// Moves triaged issues from Inbox to Ready. `context` and `items` let run()
+// share one discovery and one listing across passes. With `issueNumber`, only
+// that issue's project item is read.
 export async function reconcile({
   api,
   dryRun = true,
   issueNumber,
   log = console.log,
+  context,
+  items,
 }) {
-  if (
-    issueNumber !== undefined &&
-    (!Number.isSafeInteger(issueNumber) || issueNumber <= 0)
-  )
-    throw new Error('--issue requires a positive safe integer');
-  const context = await discover(api);
-  const items = await listItems(api, context.projectId);
+  checkIssueNumber(issueNumber);
+  context ??= await discover(api);
+  items ??= await itemsInScope(api, context, issueNumber);
   let candidates = 0;
   let updated = 0;
-  for (const listed of items) {
+  for (const item of items) {
     if (
-      listed.type !== 'ISSUE' ||
-      listed.content?.repository.nameWithOwner !== REPOSITORY ||
-      (issueNumber !== undefined && listed.content.number !== issueNumber)
-    )
-      continue;
-    const item = await readItem(api, listed.id, context);
-    if (
-      !item ||
       !eligible(item) ||
       (issueNumber !== undefined && item.content.number !== issueNumber)
     )
       continue;
-    // Resolve current options and re-read both issue and project metadata at the write boundary.
-    const freshContext = await discover(api);
-    const fresh = await readItem(api, listed.id, freshContext);
+    // Re-read both issue and project metadata at the write boundary.
+    const fresh = await readItem(api, item.id, context);
     if (
       !fresh ||
       !eligible(fresh) ||
@@ -195,7 +314,7 @@ export async function reconcile({
       `${dryRun ? 'DRY_RUN would move' : 'Moving'} issue #${fresh.content.number} Inbox -> Ready`,
     );
     if (dryRun) continue;
-    await updateProjectStatus(api, freshContext, fresh.id, 'Ready');
+    await updateProjectStatus(api, context, fresh.id, 'Ready');
     updated++;
   }
   log(
@@ -222,39 +341,25 @@ export async function reconcileDone({
   dryRun = true,
   issueNumber,
   log = console.log,
+  context,
+  items,
 }) {
-  if (
-    issueNumber !== undefined &&
-    (!Number.isSafeInteger(issueNumber) || issueNumber <= 0)
-  )
-    throw new Error('--issue requires a positive safe integer');
-  const context = await discover(api, { Status: ['Ready', 'Done'] });
-  const items = await paginate(async (cursor) => {
-    const data = await api(
-      `query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2 {
-        items(first: 100, after: $cursor) { nodes { ${CONTENT}
-          fieldValueByName(name: "Status") {
-            ... on ProjectV2ItemFieldSingleSelectValue { name }
-          }
-        } ${PAGE} }
-      } } }`,
-      { id: context.projectId, cursor },
-    );
-    return data.node?.items;
-  });
+  checkIssueNumber(issueNumber);
+  context ??= await discover(api, { Status: ['Ready', 'Done'] });
+  items ??= await itemsInScope(api, context, issueNumber);
   let candidates = 0;
   let updated = 0;
-  for (const listed of items) {
+  for (const item of items) {
     if (
-      listed.type !== 'ISSUE' ||
-      listed.content?.__typename !== 'Issue' ||
-      listed.content.repository.nameWithOwner !== REPOSITORY ||
-      !doneTarget(listed.content.state, listed.fieldValueByName?.name) ||
-      (issueNumber !== undefined && listed.content.number !== issueNumber)
+      item.type !== 'ISSUE' ||
+      item.content?.__typename !== 'Issue' ||
+      item.content.repository.nameWithOwner !== REPOSITORY ||
+      !doneTarget(item.content.state, item.fields.Status) ||
+      (issueNumber !== undefined && item.content.number !== issueNumber)
     )
       continue;
     // Re-read the issue state and Status at the write boundary.
-    const fresh = await readItem(api, listed.id, context);
+    const fresh = await readItem(api, item.id, context);
     const target =
       fresh && doneTarget(fresh.content?.state, fresh.fields.Status);
     if (!target) continue;
@@ -272,11 +377,25 @@ export async function reconcileDone({
   return { candidates, updated };
 }
 
+async function issueLabels(api, number) {
+  const data = await api(
+    `query($number: Int!) { repository(owner: "samlevin", name: "prismatic") {
+      issue(number: $number) { id number ${LABELS} }
+    } }`,
+    { number },
+  );
+  const issue = data.repository?.issue;
+  return issue ? [issue] : [];
+}
+
+// Removes category labels that conflict with the epic label. `epics` lets
+// run() pass an issue it already read.
 export async function reconcileEpicLabels({
   api,
   dryRun = true,
   issueNumber,
   log = console.log,
+  epics,
 }) {
   const forbidden = new Set([
     'bug',
@@ -289,28 +408,31 @@ export async function reconcileEpicLabels({
     'invalid',
     'wontfix',
   ]);
-  const epics = await paginate(async (cursor) => {
-    const data = await api(
-      `query($cursor: String) { repository(owner: "samlevin", name: "prismatic") {
-      issues(first: 100, after: $cursor, states: [OPEN, CLOSED], labels: ["epic"]) {
-        nodes { id number } ${PAGE}
-      }
-    } }`,
-      { cursor },
-    );
-    return data.repository?.issues;
-  });
+  epics ??=
+    issueNumber === undefined
+      ? await paginate(async (cursor) => {
+          const data = await api(
+            `query($cursor: String) { repository(owner: "samlevin", name: "prismatic") {
+              issues(first: 100, after: $cursor, states: [OPEN, CLOSED], labels: ["epic"]) {
+                nodes { id number ${LABELS} } ${PAGE}
+              }
+            } }`,
+            { cursor },
+          );
+          return data.repository?.issues;
+        })
+      : await issueLabels(api, issueNumber);
   for (const epic of epics) {
     if (issueNumber !== undefined && epic.number !== issueNumber) continue;
-    const labels = await paginate(async (cursor) => {
-      const data = await api(
-        `query($id: ID!, $cursor: String) { node(id: $id) { ... on Issue {
-        labels(first: 100, after: $cursor) { nodes { id name } ${PAGE} }
-      } } }`,
-        { id: epic.id, cursor },
-      );
-      return data.node?.labels;
-    });
+    const labels = Array.isArray(epic.labels)
+      ? epic.labels
+      : await nestedNodes(api, {
+          id: epic.id,
+          type: 'Issue',
+          field: 'labels',
+          selection: 'id name',
+          connection: epic.labels,
+        });
     if (!labels.some((label) => label.name === 'epic')) continue;
     const remove = labels.filter(
       (label) => forbidden.has(label.name) || label.name.startsWith('type:'),
@@ -329,11 +451,89 @@ export async function reconcileEpicLabels({
   }
 }
 
-// Every pass the command line runs, in order.
-export async function run(options) {
-  await reconcileEpicLabels(options);
-  await reconcile(options);
-  await reconcileDone(options);
+// Every pass the command line runs, in order. They share one field discovery
+// and one read: the whole project for a sweep, or the one issue and its item
+// with `issueNumber`.
+export async function run({
+  api,
+  dryRun = true,
+  issueNumber,
+  log = console.log,
+}) {
+  checkIssueNumber(issueNumber);
+  const context = await discover(api, {
+    Status: ['Inbox', 'Ready', 'Done'],
+    Priority: PRIORITIES,
+    Size: SIZES,
+  });
+  const options = { api, dryRun, issueNumber, log, context };
+  if (issueNumber === undefined) {
+    const items = await listItems(api, context);
+    await reconcileEpicLabels(options);
+    await reconcile({ ...options, items });
+    await reconcileDone({ ...options, items });
+    return;
+  }
+  const found = await readIssue(api, issueNumber, context);
+  if (!found) log(`Issue #${issueNumber} is unavailable; nothing to triage`);
+  const items = found?.item ? [found.item] : [];
+  await reconcileEpicLabels({ ...options, epics: found ? [found.issue] : [] });
+  await reconcile({ ...options, items });
+  await reconcileDone({ ...options, items });
+}
+
+export async function rateLimit(api) {
+  const data = await api(
+    'query { rateLimit { limit remaining used resetAt } }',
+    {},
+  );
+  if (!data?.rateLimit)
+    throw new Error('GitHub returned no GraphQL rate limit');
+  return data.rateLimit;
+}
+
+// A GitHub Actions warning annotation, which shows on the run summary.
+export function warning(message) {
+  console.log(`::warning::${message}`);
+}
+
+// Runs `work` within the GraphQL budget. A sweep (no issue number) reads the
+// rate limit first, skips with a warning when fewer than MIN_REMAINING points
+// remain, and logs the points before and after; any error fails it. A run for
+// one issue skips the rate-limit reads, and when it hits the rate limit it
+// warns and returns, because the next sweep applies the same change. Its other
+// errors still throw.
+export async function withinBudget(
+  work,
+  { api, issueNumber, name, log = console.log, warn = warning },
+) {
+  if (issueNumber !== undefined) {
+    try {
+      await work();
+      return 'done';
+    } catch (error) {
+      if (error?.kind !== 'rate_limit') throw error;
+      warn(
+        `${name} skipped issue #${issueNumber}: ${failureMessage(error)} The next scheduled sweep reconciles it.`,
+      );
+      return 'rate-limited';
+    }
+  }
+  const before = await rateLimit(api);
+  if (before.remaining < MIN_REMAINING) {
+    warn(
+      `${name} sweep skipped: ${before.remaining} GraphQL points remain, under ${MIN_REMAINING}. The budget resets at ${before.resetAt}.`,
+    );
+    return 'skipped';
+  }
+  await work();
+  const after = await rateLimit(api);
+  log(
+    after.resetAt === before.resetAt
+      ? `${name} sweep GraphQL points: ${before.remaining} remaining before, ${after.remaining} after, ${before.remaining - after.remaining} used, counting other clients of the token`
+      : `${name} sweep GraphQL points: ${before.remaining} remaining before, ${after.remaining} after the budget reset at ${before.resetAt}`,
+  );
+  return 'done';
 }
 
 export function configuration(env, args) {
@@ -380,7 +580,8 @@ if (
     const config = configuration(process.env, process.argv.slice(2));
     if (process.env.GITHUB_ACTIONS === 'true')
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
-    await run({ api: ghGraphql, ...config });
+    const options = { api: ghGraphql, ...config };
+    await withinBudget(() => run(options), { ...options, name: 'Triage' });
   } catch (error) {
     console.error(failureMessage(error));
     process.exitCode = 1;

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,18 +12,24 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
+import { GitHubApiError } from './github-api.mjs';
 import {
   configuration,
   discover,
   eligible,
+  listItems,
+  MIN_REMAINING,
+  nestedNodes,
   paginate,
   readItem,
   reconcile,
   reconcileDone,
+  reconcileEpicLabels,
   REPOSITORY,
   run,
+  withinBudget,
 } from './issue-triage.mjs';
 
 function issue(overrides = {}) {
@@ -120,271 +128,465 @@ test('pagination keeps every page, skips deleted nodes, and rejects broken curso
   );
 });
 
-function mockApi({
-  race,
-  multipleSeverity = false,
-  additionalIssue = false,
-} = {}) {
-  const state = {
-    mutations: [],
-    reads: 0,
-    pages: new Set(),
+const FIELD_OPTIONS = {
+  Status: ['Inbox', 'Ready', 'In progress', 'In review', 'Done'],
+  Priority: ['P0', 'P1', 'P2', 'P3'],
+  Size: ['XS', 'S', 'M', 'L'],
+};
+
+// An eligible issue for the fake board.
+function triaged(number, overrides = {}) {
+  return {
+    number,
     status: 'Inbox',
-    otherStatus: 'Inbox',
-    readItems: [],
+    priority: 'P2',
+    size: 'M',
+    labels: ['severity: none'],
+    ...overrides,
   };
-  const second = issue({
-    id: 'item-2',
-    content: { ...issue().content, id: 'issue-2', number: 2 },
-  });
-  const definitions = Object.entries({
-    Status: ['Inbox', 'Ready', 'In progress'],
-    Priority: ['P0', 'P1', 'P2', 'P3'],
-    Size: ['XS', 'S', 'M', 'L'],
-  }).map(([name, options]) => ({
+}
+
+// A fake GitHub holding the Prismatic delivery project. Each entry is one
+// project item: an issue number with its state, labels, and Status, Priority,
+// and Size. `page` caps every connection page, so a test can force nested
+// pages. `onRead` runs before each write-boundary re-read and may change the
+// entry. `rateLimits` lists the rateLimit responses in order.
+function board(
+  entries,
+  { page = 100, definitionPages = 1, onRead, rateLimits = [] } = {},
+) {
+  const items = new Map(
+    entries.map((entry) => [
+      `item-${entry.number}`,
+      {
+        type: 'ISSUE',
+        repository: REPOSITORY,
+        state: 'OPEN',
+        labels: [],
+        project: 'project',
+        issueId: `issue-${entry.number}`,
+        ...entry,
+      },
+    ]),
+  );
+  const definitions = Object.entries(FIELD_OPTIONS).map(([name, options]) => ({
     id: `field-${name}`,
     name,
-    options: options.map((name) => ({ id: `option-${name}`, name })),
+    options: options.map((option) => ({
+      id: `option-${option}`,
+      name: option,
+    })),
   }));
-  const connection = (nodes, next = false) => ({
-    nodes,
-    pageInfo: { hasNextPage: next, endCursor: next ? 'next' : null },
-  });
+  const calls = [];
+  const reads = [];
+  const mutations = [];
+  const removed = [];
+  const slice = (nodes, cursor, size = page) => {
+    const start = cursor ? Number(cursor.slice('at-'.length)) : 0;
+    const end = start + size;
+    return {
+      nodes: nodes.slice(start, end),
+      pageInfo: { hasNextPage: end < nodes.length, endCursor: `at-${end}` },
+    };
+  };
+  const byIssue = (id) =>
+    [...items.values()].find((entry) => entry.issueId === id);
+  const labels = (entry) =>
+    entry.labels.map((name) => ({ id: `label-${name}`, name }));
+  const values = (entry) =>
+    ['Status', 'Priority', 'Size']
+      .filter((name) => entry[name.toLowerCase()])
+      .map((name) => ({
+        optionId: `option-${entry[name.toLowerCase()]}`,
+        field: { id: `field-${name}` },
+      }));
+  const content = (entry) =>
+    entry.type === 'DRAFT_ISSUE'
+      ? null
+      : {
+          __typename: entry.type === 'PULL_REQUEST' ? 'PullRequest' : 'Issue',
+          id: entry.issueId,
+          number: entry.number,
+          state: entry.state,
+          repository: { nameWithOwner: entry.repository },
+          labels: slice(labels(entry), null),
+        };
+  const node = (id) => {
+    const entry = items.get(id);
+    return {
+      id,
+      type: entry.type,
+      project: { id: entry.project },
+      fieldValues: slice(values(entry), null),
+      content: content(entry),
+    };
+  };
   const api = async (query, variables) => {
-    const page = variables.cursor ? 1 : 0;
-    if (query.includes('projectV2(number: 2)')) {
-      state.pages.add(`definitions-${page}`);
+    calls.push(query);
+    if (query.includes('rateLimit')) {
+      const limit = rateLimits.shift() ?? { remaining: 5000, resetAt: 'r' };
+      return {
+        rateLimit: { limit: 5000, used: 5000 - limit.remaining, ...limit },
+      };
+    }
+    if (query.includes('projectV2(number: 2)'))
       return {
         user: {
           projectV2: {
             id: 'project',
-            fields: page
-              ? connection(definitions.slice(1))
-              : connection(definitions.slice(0, 1), true),
+            fields: slice(
+              definitions,
+              variables.cursor,
+              Math.ceil(definitions.length / definitionPages),
+            ),
           },
         },
       };
-    }
-    if (query.includes('items(first:')) {
-      state.pages.add(`items-${page}`);
-      return {
-        node: {
-          items: page
-            ? connection(additionalIssue ? [issue(), second] : [issue()])
-            : connection(
-                [
-                  { id: 'pr', type: 'PULL_REQUEST' },
-                  { id: 'draft', type: 'DRAFT_ISSUE' },
-                  {
-                    ...issue(),
-                    id: 'other',
-                    content: { repository: { nameWithOwner: 'other/repo' } },
-                  },
-                ],
-                true,
-              ),
-        },
-      };
-    }
-    if (query.includes('fieldValues(first:')) {
-      if (!page) {
-        state.reads++;
-        state.readItems.push(variables.id);
-      }
-      state.pages.add(`values-${page}`);
-      const fields = {
-        Status: variables.id === 'item-2' ? state.otherStatus : state.status,
-        Priority: 'P2',
-        Size: 'L',
-      };
-      if (state.reads >= 2 && race) race(fields, state);
-      const values = Object.entries(fields).map(([name, value]) => ({
-        field: { id: `field-${name}` },
-        optionId: `option-${value}`,
-      }));
-      return {
-        node: {
-          ...(variables.id === 'item-2' ? second : issue()),
-          project: { id: 'project' },
-          fieldValues: page
-            ? connection(values.slice(1))
-            : connection(values.slice(0, 1), true),
-        },
-      };
-    }
-    if (query.includes('labels(first:')) {
-      state.pages.add(`labels-${page}`);
-      const content = {
-        ...(variables.id === 'issue-2' ? second.content : issue().content),
-      };
-      if (state.renumbered) content.number = 2;
-      if (state.closed) content.state = 'CLOSED';
-      if (state.foreign) content.repository = { nameWithOwner: 'other/repo' };
-      return {
-        node: {
-          ...content,
-          labels: page
-            ? connection(
-                multipleSeverity || state.extraSeverity
-                  ? [{ name: 'severity: high' }]
-                  : [],
-              )
-            : connection([{ name: 'severity: none' }], true),
-        },
-      };
-    }
     if (query.includes('updateProjectV2ItemFieldValue')) {
-      state.mutations.push(variables);
-      if (variables.item === 'item-2') state.otherStatus = 'Ready';
-      else state.status = 'Ready';
+      mutations.push(variables);
+      items.get(variables.item).status = variables.option.slice(
+        'option-'.length,
+      );
       return {
         updateProjectV2ItemFieldValue: {
           projectV2Item: { id: variables.item },
         },
       };
     }
-    throw new Error('Unexpected mock query');
+    if (query.includes('removeLabelsFromLabelable')) {
+      removed.push(variables);
+      const entry = byIssue(variables.id);
+      entry.labels = entry.labels.filter(
+        (name) => !variables.labels.includes(`label-${name}`),
+      );
+      return { removeLabelsFromLabelable: { clientMutationId: null } };
+    }
+    if (query.includes('labels: ["epic"]'))
+      return {
+        repository: {
+          issues: slice(
+            [...items.values()]
+              .filter((entry) => entry.labels.includes('epic'))
+              .map((entry) => ({
+                id: entry.issueId,
+                number: entry.number,
+                labels: slice(labels(entry), null),
+              })),
+            variables.cursor,
+          ),
+        },
+      };
+    if (query.includes('issue(number: $number)')) {
+      const entry = [...items.values()].find(
+        (entry) => entry.number === variables.number && entry.type === 'ISSUE',
+      );
+      if (!entry) return { repository: { issue: null } };
+      const issue = {
+        id: entry.issueId,
+        number: entry.number,
+        state: entry.state,
+        repository: { nameWithOwner: entry.repository },
+        labels: slice(labels(entry), null),
+      };
+      if (query.includes('projectItems'))
+        issue.projectItems = slice([node(`item-${entry.number}`)], null);
+      return { repository: { issue } };
+    }
+    if (query.includes('projectItems(first: 100')) {
+      const entry = byIssue(variables.id);
+      return {
+        node: {
+          projectItems: slice([node(`item-${entry.number}`)], variables.cursor),
+        },
+      };
+    }
+    if (query.includes('items(first: 100'))
+      return {
+        node: { items: slice([...items.keys()].map(node), variables.cursor) },
+      };
+    if (query.includes('... on ProjectV2Item {')) {
+      const entry = items.get(variables.id);
+      if (!query.includes('content {'))
+        return {
+          node: { fieldValues: slice(values(entry), variables.cursor) },
+        };
+      if (!variables.cursor) {
+        reads.push(variables.id);
+        onRead?.(entry, variables.id);
+      }
+      return {
+        node: {
+          ...node(variables.id),
+          fieldValues: slice(values(entry), variables.cursor),
+        },
+      };
+    }
+    if (
+      query.includes('... on Issue {') &&
+      query.includes('labels(first: 100')
+    ) {
+      const entry = byIssue(variables.id);
+      return {
+        node: {
+          ...content(entry),
+          labels: slice(labels(entry), variables.cursor),
+        },
+      };
+    }
+    throw new Error(`Unexpected mock query: ${query}`);
   };
-  return { api, state, definitions };
+  const count = (text) => calls.filter((query) => query.includes(text)).length;
+  return { api, items, definitions, calls, reads, mutations, removed, count };
 }
 
-test('discovery and item reads paginate definitions, field values and labels', async () => {
-  const { api, state } = mockApi({ multipleSeverity: true });
-  const context = await discover(api);
-  assert.equal(context.fields.Size.id, 'field-Size');
-  const item = await readItem(api, 'item', context);
-  assert.equal(item.fields.Size, 'L');
-  assert.deepEqual(item.labels, ['severity: none', 'severity: high']);
-  assert.equal(eligible(item), false);
-  assert.deepEqual([...state.pages].sort(), [
-    'definitions-0',
-    'definitions-1',
-    'labels-0',
-    'labels-1',
-    'values-0',
-    'values-1',
+test('nested connections continue after the cursor of the inline page', async () => {
+  const { api, calls } = board([
+    triaged(1, { labels: ['severity: none', 'severity: high', 'area: x'] }),
   ]);
+  const nodes = await nestedNodes(api, {
+    id: 'issue-1',
+    type: 'Issue',
+    field: 'labels',
+    selection: 'id name',
+    connection: {
+      nodes: [{ id: 'label-severity: none', name: 'severity: none' }],
+      pageInfo: { hasNextPage: true, endCursor: 'at-1' },
+    },
+  });
+  assert.deepEqual(
+    nodes.map((label) => label.name),
+    ['severity: none', 'severity: high', 'area: x'],
+  );
+  assert.equal(calls.length, 1);
+  assert.deepEqual(
+    await nestedNodes(api, {
+      id: 'issue-1',
+      type: 'Issue',
+      field: 'labels',
+      selection: 'id name',
+      connection: {
+        nodes: [{ name: 'only' }],
+        pageInfo: { hasNextPage: false },
+      },
+    }),
+    [{ name: 'only' }],
+  );
+  assert.equal(calls.length, 1);
 });
 
-test('dry-run discovers every item page and never mutates; apply is idempotent', async () => {
-  const { api, state } = mockApi();
-  assert.deepEqual(await reconcile({ api, log: () => {} }), {
+test('a sweep reads every item with its field values and labels in the page query', async () => {
+  // 141 items, the project size when the sweep cost was measured.
+  const f = board(
+    Array.from({ length: 141 }, (_, index) =>
+      triaged(index + 1, { status: 'Ready' }),
+    ),
+  );
+  await run({ api: f.api, dryRun: false, log() {} });
+  assert.equal(f.count('projectV2(number: 2)'), 1);
+  assert.equal(f.count('items(first: 100'), 2);
+  assert.equal(f.count('labels: ["epic"]'), 1);
+  assert.equal(f.calls.length, 4);
+  assert.deepEqual(f.reads, []);
+  assert.deepEqual(f.mutations, []);
+});
+
+test('listing follows nested field value and label pages only when they have more', async () => {
+  const f = board(
+    [triaged(1, { labels: ['severity: none', 'severity: high'] })],
+    { page: 1, definitionPages: 3 },
+  );
+  const context = await discover(f.api);
+  assert.equal(context.fields.Size.id, 'field-Size');
+  assert.equal(f.count('projectV2(number: 2)'), 3);
+  const [item] = await listItems(f.api, context);
+  assert.deepEqual(item.fields, { Status: 'Inbox', Priority: 'P2', Size: 'M' });
+  assert.deepEqual(item.labels, ['severity: none', 'severity: high']);
+  assert.equal(eligible(item), false);
+  assert.equal(
+    f.calls.filter(
+      (query) =>
+        query.includes('... on ProjectV2Item {') && !query.includes('content'),
+    ).length,
+    2,
+  );
+  assert.equal(f.count('labels(first: 100'), 1);
+});
+
+test('dry-run lists every item page and never mutates; apply is idempotent', async () => {
+  const f = board(
+    [
+      { number: 10, type: 'PULL_REQUEST' },
+      { number: 11, type: 'DRAFT_ISSUE' },
+      triaged(12, { repository: 'other/repo' }),
+      triaged(1),
+    ],
+    { page: 2 },
+  );
+  assert.deepEqual(await reconcile({ api: f.api, log: () => {} }), {
     candidates: 1,
     updated: 0,
   });
-  assert.equal(state.mutations.length, 0);
-  assert.ok(state.pages.has('items-1'));
-  assert.deepEqual(await reconcile({ api, dryRun: false, log: () => {} }), {
-    candidates: 1,
-    updated: 1,
-  });
-  assert.deepEqual(state.mutations, [
+  assert.equal(f.mutations.length, 0);
+  assert.equal(f.count('items(first: 100'), 2);
+  // Only an eligible item costs a re-read.
+  assert.deepEqual(f.reads, ['item-1']);
+  assert.deepEqual(
+    await reconcile({ api: f.api, dryRun: false, log: () => {} }),
+    { candidates: 1, updated: 1 },
+  );
+  assert.deepEqual(f.mutations, [
     {
       project: 'project',
-      item: 'item',
+      item: 'item-1',
       field: 'field-Status',
       option: 'option-Ready',
     },
   ]);
-  assert.deepEqual(await reconcile({ api, dryRun: false, log: () => {} }), {
-    candidates: 0,
-    updated: 0,
-  });
-  assert.equal(state.mutations.length, 1);
+  assert.deepEqual(
+    await reconcile({ api: f.api, dryRun: false, log: () => {} }),
+    { candidates: 0, updated: 0 },
+  );
+  assert.equal(f.mutations.length, 1);
 });
 
 test('re-read rejects eligibility changes at the mutation boundary', async () => {
   for (const race of [
-    (fields) => {
-      fields.Status = 'In progress';
+    (entry) => {
+      entry.status = 'In progress';
     },
-    (fields) => {
-      fields.Priority = 'invalid';
+    (entry) => {
+      entry.priority = 'invalid';
     },
-    (fields) => {
-      fields.Size = undefined;
+    (entry) => {
+      entry.size = undefined;
     },
-    (_fields, state) => {
-      state.extraSeverity = true;
+    (entry) => {
+      entry.labels = [...entry.labels, 'severity: high'];
     },
-    (_fields, state) => {
-      state.closed = true;
+    (entry) => {
+      entry.state = 'CLOSED';
     },
-    (_fields, state) => {
-      state.foreign = true;
+    (entry) => {
+      entry.repository = 'other/repo';
+    },
+    (entry) => {
+      entry.project = 'other-project';
     },
   ]) {
-    const { api, state } = mockApi({ race });
-    assert.deepEqual(await reconcile({ api, dryRun: false, log: () => {} }), {
-      candidates: 0,
-      updated: 0,
-    });
-    assert.equal(state.reads, 2);
-    assert.equal(state.mutations.length, 0);
+    const f = board([triaged(1)], { onRead: race });
+    assert.deepEqual(
+      await reconcile({ api: f.api, dryRun: false, log: () => {} }),
+      { candidates: 0, updated: 0 },
+    );
+    assert.deepEqual(f.reads, ['item-1']);
+    assert.equal(f.mutations.length, 0);
   }
 });
 
-test('issue filter limits dry-run and apply to the requested issue and leaves another eligible issue untouched', async () => {
+test('an issue run reads only that issue and leaves another eligible issue untouched', async () => {
+  const filler = Array.from({ length: 250 }, (_, index) =>
+    triaged(index + 100, { status: 'Ready' }),
+  );
   for (const issueNumber of [1, 2]) {
-    const { api, state } = mockApi({ additionalIssue: true });
+    const f = board([triaged(1), triaged(2), ...filler]);
     const logs = [];
     assert.deepEqual(
-      await reconcile({ api, issueNumber, log: (line) => logs.push(line) }),
+      await reconcile({
+        api: f.api,
+        issueNumber,
+        log: (line) => logs.push(line),
+      }),
       { candidates: 1, updated: 0 },
     );
-    assert.equal(state.mutations.length, 0);
-    assert.equal(state.status, 'Inbox');
-    assert.equal(state.otherStatus, 'Inbox');
+    assert.equal(f.mutations.length, 0);
     assert.match(logs[0], new RegExp(`issue #${issueNumber} Inbox -> Ready`));
-    const selectedId = issueNumber === 1 ? 'item' : 'item-2';
-    assert.deepEqual(state.readItems, [selectedId, selectedId]);
+    const selected = `item-${issueNumber}`;
+    assert.deepEqual(f.reads, [selected]);
+    assert.equal(f.count('items(first: 100'), 0);
     assert.deepEqual(
-      await reconcile({ api, issueNumber, dryRun: false, log: () => {} }),
+      await reconcile({
+        api: f.api,
+        issueNumber,
+        dryRun: false,
+        log: () => {},
+      }),
       { candidates: 1, updated: 1 },
     );
     assert.deepEqual(
-      state.mutations.map((mutation) => mutation.item),
-      [selectedId],
+      f.mutations.map((mutation) => mutation.item),
+      [selected],
     );
-    assert.equal(issueNumber === 1 ? state.otherStatus : state.status, 'Inbox');
+    assert.equal(f.items.get(`item-${3 - issueNumber}`).status, 'Inbox');
     assert.deepEqual(
-      await reconcile({ api, issueNumber, dryRun: false, log: () => {} }),
+      await reconcile({
+        api: f.api,
+        issueNumber,
+        dryRun: false,
+        log: () => {},
+      }),
       { candidates: 0, updated: 0 },
     );
-    assert.ok(state.readItems.every((id) => id === selectedId));
-    // Project-wide reconciliation still processes the remaining eligible issue.
-    assert.deepEqual(await reconcile({ api, dryRun: false, log: () => {} }), {
-      candidates: 1,
-      updated: 1,
-    });
-    assert.equal(state.status, 'Ready');
-    assert.equal(state.otherStatus, 'Ready');
+    assert.ok(f.reads.every((id) => id === selected));
+    assert.equal(f.count('items(first: 100'), 0);
+    // A sweep still processes the remaining eligible issue.
+    assert.deepEqual(
+      await reconcile({ api: f.api, dryRun: false, log: () => {} }),
+      { candidates: 1, updated: 1 },
+    );
+    assert.equal(f.items.get('item-1').status, 'Ready');
+    assert.equal(f.items.get('item-2').status, 'Ready');
   }
 });
 
-test('a missing issue filter match reads no individual issue metadata and performs no writes', async () => {
-  const { api, state } = mockApi({ additionalIssue: true });
+test('an issue run costs the same few queries whatever the project size', async () => {
+  for (const size of [0, 250]) {
+    const f = board([
+      triaged(1),
+      ...Array.from({ length: size }, (_, index) =>
+        triaged(index + 100, { status: 'Ready' }),
+      ),
+    ]);
+    await run({ api: f.api, issueNumber: 1, dryRun: false, log() {} });
+    // Discovery, the issue with its item, the two-query re-read, the move.
+    assert.equal(f.calls.length, 5, `project of ${size + 1}`);
+    assert.equal(f.count('items(first: 100'), 0);
+    assert.equal(f.count('labels: ["epic"]'), 0);
+    assert.equal(f.items.get('item-1').status, 'Ready');
+  }
+});
+
+test('an issue run for a missing issue or one off the project reads nothing more and writes nothing', async () => {
+  const f = board([triaged(1), triaged(4, { project: 'other-project' })]);
+  const logs = [];
+  await run({
+    api: f.api,
+    issueNumber: 3,
+    dryRun: false,
+    log: (line) => logs.push(line),
+  });
+  assert.ok(logs.includes('Issue #3 is unavailable; nothing to triage'));
+  await run({ api: f.api, issueNumber: 4, dryRun: false, log() {} });
   assert.deepEqual(
-    await reconcile({ api, issueNumber: 3, dryRun: false, log: () => {} }),
+    await reconcile({ api: f.api, issueNumber: 3, dryRun: false, log() {} }),
     { candidates: 0, updated: 0 },
   );
-  assert.deepEqual(state.readItems, []);
-  assert.deepEqual(state.mutations, []);
+  assert.deepEqual(f.reads, []);
+  assert.deepEqual(f.mutations, []);
+  assert.equal(f.count('items(first: 100'), 0);
 });
 
 test('issue filter is rechecked against fresh issue metadata before mutation', async () => {
-  const { api, state } = mockApi({
-    race: (_fields, state) => {
-      state.renumbered = true;
+  const f = board([triaged(1)], {
+    onRead: (entry) => {
+      entry.number = 2;
     },
   });
   assert.deepEqual(
-    await reconcile({ api, issueNumber: 1, dryRun: false, log: () => {} }),
+    await reconcile({ api: f.api, issueNumber: 1, dryRun: false, log() {} }),
     { candidates: 0, updated: 0 },
   );
-  assert.deepEqual(state.mutations, []);
+  assert.deepEqual(f.mutations, []);
 });
-
 test('deleted project items and moved project membership cannot mutate', async () => {
   for (const node of [null, { ...issue(), project: { id: 'other-project' } }]) {
     assert.equal(
@@ -395,7 +597,7 @@ test('deleted project items and moved project membership cannot mutate', async (
 });
 
 test('discovery fails closed for missing or ambiguous field options', async () => {
-  const { api, definitions } = mockApi();
+  const { api, definitions } = board([]);
   definitions[0].options = definitions[0].options.filter(
     (option) => option.name !== 'Ready',
   );
@@ -404,6 +606,354 @@ test('discovery fails closed for missing or ambiguous field options', async () =
   await assert.rejects(discover(api), /Expected one Status/);
 });
 
+test('closed issues move to Done, reopened issues leave Done, and everything else stays', async () => {
+  const f = board([
+    { number: 1, state: 'CLOSED', status: 'In review' },
+    { number: 2, state: 'CLOSED', status: 'Ready' },
+    { number: 3, state: 'CLOSED' },
+    { number: 4, state: 'CLOSED', status: 'Done' },
+    { number: 5, state: 'OPEN', status: 'In review' },
+    { number: 6, state: 'MERGED', type: 'PULL_REQUEST' },
+    { number: 7, state: 'CLOSED', status: 'Ready', repository: 'other/repo' },
+    { number: 8, state: 'OPEN', status: 'Done' },
+    { number: 9, state: 'OPEN' },
+  ]);
+  const lines = [];
+  assert.deepEqual(
+    await reconcileDone({
+      api: f.api,
+      dryRun: false,
+      log: (line) => lines.push(line),
+    }),
+    { candidates: 4, updated: 4 },
+  );
+  assert.deepEqual(f.reads, ['item-1', 'item-2', 'item-3', 'item-8']);
+  assert.deepEqual(
+    f.mutations,
+    [
+      ['item-1', 'Done'],
+      ['item-2', 'Done'],
+      ['item-3', 'Done'],
+      ['item-8', 'Ready'],
+    ].map(([item, status]) => ({
+      project: 'project',
+      item,
+      field: 'field-Status',
+      option: `option-${status}`,
+    })),
+  );
+  assert.deepEqual(lines, [
+    'Moving closed issue #1 In review -> Done',
+    'Moving closed issue #2 Ready -> Done',
+    'Moving closed issue #3 without Status -> Done',
+    'Moving reopened issue #8 Done -> Ready',
+    'Done reconciliation: 4 eligible, 4 updated; DRY_RUN=false',
+  ]);
+  const again = await reconcileDone({ api: f.api, dryRun: false, log() {} });
+  assert.deepEqual(again, { candidates: 0, updated: 0 });
+});
+
+test('Done reconciliation dry-runs, honors the issue filter, and re-reads before writing', async () => {
+  const dry = board([{ number: 1, state: 'CLOSED', status: 'In review' }]);
+  const lines = [];
+  assert.deepEqual(
+    await reconcileDone({ api: dry.api, log: (line) => lines.push(line) }),
+    { candidates: 1, updated: 0 },
+  );
+  assert.deepEqual(dry.mutations, []);
+  assert.equal(
+    lines[0],
+    'DRY_RUN would move closed issue #1 In review -> Done',
+  );
+
+  const filtered = board([
+    { number: 1, state: 'CLOSED', status: 'In review' },
+    { number: 2, state: 'CLOSED', status: 'In review' },
+  ]);
+  await reconcileDone({
+    api: filtered.api,
+    dryRun: false,
+    issueNumber: 2,
+    log() {},
+  });
+  assert.deepEqual(filtered.reads, ['item-2']);
+  assert.equal(filtered.count('items(first: 100'), 0);
+  assert.deepEqual(
+    filtered.mutations.map((m) => m.item),
+    ['item-2'],
+  );
+
+  const changes = {
+    'item-1': { state: 'OPEN' },
+    'item-2': { status: 'Done' },
+    'item-3': { state: 'CLOSED' },
+  };
+  const raced = board(
+    [
+      { number: 1, state: 'CLOSED', status: 'In review' },
+      { number: 2, state: 'CLOSED', status: 'In review' },
+      { number: 3, state: 'OPEN', status: 'Done' },
+    ],
+    { onRead: (entry, id) => Object.assign(entry, changes[id]) },
+  );
+  assert.deepEqual(
+    await reconcileDone({ api: raced.api, dryRun: false, log() {} }),
+    { candidates: 0, updated: 0 },
+  );
+  assert.deepEqual(raced.mutations, []);
+
+  await assert.rejects(
+    reconcileDone({ api: dry.api, issueNumber: 0 }),
+    /positive safe integer/,
+  );
+});
+
+test('the command-line run shares one discovery and one listing across every pass', async () => {
+  const f = board([
+    { number: 1, state: 'CLOSED', status: 'In review' },
+    triaged(2),
+  ]);
+  const lines = [];
+  await run({ api: f.api, dryRun: false, log: (line) => lines.push(line) });
+  assert.equal(f.count('projectV2(number: 2)'), 1);
+  assert.equal(f.count('items(first: 100'), 1);
+  assert.deepEqual(
+    f.mutations.map((m) => [m.item, m.option]),
+    [
+      ['item-2', 'option-Ready'],
+      ['item-1', 'option-Done'],
+    ],
+  );
+  assert.equal(
+    lines.at(-1),
+    'Done reconciliation: 1 eligible, 1 updated; DRY_RUN=false',
+  );
+});
+
+test('an issue run moves its closed issue to Done without listing the project', async () => {
+  const f = board([
+    { number: 1, state: 'CLOSED', status: 'In review' },
+    { number: 2, state: 'CLOSED', status: 'In review' },
+  ]);
+  await run({ api: f.api, issueNumber: 1, dryRun: false, log() {} });
+  assert.equal(f.count('items(first: 100'), 0);
+  assert.deepEqual(
+    f.mutations.map((m) => [m.item, m.option]),
+    [['item-1', 'option-Done']],
+  );
+});
+
+test('epic label reconciliation removes conflicting category labels in a sweep and an issue run', async () => {
+  const entries = () => [
+    triaged(5, {
+      status: 'Ready',
+      labels: ['epic', 'bug', 'type: feature', 'area: tracker'],
+    }),
+    triaged(6, { status: 'Ready', labels: ['bug', 'type: feature'] }),
+  ];
+  const dry = board(entries());
+  const lines = [];
+  await reconcileEpicLabels({ api: dry.api, log: (line) => lines.push(line) });
+  assert.deepEqual(dry.removed, []);
+  assert.deepEqual(lines, [
+    'DRY_RUN would remove 2 conflicting category labels from epic #5',
+  ]);
+
+  const sweep = board(entries());
+  await run({ api: sweep.api, dryRun: false, log() {} });
+  assert.deepEqual(sweep.removed, [
+    { id: 'issue-5', labels: ['label-bug', 'label-type: feature'] },
+  ]);
+  assert.deepEqual(sweep.items.get('item-6').labels, ['bug', 'type: feature']);
+
+  const event = board(entries());
+  await run({ api: event.api, issueNumber: 5, dryRun: false, log() {} });
+  assert.equal(event.count('labels: ["epic"]'), 0);
+  assert.deepEqual(event.removed, sweep.removed);
+  await run({ api: event.api, issueNumber: 6, dryRun: false, log() {} });
+  assert.equal(event.removed.length, 1);
+
+  const direct = board(entries());
+  await reconcileEpicLabels({
+    api: direct.api,
+    issueNumber: 5,
+    dryRun: false,
+    log() {},
+  });
+  assert.equal(direct.count('labels: ["epic"]'), 0);
+  assert.deepEqual(direct.removed, sweep.removed);
+});
+
+function rateLimitError() {
+  return new GitHubApiError(
+    'GitHub GraphQL request failed: RATE_LIMIT: API rate limit already exceeded for user ID 1. GitHub rate limit reached; it resets at 2026-10-16T05:00:00Z.',
+    { kind: 'rate_limit' },
+  );
+}
+
+test('a sweep logs the GraphQL points before and after, and skips under the minimum', async () => {
+  const f = board([], {
+    rateLimits: [
+      { remaining: 4000, resetAt: 'r' },
+      { remaining: 3990, resetAt: 'r' },
+    ],
+  });
+  const logs = [];
+  let runs = 0;
+  const work = async () => {
+    runs++;
+  };
+  assert.equal(
+    await withinBudget(work, {
+      api: f.api,
+      name: 'Triage',
+      log: (line) => logs.push(line),
+      warn: assert.fail,
+    }),
+    'done',
+  );
+  assert.equal(runs, 1);
+  assert.deepEqual(logs, [
+    'Triage sweep GraphQL points: 4000 remaining before, 3990 after, 10 used, counting other clients of the token',
+  ]);
+
+  const reset = board([], {
+    rateLimits: [
+      { remaining: 1200, resetAt: 'r1' },
+      { remaining: 4990, resetAt: 'r2' },
+    ],
+  });
+  logs.length = 0;
+  await withinBudget(work, {
+    api: reset.api,
+    name: 'Container',
+    log: (line) => logs.push(line),
+  });
+  assert.deepEqual(logs, [
+    'Container sweep GraphQL points: 1200 remaining before, 4990 after the budget reset at r1',
+  ]);
+
+  const low = board([], {
+    rateLimits: [{ remaining: MIN_REMAINING - 1, resetAt: 'r' }],
+  });
+  const warnings = [];
+  assert.equal(
+    await withinBudget(work, {
+      api: low.api,
+      name: 'Triage',
+      log: assert.fail,
+      warn: (line) => warnings.push(line),
+    }),
+    'skipped',
+  );
+  assert.equal(runs, 2);
+  assert.equal(low.calls.length, 1);
+  assert.deepEqual(warnings, [
+    'Triage sweep skipped: 999 GraphQL points remain, under 1000. The budget resets at r.',
+  ]);
+});
+
+test('a sweep fails on any error, including the rate limit', async () => {
+  for (const error of [rateLimitError(), new Error('boom')]) {
+    const f = board([]);
+    await assert.rejects(
+      withinBudget(
+        async () => {
+          throw error;
+        },
+        { api: f.api, name: 'Triage', log() {}, warn: assert.fail },
+      ),
+      error,
+    );
+  }
+});
+
+test('an issue run warns and succeeds on the rate limit and fails on other errors', async () => {
+  const api = () => assert.fail('an issue run reads no rate limit');
+  const warnings = [];
+  assert.equal(
+    await withinBudget(
+      async () => {
+        throw rateLimitError();
+      },
+      {
+        api,
+        issueNumber: 7,
+        name: 'Triage',
+        log: assert.fail,
+        warn: (line) => warnings.push(line),
+      },
+    ),
+    'rate-limited',
+  );
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /^Triage skipped issue #7: GitHub GraphQL/);
+  assert.match(warnings[0], /The next scheduled sweep reconciles it\.$/);
+  for (const error of [
+    new GitHubApiError('denied', { kind: 'auth' }),
+    new Error('boom'),
+  ])
+    await assert.rejects(
+      withinBudget(
+        async () => {
+          throw error;
+        },
+        { api, issueNumber: 7, name: 'Triage', warn: assert.fail },
+      ),
+      error,
+    );
+  assert.equal(
+    await withinBudget(async () => {}, {
+      api,
+      issueNumber: 7,
+      name: 'Triage',
+    }),
+    'done',
+  );
+});
+
+test('both scripts exit 0 with a warning when an issue run hits the rate limit, and 1 for a sweep', (t) => {
+  if (process.platform === 'win32')
+    return t.skip('the fake gh is a shell script');
+  const directory = mkdtempSync(join(tmpdir(), 'issue-triage-test-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const response = join(directory, 'response.txt');
+  writeFileSync(
+    response,
+    `HTTP/2.0 200 OK\nX-Ratelimit-Remaining: 0\r\n\r\n${JSON.stringify({
+      errors: [
+        { type: 'RATE_LIMIT', message: 'API rate limit already exceeded.' },
+      ],
+    })}`,
+  );
+  const gh = join(directory, 'gh');
+  writeFileSync(
+    gh,
+    '#!/bin/sh\ncat > /dev/null\ncat "$FAKE_GH_RESPONSE"\nexit 1\n',
+  );
+  chmodSync(gh, 0o755);
+  for (const name of ['issue-triage.mjs', 'issue-containers.mjs']) {
+    const script = fileURLToPath(new URL(`./${name}`, import.meta.url));
+    const env = {
+      PATH: `${directory}:${process.env.PATH}`,
+      GH_TOKEN: 'token',
+      FAKE_GH_RESPONSE: response,
+    };
+    const event = spawnSync(process.execPath, [script, '--issue', '7'], {
+      env,
+      encoding: 'utf8',
+    });
+    assert.equal(event.status, 0, `${name}: ${event.stderr}`);
+    assert.match(event.stdout, /^::warning::\S+ skipped issue #7: /m, name);
+    assert.equal(event.stderr, '', name);
+    const sweep = spawnSync(process.execPath, [script], {
+      env,
+      encoding: 'utf8',
+    });
+    assert.equal(sweep.status, 1, name);
+    assert.match(sweep.stderr, /RATE_LIMIT/, name);
+  }
+});
 test('workflow requires its own project token and local defaults remain read-only', () => {
   assert.throws(
     () =>
@@ -502,236 +1052,6 @@ test('invalid programmatic issue filters fail before any API access', async () =
       /positive safe integer/,
     );
   }
-});
-
-// A board for reconcileDone and run. Each entry lists an issue's state and
-// Status, and `reread` changes an entry between the listing and the re-read.
-function doneBoard(entries, { reread = {} } = {}) {
-  const statuses = ['Inbox', 'Ready', 'In progress', 'In review', 'Done'];
-  const board = new Map(
-    entries.map((entry) => [`item-${entry.number}`, entry]),
-  );
-  const mutations = [];
-  const reads = [];
-  const listings = [];
-  const content = (entry) => ({
-    id: `issue-${entry.number}`,
-    __typename: entry.type === 'PULL_REQUEST' ? 'PullRequest' : 'Issue',
-    number: entry.number,
-    state: entry.state,
-    repository: { nameWithOwner: entry.repository ?? REPOSITORY },
-  });
-  const api = async (query, variables) => {
-    if (query.includes('projectV2(number: 2)'))
-      return {
-        user: {
-          projectV2: {
-            id: 'project',
-            fields: {
-              nodes: [
-                ...Object.entries({
-                  Status: statuses,
-                  Priority: ['P0', 'P1', 'P2', 'P3'],
-                  Size: ['XS', 'S', 'M', 'L'],
-                }).map(([name, options]) => ({
-                  id: `field-${name}`,
-                  name,
-                  options: options.map((option) => ({
-                    id: `option-${option}`,
-                    name: option,
-                  })),
-                })),
-              ],
-              pageInfo: { hasNextPage: false },
-            },
-          },
-        },
-      };
-    if (query.includes('labels: ["epic"]'))
-      return {
-        repository: { issues: { nodes: [], pageInfo: { hasNextPage: false } } },
-      };
-    if (query.includes('items(first:')) {
-      listings.push(query.includes('fieldValueByName(name: "Status")'));
-      return {
-        node: {
-          items: {
-            nodes: [...board].map(([id, entry]) => ({
-              id,
-              type: entry.type ?? 'ISSUE',
-              project: { id: 'project' },
-              content: content(entry),
-              fieldValueByName: entry.status ? { name: entry.status } : null,
-            })),
-            pageInfo: { hasNextPage: false },
-          },
-        },
-      };
-    }
-    if (query.includes('fieldValues(first:')) {
-      reads.push(variables.id);
-      const entry = { ...board.get(variables.id), ...reread[variables.id] };
-      board.set(variables.id, entry);
-      return {
-        node: {
-          id: variables.id,
-          type: 'ISSUE',
-          project: { id: 'project' },
-          content: content(entry),
-          fieldValues: {
-            nodes: entry.status
-              ? [
-                  {
-                    field: { id: 'field-Status' },
-                    optionId: `option-${entry.status}`,
-                  },
-                ]
-              : [],
-            pageInfo: { hasNextPage: false },
-          },
-        },
-      };
-    }
-    if (query.includes('labels(first:')) {
-      const entry = board.get(`item-${variables.id.slice('issue-'.length)}`);
-      return {
-        node: {
-          ...content(entry),
-          labels: { nodes: [], pageInfo: { hasNextPage: false } },
-        },
-      };
-    }
-    if (query.includes('updateProjectV2ItemFieldValue')) {
-      mutations.push(variables);
-      board.get(variables.item).status = variables.option.slice(
-        'option-'.length,
-      );
-      return {
-        updateProjectV2ItemFieldValue: {
-          projectV2Item: { id: variables.item },
-        },
-      };
-    }
-    throw new Error('Unexpected mock query');
-  };
-  return { api, board, mutations, reads, listings };
-}
-
-test('closed issues move to Done, reopened issues leave Done, and everything else stays', async () => {
-  const f = doneBoard([
-    { number: 1, state: 'CLOSED', status: 'In review' },
-    { number: 2, state: 'CLOSED', status: 'Ready' },
-    { number: 3, state: 'CLOSED' },
-    { number: 4, state: 'CLOSED', status: 'Done' },
-    { number: 5, state: 'OPEN', status: 'In review' },
-    { number: 6, state: 'MERGED', type: 'PULL_REQUEST' },
-    { number: 7, state: 'CLOSED', status: 'Ready', repository: 'other/repo' },
-    { number: 8, state: 'OPEN', status: 'Done' },
-    { number: 9, state: 'OPEN' },
-  ]);
-  const lines = [];
-  assert.deepEqual(
-    await reconcileDone({
-      api: f.api,
-      dryRun: false,
-      log: (line) => lines.push(line),
-    }),
-    { candidates: 4, updated: 4 },
-  );
-  assert.deepEqual(f.reads, ['item-1', 'item-2', 'item-3', 'item-8']);
-  assert.deepEqual(
-    f.mutations,
-    [
-      ['item-1', 'Done'],
-      ['item-2', 'Done'],
-      ['item-3', 'Done'],
-      ['item-8', 'Ready'],
-    ].map(([item, status]) => ({
-      project: 'project',
-      item,
-      field: 'field-Status',
-      option: `option-${status}`,
-    })),
-  );
-  assert.deepEqual(lines, [
-    'Moving closed issue #1 In review -> Done',
-    'Moving closed issue #2 Ready -> Done',
-    'Moving closed issue #3 without Status -> Done',
-    'Moving reopened issue #8 Done -> Ready',
-    'Done reconciliation: 4 eligible, 4 updated; DRY_RUN=false',
-  ]);
-  const again = await reconcileDone({ api: f.api, dryRun: false, log() {} });
-  assert.deepEqual(again, { candidates: 0, updated: 0 });
-});
-
-test('Done reconciliation dry-runs, honors the issue filter, and re-reads before writing', async () => {
-  const dry = doneBoard([{ number: 1, state: 'CLOSED', status: 'In review' }]);
-  const lines = [];
-  assert.deepEqual(
-    await reconcileDone({ api: dry.api, log: (line) => lines.push(line) }),
-    { candidates: 1, updated: 0 },
-  );
-  assert.deepEqual(dry.mutations, []);
-  assert.equal(
-    lines[0],
-    'DRY_RUN would move closed issue #1 In review -> Done',
-  );
-
-  const filtered = doneBoard([
-    { number: 1, state: 'CLOSED', status: 'In review' },
-    { number: 2, state: 'CLOSED', status: 'In review' },
-  ]);
-  await reconcileDone({
-    api: filtered.api,
-    dryRun: false,
-    issueNumber: 2,
-    log() {},
-  });
-  assert.deepEqual(filtered.reads, ['item-2']);
-  assert.deepEqual(
-    filtered.mutations.map((m) => m.item),
-    ['item-2'],
-  );
-
-  const raced = doneBoard(
-    [
-      { number: 1, state: 'CLOSED', status: 'In review' },
-      { number: 2, state: 'CLOSED', status: 'In review' },
-      { number: 3, state: 'OPEN', status: 'Done' },
-    ],
-    {
-      reread: {
-        'item-1': { state: 'OPEN' },
-        'item-2': { status: 'Done' },
-        'item-3': { state: 'CLOSED' },
-      },
-    },
-  );
-  assert.deepEqual(
-    await reconcileDone({ api: raced.api, dryRun: false, log() {} }),
-    { candidates: 0, updated: 0 },
-  );
-  assert.deepEqual(raced.mutations, []);
-
-  await assert.rejects(
-    reconcileDone({ api: dry.api, issueNumber: 0 }),
-    /positive safe integer/,
-  );
-});
-
-test('the command-line run includes the Done pass', async () => {
-  const f = doneBoard([{ number: 1, state: 'CLOSED', status: 'In review' }]);
-  const lines = [];
-  await run({ api: f.api, dryRun: false, log: (line) => lines.push(line) });
-  assert.deepEqual(f.listings, [false, true]);
-  assert.deepEqual(
-    f.mutations.map((m) => [m.item, m.option]),
-    [['item-1', 'option-Done']],
-  );
-  assert.equal(
-    lines.at(-1),
-    'Done reconciliation: 1 eligible, 1 updated; DRY_RUN=false',
-  );
 });
 
 test('catalog has unique names, supported severities, and all directly affected workspace labels', () => {
