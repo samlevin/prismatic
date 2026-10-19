@@ -141,6 +141,7 @@ export const stylePhrases: readonly StylePhrase[] = [
 
 const emDash = '\u2014';
 const emDashes = /\u2014/g;
+const paragraphBreak = /\n[ \t]*\n/g;
 const wordCharacter = /[\p{L}\p{N}_]/u;
 const emDashBefore = /[\p{L}\p{N}`)"'\u2019\u201D]/u;
 const emDashAfter = /[\p{L}\p{N}`("'\u2018\u201C]/u;
@@ -282,11 +283,18 @@ function phrasePattern(text: string): string {
 const compiled: readonly CompiledPhrase[] = stylePhrases.map((phrase) => {
   const pattern = phrasePattern(phrase.text);
   // `As an AI` matches only as written, so "runs as an AI agent" passes.
-  const flags = phrase.rule === 'self-reference' ? 'u' : 'iu';
+  if (phrase.rule !== 'self-reference') {
+    return {
+      phrase,
+      anywhere: new RegExp(pattern, 'giu'),
+      sticky: new RegExp(pattern, 'iuy'),
+    };
+  }
+  // At a sentence start an earlier removal can leave `as an AI` in lower case.
   return {
     phrase,
-    anywhere: new RegExp(pattern, `g${flags}`),
-    sticky: new RegExp(pattern, `y${flags}`),
+    anywhere: new RegExp(pattern, 'gu'),
+    sticky: new RegExp(pattern.replace('As', '[Aa]s'), 'uy'),
   };
 });
 
@@ -516,21 +524,21 @@ function separatorEnd(
 // An em dash between two words becomes a comma. One at a line edge or beside
 // punctuation stays. So does one that may mark a range: beside a token with a
 // digit or before a capital (`v1 — v3`, `Monday—Friday`). When one em dash in
-// a line stays, every em dash in that line stays, so a dash pair is never
-// half converted.
+// a paragraph stays, every em dash in that paragraph stays, so a dash pair is
+// never half converted, even across a soft line break.
 function emDashEdits(text: string, prose: Uint8Array): Edit[] {
   const edits: Edit[] = [];
-  let line: Edit[] = [];
-  let lineKept = false;
-  let lineEnd = -1;
+  let paragraph: Edit[] = [];
+  let paragraphKept = false;
+  let paragraphEnd = -1;
   for (const { index } of text.matchAll(emDashes)) {
     if (!prose[index]) continue;
-    if (index > lineEnd) {
-      if (!lineKept) edits.push(...line);
-      line = [];
-      lineKept = false;
-      lineEnd = text.indexOf('\n', index);
-      if (lineEnd === -1) lineEnd = text.length;
+    if (index > paragraphEnd) {
+      if (!paragraphKept) edits.push(...paragraph);
+      paragraph = [];
+      paragraphKept = false;
+      paragraphBreak.lastIndex = index;
+      paragraphEnd = paragraphBreak.exec(text)?.index ?? text.length;
     }
     let start = index;
     let end = index + 1;
@@ -546,12 +554,12 @@ function emDashEdits(text: string, prose: Uint8Array): Edit[] {
       !tokenHasDigit(text, start - 1, -1) &&
       !tokenHasDigit(text, end, 1)
     ) {
-      line.push({ start, end, replacement: ', ' });
+      paragraph.push({ start, end, replacement: ', ' });
     } else {
-      lineKept = true;
+      paragraphKept = true;
     }
   }
-  if (!lineKept) edits.push(...line);
+  if (!paragraphKept) edits.push(...paragraph);
   return edits;
 }
 

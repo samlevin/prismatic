@@ -190,6 +190,7 @@ describe('format: factual content', () => {
     '```ts\nconst x = 1; // Hint: keep\n```\nHonestly, line 4 is wrong.',
     'Actually, `foo`—`bar` both return 404.',
     'Actually—the key leaks.',
+    "Honestly, as an AI, I can't run the tests.",
   ];
 
   it.each(samples)('keeps every code span and number in %j', (sample) => {
@@ -207,8 +208,20 @@ describe('format: factual content', () => {
     expect(format('Actually—the key leaks.')).toBe('The key leaks.');
   });
 
-  it('converts a dash in one line when another line keeps its own', () => {
-    expect(format('a—b\n2—3')).toBe('a, b\n2—3');
+  it('removes a self-identification a removed opener left in lower case', () => {
+    expect(format("Honestly, as an AI, I can't run the tests.")).toBe(
+      "I can't run the tests.",
+    );
+  });
+
+  it('keeps a dash pair split across a soft line break', () => {
+    expect(format('The fix—added in\nv2—works.')).toBe(
+      'The fix—added in\nv2—works.',
+    );
+  });
+
+  it('converts a dash in one paragraph when another keeps its own', () => {
+    expect(format('a—b\n\n2—3')).toBe('a, b\n\n2—3');
   });
 
   it('leaves clean text unchanged', () => {
