@@ -45,6 +45,17 @@ test('workflow files, workflow names, and job names match the convention', () =>
         name: 'CI: secret scan',
         jobs: { 'scan-secrets': 'Scan commits for secrets' },
       },
+      'ci-security.yml': {
+        name: 'CI: supply-chain security',
+        jobs: {
+          'review-dependencies': 'Review dependency changes',
+          'audit-npm': 'Audit npm advisories and licenses',
+          'audit-process-patterns':
+            'Audit shipped code for dangerous process patterns',
+          'verify-binaries': 'Verify pinned native binary checksums',
+          'scan-image': 'Scan the Action image and record SBOMs',
+        },
+      },
       'tracker-issue-states.yml': {
         name: 'Tracker: reconcile issue states',
         jobs: { 'reconcile-issues': 'Reconcile issue project states' },

@@ -1,0 +1,19 @@
+{
+  "allowed": [
+    "MIT",
+    "ISC",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BlueOak-1.0.0",
+    "MPL-2.0"
+  ],
+  "exceptions": [
+    {
+      "package": "format",
+      "version": "0.2.2",
+      "license": "MIT",
+      "reason": "The package.json of format 0.2.2 declares MIT in the deprecated licenses array, which npm does not copy into package-lock.json."
+    }
+  ]
+}

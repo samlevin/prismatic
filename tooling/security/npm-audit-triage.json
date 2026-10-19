@@ -1,0 +1,10 @@
+{
+  "advisories": [
+    {
+      "id": "GHSA-238p-pmpm-9mq7",
+      "package": "katex",
+      "reason": "Development only: @eslint/markdown 8.0.3, the latest release, depends on micromark-extension-math, which depends on katex. The Markdown lint parses math syntax and never renders KaTeX, and katex is not in the Action image. The only fix npm offers downgrades @eslint/markdown to 7.5.1.",
+      "expires": "2027-01-19"
+    }
+  ]
+}

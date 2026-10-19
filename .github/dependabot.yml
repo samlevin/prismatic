@@ -1,0 +1,53 @@
+# Dependabot proposes updates as pull requests, which merge only after review
+# like any other change. A version is offered only after it has been public
+# for a week, which gives a compromised release time to be caught and pulled.
+# Security updates skip that wait.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+      include: scope
+    labels: ['area: repository']
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # @types/node follows the Node.js major in .tool-versions and the
+      # Dockerfile, which moves on purpose, not by update.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+      include: scope
+    labels: ['area: repository']
+    groups:
+      github-actions:
+        patterns: ['*']
+
+  # The Dockerfile base image, pinned by tag and index digest.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+      include: scope
+    labels: ['area: repository']
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']

@@ -1,0 +1,11 @@
+# Native tools the `CI: supply-chain security` workflow downloads, in the
+# docker/binaries.lock format. docker/fetch-pinned.sh refuses any file whose
+# SHA-256 differs from the one recorded here. None of them enters the Action
+# image.
+#
+# Fields, separated by spaces: name, version, platform, sha256, url.
+
+# Trivy, the image vulnerability, secret, and SBOM scanner. Checksum from the
+# digest GitHub records for the release asset, which matches the release's
+# trivy_<version>_checksums.txt.
+trivy 0.76.0 linux/amd64 e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7 https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.tar.gz

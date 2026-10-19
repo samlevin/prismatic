@@ -1,0 +1,137 @@
+name: 'CI: supply-chain security'
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Advisories and upstream artifacts change without a commit here.
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-security-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  review-dependencies:
+    name: Review dependency changes
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail on added dependencies with known advisories
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          comment-summary-in-pr: never
+
+  audit-npm:
+    name: Audit npm advisories and licenses
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .tool-versions
+      # npm exits non-zero whenever it reports an advisory, so the triage
+      # script decides, and it fails on a report npm could not produce.
+      - name: Check npm advisories against the triage list
+        run: |
+          npm audit --json > "$RUNNER_TEMP/npm-audit.json" || true
+          node tooling/security/NpmAuditTriage.ts "$RUNNER_TEMP/npm-audit.json"
+      - name: Check dependency licenses against the policy
+        if: ${{ !cancelled() }}
+        run: node tooling/security/LicenseAudit.ts
+
+  audit-process-patterns:
+    name: Audit shipped code for dangerous process patterns
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .tool-versions
+          cache: npm
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Audit process and code-loading patterns
+        run: node tooling/security/ProcessPatternAudit.ts
+
+  verify-binaries:
+    name: Verify pinned native binary checksums
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Download every locked artifact and check its SHA-256
+        run: |
+          for lock in docker/binaries.lock tooling/security/tools.lock; do
+            grep -Ev '^[[:space:]]*(#|$)' "$lock" |
+              while read -r name _ platform _; do
+                sh docker/fetch-pinned.sh "$lock" "$name" "$platform" "$RUNNER_TEMP/artifact"
+                rm -f "$RUNNER_TEMP/artifact"
+              done
+          done
+
+  scan-image:
+    name: Scan the Action image and record SBOMs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: prismatic-security-scan:ci
+      TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+      TRIVY_NO_PROGRESS: 'true'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .tool-versions
+      - name: Install the pinned Trivy
+        run: |
+          sh docker/fetch-pinned.sh tooling/security/tools.lock trivy linux/amd64 "$RUNNER_TEMP/trivy.tar.gz"
+          mkdir "$RUNNER_TEMP/trivy"
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP/trivy" trivy
+          expected="Version: $(awk '$1 == "trivy" { print $2; exit }' tooling/security/tools.lock)"
+          test "$("$RUNNER_TEMP/trivy/trivy" --version | head -n 1)" = "$expected"
+          echo "$RUNNER_TEMP/trivy" >> "$GITHUB_PATH"
+      # The build checks Git and ast-grep against docker/binaries.lock.
+      - name: Build the Action image
+        run: docker build --tag "$IMAGE" .
+      - name: Generate the npm and image SBOMs
+        run: |
+          mkdir "$RUNNER_TEMP/sbom"
+          npm sbom --sbom-format cyclonedx --package-lock-only > "$RUNNER_TEMP/sbom/npm.cdx.json"
+          trivy image --format cyclonedx --output "$RUNNER_TEMP/sbom/image.cdx.json" "$IMAGE"
+      - name: Upload the SBOMs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom
+          path: ${{ runner.temp }}/sbom/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Scan the image for secrets
+        run: trivy image --scanners secret --exit-code 1 "$IMAGE"
+      - name: Scan the image for fixable high and critical vulnerabilities
+        if: ${{ !cancelled() }}
+        run: trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
