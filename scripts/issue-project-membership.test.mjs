@@ -159,15 +159,19 @@ test('an issue already on the board without a Status gets Inbox', async () => {
   assert.deepEqual(statusWrites(f), ['OPT_INBOX']);
 });
 
-test('adds a pull request without setting a Status', async () => {
-  const f = fixture({ content: { __typename: 'PullRequest', id: 'PR_9' } });
-  await addToProject({ ...f, number: 9, dryRun: false });
-  assert.deepEqual(f.writes, [{ project: 'PVT_1', content: 'PR_9' }]);
-  assert.equal(f.items.get('PR_9').status, undefined);
-  assert.deepEqual(f.lines, [
-    'Added pull request #9 to Prismatic delivery as item PVTI_1.',
-  ]);
-  assert.ok(f.calls.every((call) => !/fields\(first: 100/.test(call.query)));
+test('a pull request is skipped without writing', async () => {
+  for (const dryRun of [false, true]) {
+    const f = fixture({
+      content: { __typename: 'PullRequest', id: 'PR_9' },
+      statusOptions: [],
+    });
+    assert.equal(await addToProject({ ...f, number: 9, dryRun }), null);
+    assert.deepEqual(f.writes, []);
+    assert.equal(f.calls.length, 1);
+    assert.deepEqual(f.lines, [
+      'Skipped pull request #9; only issues go on the board.',
+    ]);
+  }
 });
 
 test('adding content already in the project returns the same item', async () => {
@@ -195,11 +199,6 @@ test('dry runs report the planned Status but never write', async () => {
       { existing: { I_1: { id: 'PVTI_5', status: 'OPT_READY' } } },
       7,
       'DRY_RUN would keep issue #7 as item PVTI_5 with Status Ready.',
-    ],
-    [
-      { content: { __typename: 'PullRequest', id: 'PR_9' } },
-      9,
-      'DRY_RUN would add pull request #9 to Prismatic delivery.',
     ],
   ]) {
     const f = fixture(options);
@@ -241,17 +240,6 @@ test('a missing Status field or Inbox option fails an issue before writing', asy
   assert.deepEqual(f.writes, []);
 });
 
-test('a pull request does not need the Status field', async () => {
-  const f = fixture({
-    content: { __typename: 'PullRequest', id: 'PR_9' },
-    statusOptions: [],
-  });
-  assert.equal(
-    await addToProject({ ...f, number: 9, dryRun: false }),
-    'PVTI_1',
-  );
-});
-
 test('missing content, a missing or closed project, and bad numbers fail before writing', async () => {
   for (const [options, message] of [
     [{ content: null }, /#7 not found in samlevin\/prismatic/],
@@ -269,7 +257,7 @@ test('missing content, a missing or closed project, and bad numbers fail before 
     const f = fixture();
     await assert.rejects(
       addToProject({ ...f, number, dryRun: false }),
-      /positive issue or pull request number/,
+      /positive issue number/,
     );
     assert.deepEqual(f.calls, []);
   }
@@ -289,7 +277,7 @@ test('a mutation without an item fails', async () => {
 });
 
 test('configuration requires the token and repository in Actions and defaults to a dry run', () => {
-  assert.deepEqual(configuration({ ISSUE_OR_PR_NUMBER: '12' }), {
+  assert.deepEqual(configuration({ ISSUE_NUMBER: '12' }), {
     number: 12,
     dryRun: true,
   });
@@ -298,7 +286,7 @@ test('configuration requires the token and repository in Actions and defaults to
       GITHUB_ACTIONS: 'true',
       GITHUB_REPOSITORY: 'samlevin/prismatic',
       PRISMATIC_PROJECT_TOKEN: 'token',
-      ISSUE_OR_PR_NUMBER: '12',
+      ISSUE_NUMBER: '12',
       DRY_RUN: 'false',
     }),
     { number: 12, dryRun: false },
@@ -307,16 +295,16 @@ test('configuration requires the token and repository in Actions and defaults to
     GITHUB_ACTIONS: 'true',
     GITHUB_REPOSITORY: 'samlevin/prismatic',
     PRISMATIC_PROJECT_TOKEN: 'token',
-    ISSUE_OR_PR_NUMBER: '12',
+    ISSUE_NUMBER: '12',
   };
   for (const [env, message] of [
     [{ ...actions, PRISMATIC_PROJECT_TOKEN: '' }, /PRISMATIC_PROJECT_TOKEN/],
     [{ ...actions, GITHUB_REPOSITORY: 'other/repo' }, /Unexpected repository/],
-    [{ ISSUE_OR_PR_NUMBER: '12', DRY_RUN: 'yes' }, /DRY_RUN/],
-    [{}, /ISSUE_OR_PR_NUMBER/],
-    [{ ISSUE_OR_PR_NUMBER: '0' }, /ISSUE_OR_PR_NUMBER/],
-    [{ ISSUE_OR_PR_NUMBER: '12abc' }, /ISSUE_OR_PR_NUMBER/],
-    [{ ISSUE_OR_PR_NUMBER: '99999999999999999999' }, /ISSUE_OR_PR_NUMBER/],
+    [{ ISSUE_NUMBER: '12', DRY_RUN: 'yes' }, /DRY_RUN/],
+    [{}, /ISSUE_NUMBER/],
+    [{ ISSUE_NUMBER: '0' }, /ISSUE_NUMBER/],
+    [{ ISSUE_NUMBER: '12abc' }, /ISSUE_NUMBER/],
+    [{ ISSUE_NUMBER: '99999999999999999999' }, /ISSUE_NUMBER/],
   ])
     assert.throws(() => configuration(env), message);
 });

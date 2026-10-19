@@ -418,7 +418,7 @@ test('every script that calls GitHub prints the shared message and exits non-zer
   const scripts = [
     ['issue-triage.mjs', []],
     ['issue-containers.mjs', []],
-    ['issue-project-membership.mjs', [], { ISSUE_OR_PR_NUMBER: '12' }],
+    ['issue-project-membership.mjs', [], { ISSUE_NUMBER: '12' }],
     ['issue-pr-metadata.mjs', [], { PR_NUMBER: '10' }],
     ['issue-pr-status.mjs', [], { PR_NUMBER: '10' }],
     ['branch-name.mjs', ['33']],

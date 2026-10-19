@@ -204,6 +204,69 @@ export async function reconcile({
   return { candidates, updated };
 }
 
+// Moves every closed issue on the board to Done, whatever its Status. The
+// project's built-in "Item closed" workflow is off, and the API cannot turn it
+// on. The listing carries each item's Status, so only issues that need the
+// move cost a per-item read.
+export async function reconcileClosed({
+  api,
+  dryRun = true,
+  issueNumber,
+  log = console.log,
+}) {
+  if (
+    issueNumber !== undefined &&
+    (!Number.isSafeInteger(issueNumber) || issueNumber <= 0)
+  )
+    throw new Error('--issue requires a positive safe integer');
+  const context = await discover(api, { Status: ['Done'] });
+  const items = await paginate(async (cursor) => {
+    const data = await api(
+      `query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2 {
+        items(first: 100, after: $cursor) { nodes { ${CONTENT}
+          fieldValueByName(name: "Status") {
+            ... on ProjectV2ItemFieldSingleSelectValue { name }
+          }
+        } ${PAGE} }
+      } } }`,
+      { id: context.projectId, cursor },
+    );
+    return data.node?.items;
+  });
+  let candidates = 0;
+  let updated = 0;
+  for (const listed of items) {
+    if (
+      listed.type !== 'ISSUE' ||
+      listed.content?.__typename !== 'Issue' ||
+      listed.content.repository.nameWithOwner !== REPOSITORY ||
+      listed.content.state !== 'CLOSED' ||
+      listed.fieldValueByName?.name === 'Done' ||
+      (issueNumber !== undefined && listed.content.number !== issueNumber)
+    )
+      continue;
+    // Re-read the issue state and Status at the write boundary.
+    const fresh = await readItem(api, listed.id, context);
+    if (
+      !fresh ||
+      fresh.content?.state !== 'CLOSED' ||
+      fresh.fields.Status === 'Done'
+    )
+      continue;
+    candidates++;
+    log(
+      `${dryRun ? 'DRY_RUN would move' : 'Moving'} closed issue #${fresh.content.number} ${fresh.fields.Status ?? 'without Status'} -> Done`,
+    );
+    if (dryRun) continue;
+    await updateProjectStatus(api, context, fresh.id, 'Done');
+    updated++;
+  }
+  log(
+    `Closed issue reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
+  );
+  return { candidates, updated };
+}
+
 export async function reconcileEpicLabels({
   api,
   dryRun = true,
@@ -307,6 +370,7 @@ if (
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
     await reconcileEpicLabels({ api: ghGraphql, ...config });
     await reconcile({ api: ghGraphql, ...config });
+    await reconcileClosed({ api: ghGraphql, ...config });
   } catch (error) {
     console.error(failureMessage(error));
     process.exitCode = 1;

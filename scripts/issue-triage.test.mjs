@@ -19,6 +19,7 @@ import {
   paginate,
   readItem,
   reconcile,
+  reconcileClosed,
   REPOSITORY,
 } from './issue-triage.mjs';
 
@@ -500,6 +501,197 @@ test('invalid programmatic issue filters fail before any API access', async () =
       /positive safe integer/,
     );
   }
+});
+
+// A board for reconcileClosed. Each entry lists an issue's state and Status,
+// and `reread` changes an entry between the listing and the re-read.
+function closedBoard(entries, { reread = {} } = {}) {
+  const statuses = ['Inbox', 'Ready', 'In progress', 'In review', 'Done'];
+  const board = new Map(
+    entries.map((entry) => [`item-${entry.number}`, entry]),
+  );
+  const mutations = [];
+  const reads = [];
+  const content = (entry) => ({
+    id: `issue-${entry.number}`,
+    __typename: entry.type === 'PULL_REQUEST' ? 'PullRequest' : 'Issue',
+    number: entry.number,
+    state: entry.state,
+    repository: { nameWithOwner: entry.repository ?? REPOSITORY },
+  });
+  const api = async (query, variables) => {
+    if (query.includes('projectV2(number: 2)'))
+      return {
+        user: {
+          projectV2: {
+            id: 'project',
+            fields: {
+              nodes: [
+                {
+                  id: 'field-Status',
+                  name: 'Status',
+                  options: statuses.map((name) => ({
+                    id: `option-${name}`,
+                    name,
+                  })),
+                },
+              ],
+              pageInfo: { hasNextPage: false },
+            },
+          },
+        },
+      };
+    if (query.includes('items(first:')) {
+      assert.match(query, /fieldValueByName\(name: "Status"\)/);
+      return {
+        node: {
+          items: {
+            nodes: [...board].map(([id, entry]) => ({
+              id,
+              type: entry.type ?? 'ISSUE',
+              project: { id: 'project' },
+              content: content(entry),
+              fieldValueByName: entry.status ? { name: entry.status } : null,
+            })),
+            pageInfo: { hasNextPage: false },
+          },
+        },
+      };
+    }
+    if (query.includes('fieldValues(first:')) {
+      reads.push(variables.id);
+      const entry = { ...board.get(variables.id), ...reread[variables.id] };
+      board.set(variables.id, entry);
+      return {
+        node: {
+          id: variables.id,
+          type: 'ISSUE',
+          project: { id: 'project' },
+          content: content(entry),
+          fieldValues: {
+            nodes: entry.status
+              ? [
+                  {
+                    field: { id: 'field-Status' },
+                    optionId: `option-${entry.status}`,
+                  },
+                ]
+              : [],
+            pageInfo: { hasNextPage: false },
+          },
+        },
+      };
+    }
+    if (query.includes('labels(first:')) {
+      const entry = board.get(`item-${variables.id.slice('issue-'.length)}`);
+      return {
+        node: {
+          ...content(entry),
+          labels: { nodes: [], pageInfo: { hasNextPage: false } },
+        },
+      };
+    }
+    if (query.includes('updateProjectV2ItemFieldValue')) {
+      mutations.push(variables);
+      board.get(variables.item).status = 'Done';
+      return {
+        updateProjectV2ItemFieldValue: {
+          projectV2Item: { id: variables.item },
+        },
+      };
+    }
+    throw new Error('Unexpected mock query');
+  };
+  return { api, board, mutations, reads };
+}
+
+test('closed issues move to Done from any Status and open issues, PRs, and Done items stay', async () => {
+  const f = closedBoard([
+    { number: 1, state: 'CLOSED', status: 'In review' },
+    { number: 2, state: 'CLOSED', status: 'Ready' },
+    { number: 3, state: 'CLOSED' },
+    { number: 4, state: 'CLOSED', status: 'Done' },
+    { number: 5, state: 'OPEN', status: 'In review' },
+    { number: 6, state: 'MERGED', type: 'PULL_REQUEST' },
+    { number: 7, state: 'CLOSED', status: 'Ready', repository: 'other/repo' },
+  ]);
+  const lines = [];
+  assert.deepEqual(
+    await reconcileClosed({
+      api: f.api,
+      dryRun: false,
+      log: (line) => lines.push(line),
+    }),
+    { candidates: 3, updated: 3 },
+  );
+  assert.deepEqual(f.reads, ['item-1', 'item-2', 'item-3']);
+  assert.deepEqual(
+    f.mutations,
+    ['item-1', 'item-2', 'item-3'].map((item) => ({
+      project: 'project',
+      item,
+      field: 'field-Status',
+      option: 'option-Done',
+    })),
+  );
+  assert.deepEqual(lines, [
+    'Moving closed issue #1 In review -> Done',
+    'Moving closed issue #2 Ready -> Done',
+    'Moving closed issue #3 without Status -> Done',
+    'Closed issue reconciliation: 3 eligible, 3 updated; DRY_RUN=false',
+  ]);
+  const again = await reconcileClosed({ api: f.api, dryRun: false, log() {} });
+  assert.deepEqual(again, { candidates: 0, updated: 0 });
+});
+
+test('closed issue reconciliation dry-runs, honors the issue filter, and re-reads before writing', async () => {
+  const dry = closedBoard([
+    { number: 1, state: 'CLOSED', status: 'In review' },
+  ]);
+  const lines = [];
+  assert.deepEqual(
+    await reconcileClosed({ api: dry.api, log: (line) => lines.push(line) }),
+    { candidates: 1, updated: 0 },
+  );
+  assert.deepEqual(dry.mutations, []);
+  assert.equal(
+    lines[0],
+    'DRY_RUN would move closed issue #1 In review -> Done',
+  );
+
+  const filtered = closedBoard([
+    { number: 1, state: 'CLOSED', status: 'In review' },
+    { number: 2, state: 'CLOSED', status: 'In review' },
+  ]);
+  await reconcileClosed({
+    api: filtered.api,
+    dryRun: false,
+    issueNumber: 2,
+    log() {},
+  });
+  assert.deepEqual(filtered.reads, ['item-2']);
+  assert.deepEqual(
+    filtered.mutations.map((m) => m.item),
+    ['item-2'],
+  );
+
+  const raced = closedBoard(
+    [
+      { number: 1, state: 'CLOSED', status: 'In review' },
+      { number: 2, state: 'CLOSED', status: 'In review' },
+    ],
+    { reread: { 'item-1': { state: 'OPEN' }, 'item-2': { status: 'Done' } } },
+  );
+  assert.deepEqual(
+    await reconcileClosed({ api: raced.api, dryRun: false, log() {} }),
+    { candidates: 0, updated: 0 },
+  );
+  assert.deepEqual(raced.mutations, []);
+
+  await assert.rejects(
+    reconcileClosed({ api: dry.api, issueNumber: 0 }),
+    /positive safe integer/,
+  );
 });
 
 test('catalog has unique names, supported severities, and all directly affected workspace labels', () => {

@@ -40,7 +40,7 @@ Add one type label (`bug`, `enhancement`, or `documentation`; an epic gets `epic
 | Ready | Triaged; set automatically once priority, size, and severity are filled in |
 | In progress | Someone is working on it |
 | In review | A PR is open |
-| Done | Merged |
+| Done | Closed; set automatically |
 
 ## Dependencies
 
@@ -77,9 +77,9 @@ The `Require every check selected for the changed files` job always runs, even i
 
 The tracker workflows need the `PRISMATIC_PROJECT_TOKEN` repository secret, because the default `GITHUB_TOKEN` cannot write to a user project. The token shares its account's API rate limits with that account's local `gh` use. When a GitHub call fails, the script logs GitHub's error type and message, says when a rate limit resets, and never prints the token or `gh` output beyond that.
 
-[tracker-project-membership.yml](.github/workflows/tracker-project-membership.yml) adds every issue and pull request to the board when it opens, however it was created, including pull requests from forks. It runs only scripts from the default branch, never code from the pull request. GitHub's API cannot turn on the project's built-in auto-add, so this workflow does it instead. It also sets a new issue's Status to Inbox, so triage picks it up. Pull requests get no Status, and an issue that already has a Status keeps it. Running it again for an item already on the board changes nothing. Nothing else adds items, and the issue forms don't name the project.
+[tracker-project-membership.yml](.github/workflows/tracker-project-membership.yml) adds every issue to the board when it opens, however it was created. GitHub's API cannot turn on the project's built-in auto-add, so this workflow does it instead. It also sets a new issue's Status to Inbox, so triage picks it up, and an issue that already has a Status keeps it. Running it again for an issue already on the board changes nothing. Pull requests never go on the board, so the board counts only issues. Nothing else adds items, and the issue forms don't name the project.
 
-[tracker-issue-states.yml](.github/workflows/tracker-issue-states.yml) moves triaged issues from Inbox to Ready and closes a container once all its sub-issues are closed.
+[tracker-issue-states.yml](.github/workflows/tracker-issue-states.yml) moves triaged issues from Inbox to Ready, moves every closed issue to Done, and closes a container once all its sub-issues are closed. The project's built-in workflows are off, and the API cannot turn them on, so this workflow is the only thing that sets Done. It runs when an issue changes and every 15 minutes, though GitHub can delay scheduled runs.
 
 Two more tracker workflows run when a pull request opens, is edited, or leaves draft. [tracker-pr-metadata.yml](.github/workflows/tracker-pr-metadata.yml) copies the linked issue's labels, assignees, and milestone onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues.
 

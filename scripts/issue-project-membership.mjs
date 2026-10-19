@@ -1,8 +1,9 @@
-// Adds one issue or pull request in this repository to the Prismatic delivery
-// project. The project's built-in auto-add cannot be enabled through the API,
-// so tracker-project-membership.yml runs this when an issue or PR opens. An
-// issue whose item has no Status gets Inbox, so issue-triage.mjs picks it up.
-// Pull request items keep no Status, and an existing Status never changes.
+// Adds one issue in this repository to the Prismatic delivery project. The
+// project's built-in auto-add cannot be enabled through the API, so
+// tracker-project-membership.yml runs this when an issue opens. An issue whose
+// item has no Status gets Inbox, so issue-triage.mjs picks it up, and an
+// existing Status never changes. Pull requests never go on the board, so the
+// board counts only issues.
 import { pathToFileURL } from 'node:url';
 import { failureMessage, ghGraphql } from './github-api.mjs';
 import {
@@ -22,7 +23,7 @@ export async function addToProject({
   log = console.log,
 }) {
   if (!Number.isSafeInteger(number) || number < 1)
-    throw new Error('A positive issue or pull request number is required');
+    throw new Error('A positive issue number is required');
   const [owner, name] = REPOSITORY.split('/');
   const data = await api(
     `query($owner: String!, $name: String!, $number: Int!, $login: String!, $project: Int!) {
@@ -36,23 +37,19 @@ export async function addToProject({
   );
   const content = data.repository?.issueOrPullRequest;
   if (!content?.id) throw new Error(`#${number} not found in ${REPOSITORY}`);
-  const isIssue = content.__typename === 'Issue';
-  const kind = isIssue ? 'issue' : 'pull request';
+  if (content.__typename !== 'Issue') {
+    log(`Skipped pull request #${number}; only issues go on the board.`);
+    return null;
+  }
   const project = data.user?.projectV2;
   if (!project?.id || project.closed)
     throw new Error('Prismatic delivery project is unavailable');
   // Resolve the Status field and its Inbox option by name before any write, so
   // a renamed field or option fails the run before it adds anything.
-  const context = isIssue
-    ? await discover(api, { Status: [INITIAL_STATUS] })
-    : null;
-  if (context && context.projectId !== project.id)
+  const context = await discover(api, { Status: [INITIAL_STATUS] });
+  if (context.projectId !== project.id)
     throw new Error('Prismatic delivery project changed during the run');
   if (dryRun) {
-    if (!isIssue) {
-      log(`DRY_RUN would add ${kind} #${number} to Prismatic delivery.`);
-      return null;
-    }
     const existing = content.projectItems?.nodes?.find(
       (node) => node?.project?.id === project.id,
     );
@@ -81,8 +78,7 @@ export async function addToProject({
   const item = result.addProjectV2ItemById?.item?.id;
   if (!item)
     throw new Error(`GitHub did not return a project item for #${number}`);
-  log(`Added ${kind} #${number} to Prismatic delivery as item ${item}.`);
-  if (!isIssue) return item;
+  log(`Added issue #${number} to Prismatic delivery as item ${item}.`);
   const current = await readItem(api, item, context);
   if (!current)
     throw new Error(`Could not read project item ${item} for #${number}`);
@@ -107,9 +103,9 @@ export function configuration(env) {
   const mode = env.DRY_RUN ?? 'true';
   if (!['true', 'false'].includes(mode))
     throw new Error('DRY_RUN must be true or false');
-  const number = env.ISSUE_OR_PR_NUMBER ?? '';
+  const number = env.ISSUE_NUMBER ?? '';
   if (!/^[1-9]\d*$/.test(number) || !Number.isSafeInteger(Number(number)))
-    throw new Error('ISSUE_OR_PR_NUMBER must be a positive integer');
+    throw new Error('ISSUE_NUMBER must be a positive integer');
   return { number: Number(number), dryRun: mode === 'true' };
 }
 
