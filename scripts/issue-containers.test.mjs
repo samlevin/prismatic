@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { ghGraphql } from './github-api.mjs';
 import { reconcileContainers } from './issue-containers.mjs';
 import { REPOSITORY } from './issue-triage.mjs';
 
@@ -9,7 +10,7 @@ const MARKER = 'automation: container-closed';
 // number, labels, and project Status; sub-issues are the entries that name it
 // as their parent. `page` caps every connection page, so a test can force
 // nested pages. `writes` records every mutation in order.
-function repository(entries, { page = 100, marker = true } = {}) {
+function repository(entries, { page = 100, marker = true, onSnapshot } = {}) {
   const issues = new Map(
     entries.map((entry) => [
       entry.number,
@@ -133,8 +134,10 @@ function repository(entries, { page = 100, marker = true } = {}) {
       return {
         repository: { issues: slice(own().map(node), variables.cursor) },
       };
-    if (query.includes('... on Issue { id number state'))
-      return { node: node(entry) ?? null };
+    if (query.includes('... on Issue { id number state')) {
+      onSnapshot?.(issues);
+      return { node: node(issues.get(number(variables.id))) ?? null };
+    }
     if (query.includes('subIssues(first: 100'))
       return {
         node: {
@@ -309,8 +312,44 @@ test('marked containers get their Status repaired only when it is wrong', async 
     'status 24 Ready',
     'unmark 24',
   ]);
-  assert.equal(f.count(SNAPSHOT), 0);
+  // Only the two containers that need a write are re-read; 22 is not.
+  assert.equal(f.count(SNAPSHOT), 2);
   assert.equal(f.count('projectItems(first: 100'), 0);
+});
+
+test('a marked container repair acts on a fresh read, not the listing', async () => {
+  // Another run closes container 24 after the listing: its Status becomes
+  // Done and its marker stays, so automation still owns it.
+  const closed = repository(
+    [
+      { number: 24, labels: [MARKER], status: 'In progress' },
+      { number: 25, parent: 24 },
+    ],
+    {
+      onSnapshot: (issues) => {
+        issues.get(24).state = 'CLOSED';
+        issues.get(25).state = 'CLOSED';
+      },
+    },
+  );
+  await reconcileContainers({ api: closed.api, dryRun: false, log() {} });
+  assert.deepEqual(closed.writes, ['status 24 Done']);
+  assert.deepEqual(closed.issues.get(24).labels, [MARKER]);
+
+  // Another run already removed the marker: nothing is left to repair.
+  const unmarked = repository(
+    [
+      { number: 20, state: 'CLOSED', labels: [MARKER], status: 'Ready' },
+      { number: 21, parent: 20, state: 'CLOSED' },
+    ],
+    {
+      onSnapshot: (issues) => {
+        issues.get(20).labels = [];
+      },
+    },
+  );
+  await reconcileContainers({ api: unmarked.api, dryRun: false, log() {} });
+  assert.deepEqual(unmarked.writes, []);
 });
 
 test('an issue run reads only the issue, its container sub-issues, and its parents', async () => {
@@ -408,15 +447,52 @@ test('nested sub-issue, label, and project item pages are followed, and other re
   assert.ok(event.count('labels(first: 100') > 0);
 });
 
-test('missing issues, a missing marker label, cycles, and invalid filters fail closed', async () => {
+// GitHub's answer for a deleted or transferred issue, through ghGraphql.
+function notFound(path = ['repository', 'issue']) {
+  return (query, variables, options) =>
+    ghGraphql(query, variables, {
+      ...options,
+      run: () =>
+        `HTTP/2.0 200 OK\n\r\n${JSON.stringify({
+          data: { repository: { label: { id: 'label-marker' }, issue: null } },
+          errors: [
+            {
+              type: 'NOT_FOUND',
+              path,
+              message: 'Could not resolve to an Issue with the number of 99.',
+            },
+          ],
+        })}`,
+    });
+}
+
+test('an issue run for a deleted or transferred issue warns and writes nothing', async () => {
+  const warnings = [];
+  assert.deepEqual(
+    await reconcileContainers({
+      api: notFound(),
+      issueNumber: 99,
+      dryRun: false,
+      log: assert.fail,
+      warn: (line) => warnings.push(line),
+    }),
+    { updated: 0 },
+  );
+  assert.deepEqual(warnings, [
+    'Issue #99 was not found; it may have been deleted or transferred. No container to reconcile.',
+  ]);
+  // A NOT_FOUND anywhere else still fails.
   await assert.rejects(
     reconcileContainers({
-      api: repository(nested()).api,
+      api: notFound(['repository', 'label']),
       issueNumber: 99,
-      log() {},
+      warn: assert.fail,
     }),
-    /Requested issue is unavailable/,
+    /NOT_FOUND/,
   );
+});
+
+test('a missing marker label, cycles, and invalid filters fail closed', async () => {
   for (const issueNumber of [undefined, 3])
     await assert.rejects(
       reconcileContainers({

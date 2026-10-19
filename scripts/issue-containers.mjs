@@ -4,9 +4,11 @@ import {
   checkIssueNumber,
   configuration,
   discover,
+  MISSING_ISSUE,
   nestedNodes,
   paginate,
   REPOSITORY,
+  warning,
   withinBudget,
 } from './issue-triage.mjs';
 
@@ -126,7 +128,8 @@ async function everyIssue(api) {
 
 // One issue, the sub-issues under it that are containers, and its chain of
 // parents in this repository: the issues whose state its change can affect.
-// The reads grow with that chain, not with the repository.
+// The reads grow with that chain, not with the repository. Returns null when
+// GitHub cannot find the issue.
 async function issueChain(api, number) {
   const data = await api(
     `query($number: Int!) { repository(owner: "samlevin", name: "prismatic") {
@@ -134,11 +137,12 @@ async function issueChain(api, number) {
       issue(number: $number) { ${FULL} }
     } }`,
     { number },
+    MISSING_ISSUE,
   );
   const label = data.repository?.label?.id;
   if (!label) throw new Error(`Missing managed label ${MARKER}`);
   const root = await withDetails(api, data.repository.issue);
-  if (!root) throw new Error('Requested issue is unavailable');
+  if (!root) return null;
   const issues = new Map([[root.id, root]]);
   const queue = [root];
   while (queue.length) {
@@ -225,6 +229,21 @@ async function projectStatus(api, id, status, context) {
 
 // Sets the Status of a marked container whose project update may have failed
 // after its state change. An item that already has the Status is left alone.
+// The Status a marked container should have for its state.
+function markedStatus(issue) {
+  return issue.state === 'CLOSED' ? 'Done' : 'Ready';
+}
+
+// Whether a marked container needs a write: an open one loses its marker, and
+// a project item with the wrong Status (or unknown items) needs a repair.
+function needsRepair(issue, context) {
+  if (issue.state === 'OPEN' || !issue.projectItems) return true;
+  const item = issue.projectItems.find(
+    (item) => item.project?.id === context.projectId,
+  );
+  return Boolean(item) && item.fieldValueByName?.name !== markedStatus(issue);
+}
+
 async function repairStatus(api, issue, status, context) {
   if (!issue.projectItems) return projectStatus(api, issue.id, status, context);
   const item = issue.projectItems.find(
@@ -239,12 +258,20 @@ export async function reconcileContainers({
   dryRun = true,
   issueNumber,
   log = console.log,
+  warn = warning,
 }) {
   checkIssueNumber(issueNumber);
-  const { label, issues } =
+  const loaded =
     issueNumber === undefined
       ? await everyIssue(api)
       : await issueChain(api, issueNumber);
+  if (!loaded) {
+    warn(
+      `Issue #${issueNumber} was not found; it may have been deleted or transferred. No container to reconcile.`,
+    );
+    return { updated: 0 };
+  }
+  const { label, issues } = loaded;
   const ordered = childrenFirst(issues);
   const context = await discover(api, { Status: ['Ready', 'Done'] });
   const removeMarker = (id) =>
@@ -309,15 +336,14 @@ export async function reconcileContainers({
       if (reopen) await removeMarker(id);
       continue;
     }
-    if (!marked || dryRun) continue;
-    // Repair status if a prior state mutation succeeded but its project update failed.
-    await repairStatus(
-      api,
-      current,
-      current.state === 'CLOSED' ? 'Done' : 'Ready',
-      context,
-    );
-    if (current.state === 'OPEN') await removeMarker(id);
+    if (!marked || dryRun || !needsRepair(current, context)) continue;
+    // Repair status if a prior state mutation succeeded but its project
+    // update failed. Another run may have changed the container since it was
+    // listed, so act on a fresh read.
+    const fresh = await snapshot(api, id);
+    if (!fresh?.marked) continue;
+    await repairStatus(api, fresh, markedStatus(fresh), context);
+    if (fresh.state === 'OPEN') await removeMarker(id);
   }
   log(`Container reconciliation: ${updated} state changes; DRY_RUN=${dryRun}`);
   return { updated };

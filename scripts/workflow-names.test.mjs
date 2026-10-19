@@ -290,7 +290,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   assert.deepEqual(contract('tracker-project-membership.yml'), {
     on: {
       issues: { types: ['opened'] },
-      schedule: [{ cron: '12,27,42,57 * * * *' }],
+      schedule: [{ cron: '37 * * * *' }],
       workflow_dispatch: {
         inputs: {
           dry_run: {

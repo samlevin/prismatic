@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { GitHubApiError } from './github-api.mjs';
+import { GitHubApiError, ghGraphql } from './github-api.mjs';
 import {
   configuration,
   discover,
@@ -557,14 +557,17 @@ test('an issue run costs the same few queries whatever the project size', async 
 
 test('an issue run for a missing issue or one off the project reads nothing more and writes nothing', async () => {
   const f = board([triaged(1), triaged(4, { project: 'other-project' })]);
-  const logs = [];
+  const warnings = [];
   await run({
     api: f.api,
     issueNumber: 3,
     dryRun: false,
-    log: (line) => logs.push(line),
+    log() {},
+    warn: (line) => warnings.push(line),
   });
-  assert.ok(logs.includes('Issue #3 is unavailable; nothing to triage'));
+  assert.deepEqual(warnings, [
+    'Issue #3 was not found; it may have been deleted or transferred. Nothing to triage.',
+  ]);
   await run({ api: f.api, issueNumber: 4, dryRun: false, log() {} });
   assert.deepEqual(
     await reconcile({ api: f.api, issueNumber: 3, dryRun: false, log() {} }),
@@ -573,6 +576,63 @@ test('an issue run for a missing issue or one off the project reads nothing more
   assert.deepEqual(f.reads, []);
   assert.deepEqual(f.mutations, []);
   assert.equal(f.count('items(first: 100'), 0);
+});
+
+// GitHub's answer for a deleted or transferred issue, through ghGraphql.
+function notFound(path) {
+  return (query, variables, options) =>
+    ghGraphql(query, variables, {
+      ...options,
+      run: () =>
+        `HTTP/2.0 200 OK\n\r\n${JSON.stringify({
+          data: { repository: { issue: null } },
+          errors: [
+            {
+              type: 'NOT_FOUND',
+              path,
+              message: 'Could not resolve to an Issue with the number of 3.',
+            },
+          ],
+        })}`,
+    });
+}
+
+test('an issue run for a deleted or transferred issue warns, writes nothing, and succeeds', async () => {
+  const f = board([triaged(1)]);
+  const issueQuery = (path) => (query, variables, options) =>
+    query.includes('issue(number: $number)')
+      ? notFound(path)(query, variables, options)
+      : f.api(query, variables);
+  const warnings = [];
+  await run({
+    api: issueQuery(['repository', 'issue']),
+    issueNumber: 3,
+    dryRun: false,
+    log() {},
+    warn: (line) => warnings.push(line),
+  });
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /^Issue #3 was not found/);
+  assert.deepEqual(f.mutations, []);
+  assert.deepEqual(
+    await reconcileEpicLabels({
+      api: issueQuery(['repository', 'issue']),
+      issueNumber: 3,
+      dryRun: false,
+      log: assert.fail,
+    }),
+    undefined,
+  );
+  // A NOT_FOUND for anything else still fails the run.
+  await assert.rejects(
+    run({
+      api: issueQuery(['repository', 'issue', 'labels']),
+      issueNumber: 3,
+      log() {},
+      warn: assert.fail,
+    }),
+    /NOT_FOUND/,
+  );
 });
 
 test('issue filter is rechecked against fresh issue metadata before mutation', async () => {

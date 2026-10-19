@@ -89,6 +89,19 @@ export function checkIssueNumber(issueNumber) {
     throw new Error('--issue requires a positive safe integer');
 }
 
+// Lets a query for one issue by number succeed when GitHub answers NOT_FOUND
+// for it, as it does for a deleted or transferred issue, so the issue reads
+// as null. Any other error still throws.
+export const MISSING_ISSUE = {
+  allowErrors: (json) =>
+    json.errors.every(
+      (error) =>
+        error?.type === 'NOT_FOUND' &&
+        Array.isArray(error.path) &&
+        error.path.join('.') === 'repository.issue',
+    ),
+};
+
 export async function discover(
   api,
   required = { Status: ['Inbox', 'Ready'], Priority: PRIORITIES, Size: SIZES },
@@ -188,6 +201,7 @@ export async function readIssue(api, number, context) {
       }
     } }`,
     { number },
+    MISSING_ISSUE,
   );
   const issue = data.repository?.issue;
   if (!issue) return null;
@@ -383,6 +397,7 @@ async function issueLabels(api, number) {
       issue(number: $number) { id number ${LABELS} }
     } }`,
     { number },
+    MISSING_ISSUE,
   );
   const issue = data.repository?.issue;
   return issue ? [issue] : [];
@@ -459,6 +474,7 @@ export async function run({
   dryRun = true,
   issueNumber,
   log = console.log,
+  warn = warning,
 }) {
   checkIssueNumber(issueNumber);
   const context = await discover(api, {
@@ -475,7 +491,10 @@ export async function run({
     return;
   }
   const found = await readIssue(api, issueNumber, context);
-  if (!found) log(`Issue #${issueNumber} is unavailable; nothing to triage`);
+  if (!found)
+    warn(
+      `Issue #${issueNumber} was not found; it may have been deleted or transferred. Nothing to triage.`,
+    );
   const items = found?.item ? [found.item] : [];
   await reconcileEpicLabels({ ...options, epics: found ? [found.issue] : [] });
   await reconcile({ ...options, items });
