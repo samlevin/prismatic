@@ -609,6 +609,56 @@ test('only automation moves an issue to In review', () => {
     assert.doesNotMatch(files.get(path), /move [^\n.]*In review/i, path);
 });
 
+test('docs and code comments describe the current state', () => {
+  const files = render();
+  assert.match(
+    readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8'),
+    /^- Docs, READMEs, specs, agent instructions, and code comments describe the current state: what exists and how to set it up and run it\. The history of changes and fixes goes in PR bodies, commit messages, and changelogs\. A code comment may keep prior context only to explain an established regression the code must not reintroduce\.$/m,
+  );
+  for (const root of ['.claude/skills', '.agents/skills']) {
+    const prose = files.get(`${root}/${PREFIX}plain-language/SKILL.md`);
+    const section = prose.split(/^## Docs and code comments$/m)[1];
+    assert.ok(section, `${root}: Docs and code comments section`);
+    const [body] = section.split(/^## /m);
+    assert.match(
+      body,
+      /^Docs, READMEs, specs, agent instructions, and code comments describe the current state: what exists, how to set it up, and how to run it\. The history of a change or a fix goes in the PR body, the commit message, or a changelog\. A code comment may keep prior context only to explain an established regression the code must not reintroduce\.$/m,
+    );
+    assert.match(body, /^A current-state README paragraph/m);
+    assert.match(body, /^> `scripts\/issue-sync\.mjs` moves an issue to Done/m);
+    assert.match(body, /^The same paragraph written as history:$/m);
+    assert.match(
+      body,
+      /^> [^\n]* now moves [^\n]*used to [^\n]*fixed that in #/m,
+    );
+    assert.match(
+      body,
+      /not `\/\/ Added a retry after the outage; a 502 used to/,
+    );
+    assert.match(
+      body,
+      /A comment that guards against a known regression is the exception/,
+    );
+
+    const agents = files.get(`${root}/${PREFIX}agents/SKILL.md`);
+    assert.match(
+      agents,
+      /Write sources, references, and `\.agents\/README\.md` as a description of the current state[^\n]*goes in the PR body and commit message, never in the source\./,
+    );
+  }
+  for (const ext of ['md', 'toml']) {
+    const dir = ext === 'md' ? '.claude/agents' : '.codex/agents';
+    assert.match(
+      files.get(`${dir}/${PREFIX}implementer.${ext}`),
+      /^Build: [^\n]*Docs, READMEs, specs, agent instructions, and code comments you write describe the current state: what exists and how to set it up and run it\. Put the history of a change or fix in the PR body and commit message; a code comment keeps prior context only to explain an established regression the code must not reintroduce\./m,
+    );
+    assert.match(
+      files.get(`${dir}/${PREFIX}code-reviewer.${ext}`),
+      /^Review the diff [^\n]*Doc, README, spec, agent-instruction, or code-comment text in the diff that narrates past changes or fixes [^\n]* instead of describing the current state is a defect to report; a code comment that explains an established regression the code must not reintroduce is fine\./m,
+    );
+  }
+});
+
 test('generated definitions in the repository are current', () => {
   assert.deepEqual(check(), []);
 });
