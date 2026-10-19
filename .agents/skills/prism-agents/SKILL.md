@@ -32,7 +32,7 @@ Run, from the repository root:
 ```console
 npm run agents:generate
 npm run agents:check
-npx eslint scripts/agent-policy.mjs scripts/agent-policy.test.mjs --max-warnings 0
+npx eslint scripts/agent-policy.mjs scripts/agent-policy.test.mjs '**/*.md' --max-warnings 0
 node --test scripts/agent-policy.test.mjs
 npm run format:check
 ```

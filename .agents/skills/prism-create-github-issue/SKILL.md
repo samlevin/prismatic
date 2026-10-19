@@ -10,7 +10,7 @@ description: "Plan and file Prismatic GitHub issues, native sub-issues, and expl
 
 Repository `samlevin/prismatic`, project [Prismatic delivery](https://github.com/users/samlevin/projects/2) (number 2, owner `samlevin`). Read `.agents/issue-creation.md` and the matching `.github/ISSUE_TEMPLATE/*.yml`; `AGENTS.md` is already loaded. Read `CONTRIBUTING.md` only for a classification question. Discover labels (`gh label list`), project fields and options (`gh project field-list 2 --owner samlevin --format json`), and native issue types once per batch, and reuse the results. Repository commands run read-only against the human checkout; do not modify it.
 
-Codex skills cannot set the session model. The repository policy for `issue-creation` is `node scripts/agent-policy.mjs resolve --tool codex --capability issue-creation`; state it in your first message. Start Codex with `codex -m <model> -c model_reasoning_effort=<effort>` to run the session at that policy, or at an explicit override.
+Codex skills cannot set the session model, and nothing dispatched this session, so the `issue-creation` policy is advisory: the session keeps whatever model and effort Codex started with. Resolve it with `node scripts/agent-policy.mjs resolve --tool codex --capability issue-creation` and state it in your first message as `Advisory policy: tool=codex capability=issue-creation model=<model> effort=<effort>`. Never present it as `Requested settings:`, because no dispatcher requested it. Start Codex with `codex -m <model> -c model_reasoning_effort=<effort>` to run the session at that policy, or at an explicit override.
 
 ## Plan
 

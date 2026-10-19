@@ -46,6 +46,20 @@ Rules 17 and 18 work at the scale of a whole document, so one paragraph can't sh
 17. **Even texture.** Paragraphs that all follow one template, and sentences that all run about twenty words. Let length follow content. A section with two facts gets two sentences.
 18. **False depth.** Text that sounds thorough without adding facts: an "it depends" that never says on what, a list of considerations every reader already has in mind, or the problem told again in bigger words. Replace it with the measurement, the failing input, or the decision you made.
 
+## Docs
+
+Docs, READMEs, specs, and agent instructions describe the current state: what exists, how to set it up, and how to run it. The history of a change or a fix goes in the PR body, the commit message, or a changelog.
+
+A current-state README paragraph, for an invented script:
+
+> `scripts/issue-sync.mjs` moves an issue to Done when it closes and leaves pull requests off the project. Run `node scripts/issue-sync.mjs <issue>` for a dry run, and add `--apply` to write the change.
+
+The same paragraph written as history:
+
+> `scripts/issue-sync.mjs` now moves closed issues to Done. It used to leave them in In review until we fixed that in #41, and we also stopped adding pull requests to the project after they started showing up twice.
+
+A reader of the second version learns what the script did before, which no longer matters to them, and still has to work out how to run it.
+
 ## Words
 
 Use the most ordinary word that is still accurate. These come up most often:

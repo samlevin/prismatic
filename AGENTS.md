@@ -24,6 +24,12 @@ CI picks its checks from the changed files, as CONTRIBUTING.md describes. Tests 
 - Use independent code review for changes across components, shared contracts, security boundaries, and other substantial behavior changes. Always use it, however small the diff, for any change to `.agents/`, `.claude/`, `.codex/`, `AGENTS.md`, `scripts/agent-policy*`, or `.github/workflows/`. Elsewhere, skip it for localized low-risk changes, documentation, and mechanical edits. Reviewers check the diff and relevant callers against the supplied criteria. They may run read-only `git` and `gh` commands, but never edit files or run project code.
 - Report what changed, the PR URL, checks and results, and any concrete blocker. Report current CI status without waiting for, polling, or rerunning remote CI.
 
+## Code and comments
+
+- Match the surrounding code's naming, idiom, and comment density. Add no checks for cases that cannot happen, no one-use helpers or wrappers, and no options nobody asked for.
+- Comment only what the code cannot say: a constraint, a workaround, or an invariant. Keep it to one line. No comments that restate the code, no section banners, and no docstrings on obvious functions.
+- Docs, specs, agent instructions, and comments describe the current state. Change history goes in PR bodies and commit messages. A comment may cite past behavior only to guard against a known regression.
+
 ## Repository agent workflows
 
 The repository ships the same delivery roles, handoffs, and checks for Claude Code (`.claude/agents/`, `.claude/skills/`) and Codex (`.codex/agents/`, `.agents/skills/`). Tool runtime details live in these definitions, not in configuration outside the repository. Every identifier starts with `prism-` so it cannot collide with a same-named agent or skill defined elsewhere, and routing always names the `prism-` definition. The definitions are generated from `.agents/roles/`, `.agents/workflows/`, and `.agents/policy.json`: edit the source, run `npm run agents:generate`, and commit the output, or ask `prism-agents` to do all three. `.agents/README.md` has the layout and the trust requirements.
