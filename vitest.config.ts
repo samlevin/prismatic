@@ -11,6 +11,7 @@ export default defineConfig({
       'apps/**/*.test.ts',
       'tooling/**/*.test.ts',
       'tests/**/*.test.ts',
+      'experiments/**/*.test.ts',
     ],
     // tests/e2e/ builds and runs the Docker image, so it needs Docker and,
     // for the build, the network. `npm run test:container` runs it.
@@ -21,8 +22,20 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.ts', 'apps/**/*.ts', 'tooling/**/*.ts'],
-      exclude: ['**/*.test.ts', 'tooling/eslint/fixtures/**'],
+      // Experiment libraries are measured too. A spike's driver under
+      // experiments/*/spike/ runs only inside the pinned image, and its
+      // recorded results are its evidence.
+      include: [
+        'src/**/*.ts',
+        'apps/**/*.ts',
+        'tooling/**/*.ts',
+        'experiments/**/*.ts',
+      ],
+      exclude: [
+        '**/*.test.ts',
+        'tooling/eslint/fixtures/**',
+        'experiments/*/spike/**',
+      ],
       reporter: ['text', 'json-summary'],
       reportsDirectory: 'coverage',
     },
