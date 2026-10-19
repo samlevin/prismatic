@@ -19,11 +19,16 @@ export function checks({ full }) {
   const commands = [['npm', ['run', 'format:check']]];
   if (full)
     commands.push(
-      // Lints JavaScript and Markdown.
+      // Lints JavaScript, TypeScript, including the import boundaries, and
+      // Markdown.
       ['npm', ['run', 'lint']],
+      // Strict TypeScript over the product modules, tooling, and tests.
+      ['npm', ['run', 'typecheck']],
       // Generated agent definitions must match their sources under .agents/.
       ['npm', ['run', 'agents:check']],
       ['node', ['--test', ...testFiles()]],
+      // Vitest with coverage, then the 90% coverage gate.
+      ['npm', ['run', 'test:unit']],
     );
   // Prettier ignores Markdown, so a documentation change gets the Markdown
   // lint on its own.

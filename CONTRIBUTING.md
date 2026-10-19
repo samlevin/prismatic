@@ -61,7 +61,7 @@ Before you start, assign yourself, comment with your plan, and move the issue to
 
 ## Checks
 
-Run `npm run check` before you push. It runs the format check, lint of JavaScript and Markdown, the generated agent definition check, and every script test. `npm run format` and `npm run lint:fix` fix what they can in code. Fix Markdown lint problems by hand. `.tool-versions` pins the Node version that CI uses.
+Run `npm run check` before you push. It runs the format check, lint of JavaScript, TypeScript, and Markdown, the strict TypeScript check, the generated agent definition check, every script test, and the Vitest unit tests with the 90% coverage gate. `npm run format` and `npm run lint:fix` fix what they can in code. Fix Markdown lint problems by hand. `.tool-versions` pins the Node version that CI uses.
 
 ## Automation
 
@@ -69,7 +69,7 @@ Workflow files are named `<area>-<name>.yml`, and each workflow is named `<Area>
 
 [ci-checks.yml](.github/workflows/ci-checks.yml) runs only the checks a pull request needs. The `Detect changed areas` job classifies the changed files with `scripts/ci-scope.mjs`, read from the base commit, so a change to the classifier applies only after it merges.
 
-A pull request that changes only Markdown outside `.agents/`, `.claude/`, `.codex/`, `.github/`, and `scripts/`, or `LICENSE`, runs the format check and the Markdown lint, `npm run lint:md`. Prettier ignores Markdown, so the Markdown lint is the only check that reads it. Anything else, including a path the classifier doesn't know, runs the format check, lint of every file, `npm run agents:check`, and every `scripts/*.test.mjs`. Pushes to `main` run every check, and so does a pull request whose files can't be classified.
+A pull request that changes only Markdown outside `.agents/`, `.claude/`, `.codex/`, `.github/`, and `scripts/`, or `LICENSE`, runs the format check and the Markdown lint, `npm run lint:md`. Prettier ignores Markdown, so the Markdown lint is the only check that reads it. Anything else, including a path the classifier doesn't know, runs the format check, lint of every file, `npm run typecheck`, `npm run agents:check`, every `scripts/*.test.mjs`, and `npm run test:unit`, which fails when coverage drops below 90%. CI installs the Node version in `.tool-versions` and runs `npm ci` first. Pushes to `main` run every check, and so does a pull request whose files can't be classified.
 
 The `Require every check selected for the changed files` job always runs, even in a cancelled run, and fails unless every selected check passed. Require this job, not the individual checks, in the `main` ruleset: GitHub reports a skipped job as passing, so a required check must never be skipped.
 
