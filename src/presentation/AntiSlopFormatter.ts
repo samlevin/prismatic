@@ -140,6 +140,7 @@ export const stylePhrases: readonly StylePhrase[] = [
 ];
 
 const emDash = '\u2014';
+const emDashes = /\u2014/g;
 const wordCharacter = /[\p{L}\p{N}_]/u;
 const emDashBefore = /[\p{L}\p{N}`)"'\u2019\u201D]/u;
 const emDashAfter = /[\p{L}\p{N}`("'\u2018\u201C]/u;
@@ -302,20 +303,14 @@ export class AntiSlopFormatter {
   // a filler phrase inside a sentence and an em dash between digits or at a
   // line edge, stays exactly as written.
   format(text: string): string {
-    const prose = proseMask(text);
-    const edits = [...openerEdits(text, prose), ...emDashEdits(text, prose)];
-    edits.sort((a, b) => a.start - b.start);
-    let result = '';
-    let position = 0;
-    for (const edit of edits) {
-      result += text.slice(position, edit.start) + edit.replacement;
-      position = edit.end;
-    }
-    return result + text.slice(position);
+    // Em dashes first: `Actually—the key` becomes `Actually, the key`, whose
+    // opener the second pass removes, so a second format() changes nothing.
+    const dashed = applyEdits(text, emDashEdits(text, proseMask(text)));
+    return applyEdits(dashed, openerEdits(dashed, proseMask(dashed)));
   }
 
   // Every violation in the text, ordered by position.
-  assertStyle(text: string): readonly StyleViolation[] {
+  assertStyle(text: string): StyleViolation[] {
     const prose = proseMask(text);
     const found: StyleViolation[] = [];
     const add = (rule: StyleRule, start: number, end: number): void => {
@@ -345,6 +340,17 @@ export class AntiSlopFormatter {
       return true;
     });
   }
+}
+
+// Applies edits that are sorted by position and do not overlap.
+function applyEdits(text: string, edits: readonly Edit[]): string {
+  let result = '';
+  let position = 0;
+  for (const edit of edits) {
+    result += text.slice(position, edit.start) + edit.replacement;
+    position = edit.end;
+  }
+  return result + text.slice(position);
 }
 
 // Marks the characters outside fenced code blocks and inline code spans. A
@@ -414,7 +420,9 @@ function stickyEnd(
 }
 
 // Removes filler openers and filler sentences at each sentence start, one
-// after another, and capitalizes the plain word left at the start.
+// after another, and capitalizes a function word left at the start. A line
+// left empty goes with its list, quote, or heading marker and its line break,
+// so no bare marker or blank line changes how the Markdown renders.
 function openerEdits(text: string, prose: Uint8Array): Edit[] {
   const edits: Edit[] = [];
   let removedThrough = 0;
@@ -431,6 +439,23 @@ function openerEdits(text: string, prose: Uint8Array): Edit[] {
     removedThrough = position;
     let start = sentenceStart;
     if (position === text.length || text[position] === '\n') {
+      const lineStart = boundary[0].startsWith('\n')
+        ? boundary.index + 1
+        : boundary.index === 0
+          ? 0
+          : undefined;
+      if (lineStart !== undefined) {
+        const lineEnd = position < text.length ? position + 1 : position;
+        // At the text end the line break before the line goes instead,
+        // unless an earlier edit already removed it.
+        const previousEnd = edits.at(-1)?.end ?? 0;
+        const before =
+          lineEnd === text.length && lineStart > previousEnd
+            ? lineStart - 1
+            : lineStart;
+        edits.push({ start: before, end: lineEnd, replacement: '' });
+        continue;
+      }
       while (start > 0 && horizontalSpace.test(text.charAt(start - 1))) {
         start -= 1;
       }
@@ -489,48 +514,54 @@ function separatorEnd(
 }
 
 // An em dash between two words becomes a comma. One at a line edge or beside
-// punctuation stays. So does one that may mark a range: between digits, or
-// unspaced beside a token with a digit or before a capital (`v1—v3`,
-// `Monday—Friday`).
+// punctuation stays. So does one that may mark a range: beside a token with a
+// digit or before a capital (`v1 — v3`, `Monday—Friday`). When one em dash in
+// a line stays, every em dash in that line stays, so a dash pair is never
+// half converted.
 function emDashEdits(text: string, prose: Uint8Array): Edit[] {
   const edits: Edit[] = [];
-  for (let index = text.indexOf(emDash); index !== -1;) {
+  let line: Edit[] = [];
+  let lineKept = false;
+  let lineEnd = -1;
+  for (const { index } of text.matchAll(emDashes)) {
+    if (!prose[index]) continue;
+    if (index > lineEnd) {
+      if (!lineKept) edits.push(...line);
+      line = [];
+      lineKept = false;
+      lineEnd = text.indexOf('\n', index);
+      if (lineEnd === -1) lineEnd = text.length;
+    }
     let start = index;
     let end = index + 1;
     while (start > 0 && horizontalSpace.test(text.charAt(start - 1)))
       start -= 1;
     while (horizontalSpace.test(text.charAt(end))) end += 1;
-    const before = text.charAt(start - 1);
     const after = text.charAt(end);
-    const unspaced = start === index && end === index + 1;
     if (
       isProse(prose, start, end) &&
-      emDashBefore.test(before) &&
+      emDashBefore.test(text.charAt(start - 1)) &&
       emDashAfter.test(after) &&
-      !(digit.test(before) && digit.test(after)) &&
-      !(unspaced && (rangeLike(text, index) || capital.test(after)))
+      !capital.test(after) &&
+      !tokenHasDigit(text, start - 1, -1) &&
+      !tokenHasDigit(text, end, 1)
     ) {
-      edits.push({ start, end, replacement: ', ' });
+      line.push({ start, end, replacement: ', ' });
+    } else {
+      lineKept = true;
     }
-    index = text.indexOf(emDash, index + 1);
   }
+  if (!lineKept) edits.push(...line);
   return edits;
 }
 
-// Whether the token on either side of the em dash at `index` holds a number.
-// Tokens end at whitespace or another em dash, so each scan stays local.
-function rangeLike(text: string, index: number): boolean {
+// Whether the token that `from` sits in, read in direction `step`, holds a
+// number. Tokens end at whitespace or an em dash, so each scan stays local.
+function tokenHasDigit(text: string, from: number, step: 1 | -1): boolean {
   for (
-    let at = index - 1;
-    at >= 0 && !tokenEdge.test(text.charAt(at));
-    at -= 1
-  ) {
-    if (digit.test(text.charAt(at))) return true;
-  }
-  for (
-    let at = index + 1;
-    at < text.length && !tokenEdge.test(text.charAt(at));
-    at += 1
+    let at = from;
+    at >= 0 && at < text.length && !tokenEdge.test(text.charAt(at));
+    at += step
   ) {
     if (digit.test(text.charAt(at))) return true;
   }

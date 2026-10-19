@@ -34,6 +34,11 @@ describe('format: em dashes', () => {
     ['between versions', 'v1—v3'],
     ['between dotted versions', '3.x—4.x'],
     ['before a capital', 'Monday—Friday'],
+    ['spaced between dates', 'Jan 2024 — Mar 2025'],
+    ['spaced between versions', 'v1 — v3'],
+    ['spaced between dotted versions', '3.x — 4.x'],
+    ['spaced before a capital', 'Monday — Friday'],
+    ['in a pair whose other half stays', 'the fix—Redis caching—works'],
     ['at a line start', '— the author'],
     ['at a line end', 'the end —\nnext'],
     ['beside punctuation', 'one,— two'],
@@ -165,6 +170,11 @@ describe('format: filler sentences', () => {
       'It leaks.\nNext line.',
     ],
     ['as the whole text', 'Well done.', ''],
+    ['with its list marker', 'Para\n- Great catch!', 'Para'],
+    ['with its numbered marker', 'Para\n1. Great job!\nNext', 'Para\nNext'],
+    ['with its heading marker', '## Great job!', ''],
+    ['with its line break', 'Para\nGreat job!\nNext', 'Para\nNext'],
+    ['on two lines in a row', 'Para\nGreat job!\nNice work!', 'Para\n'],
     ['after another one', 'Great job! Nice work! It leaks.', 'It leaks.'],
     ['in a run of them', 'Full stop. Let that sink in.', ''],
   ])('removes one %s', (_label, input, expected) => {
@@ -179,6 +189,7 @@ describe('format: factual content', () => {
     'As an AI, I think the 2 calls in `a.ts` race. I hope this helps.',
     '```ts\nconst x = 1; // Hint: keep\n```\nHonestly, line 4 is wrong.',
     'Actually, `foo`—`bar` both return 404.',
+    'Actually—the key leaks.',
   ];
 
   it.each(samples)('keeps every code span and number in %j', (sample) => {
@@ -190,6 +201,14 @@ describe('format: factual content', () => {
 
   it.each(samples)('is stable when run twice on %j', (sample) => {
     expect(format(format(sample))).toBe(format(sample));
+  });
+
+  it('removes an opener an em dash fix exposes', () => {
+    expect(format('Actually—the key leaks.')).toBe('The key leaks.');
+  });
+
+  it('converts a dash in one line when another line keeps its own', () => {
+    expect(format('a—b\n2—3')).toBe('a, b\n2—3');
   });
 
   it('leaves clean text unchanged', () => {

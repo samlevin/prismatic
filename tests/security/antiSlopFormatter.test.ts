@@ -80,8 +80,8 @@ describe('unusual text passes through', () => {
     ['an unpaired surrogate', 'Honestly, a\uD800—b', 'a\uD800—b'],
     [
       'control characters',
-      'Hint: \u0007bell — x\u001B[2J',
-      '\u0007bell, x\u001B[2J',
+      'Hint: \u0007bell — x\u001B[J',
+      '\u0007bell, x\u001B[J',
     ],
     ['a zero-width joiner', 'a\u200D—b', 'a\u200D—b'],
     ['an empty string', '', ''],
