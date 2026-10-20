@@ -66,7 +66,14 @@ export default [
         {
           root: fileURLToPath(new URL('.', import.meta.url)),
           packages: [],
-          exceptions: [],
+          exceptions: [
+            // The entrypoint's root-only descriptor work, and the stub's
+            // first git process until ActionBootstrap exists.
+            {
+              file: 'apps/action/main.ts',
+              imports: ['node:fs', 'node:child_process'],
+            },
+          ],
         },
       ],
     },

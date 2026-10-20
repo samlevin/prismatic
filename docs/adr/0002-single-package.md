@@ -30,7 +30,7 @@ A file may always import from its own module. The rule also enforces these:
 - Production code never imports anything outside `src/` and `apps/`, so `experiments/`, `evals/`, `tests/`, and `tooling/` stay out of the shipped code.
 - A file that is not inside a known module fails lint, and so does an import of one. That covers a directory under `src/` missing from `sourceModules`, and a file directly in `src/` or `apps/`. A new module needs an entry in `sourceModules` first.
 - A dynamic `import()` or `require()` with a computed specifier fails, because the rule cannot check it.
-- The rule's `exceptions` option allows one exact specifier in one exact file, for cases such as a bootstrap descriptor or privilege operation in `apps/action/main.ts`. The list is empty today.
+- The rule's `exceptions` option allows one exact specifier in one exact file, for cases such as a bootstrap descriptor or privilege operation. The only exception is `apps/action/main.ts`, which may import `node:fs` to open `GITHUB_OUTPUT` and `GITHUB_STEP_SUMMARY` as root and to create the run's workspace, and `node:child_process` for the stub that starts the first `git` process until `ActionBootstrap` replaces it. `docker/runtime-policy.md` describes what that file does.
 
 The import rules cover type-only imports too, including inline ones such as `typeof import('openai')`. Adapters do not import each other; one adapter that needs another goes through a port.
 
