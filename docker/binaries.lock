@@ -9,6 +9,8 @@
 
 # Git, built from the release tarball. Checksum from
 # https://www.kernel.org/pub/software/scm/git/sha256sums.asc.
+# The scoped-fetch contract in docs/adr/0004-blobless-fetch.md was proved
+# against this version. After changing it, rerun experiments/fetch/run-in-image.sh.
 git 2.56.0 source 26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3 https://www.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz
 
 # ast-grep release archives. Checksums from the digests GitHub records for the
