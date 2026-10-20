@@ -70,7 +70,7 @@ Spawn with the Agent tool: `subagent_type` from the resolver's `spawn.subagent_t
 Spawn with `spawn_agent`: `agent_type`, `model`, and `reasoning_effort` from the resolver's `spawn` object, and `fork_turns: "none"`. Always pass `model` and `reasoning_effort`, even when they equal the policy; the agent file carries neither, so an omitted value would fall back to the contributor's `[agents]` defaults. An unknown `agent_type` means the project is not trusted in Codex yet; say so and stop. Wait with the agent tools; never poll with shell loops.
 <!-- /codex-only -->
 
-You need APPROVE for that exact base/head pair. On REQUEST CHANGES: fix, rerun the affected checks, push, and re-review with the same packet, updated to the new head and check results, plus the previous head SHA and that round's findings verbatim. After two rejected rounds, return BLOCKED with the open findings instead of looping. Any base/head change before the PR opens invalidates the approval. Never self-approve, and never review your own diff in place of the reviewer.
+You need APPROVE for that exact base/head pair. On REQUEST CHANGES: fix, rerun the affected checks, push, and re-review with the same packet, updated to the new base, head, changed-file summary, and check results, plus the previous round's base and head SHAs and that round's findings verbatim. After two rejected rounds, return BLOCKED with the open findings instead of looping. Any base/head change before the PR opens invalidates the approval. Never self-approve, and never review your own diff in place of the reviewer.
 
 ## PR
 

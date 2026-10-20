@@ -138,12 +138,9 @@ export function substitute(text, policy) {
     .replaceAll(literal, '{{');
 }
 
-// `{{> name}}` becomes .agents/includes/<name>.md, so text that several roles,
-// skills, and references share has one source; `\{{> name}}` stays literal.
-// Includes do not nest. A malformed or nested tag is an error, so no tag
-// reaches a generated prompt.
+// Includes share text across sources, cannot nest, and stay literal when escaped.
 export function include(text, base = root) {
-  return text.replace(/(?<!\\)\{\{>([^}]*)\}\}/g, (tag, name) => {
+  const expanded = text.replace(/(?<!\\)\{\{>([^}]*)\}\}/g, (tag, name) => {
     const path = join(base, SOURCES.includes, `${name.trim()}.md`);
     if (!/^ [a-z-]+$/.test(name) || !existsSync(path))
       throw new Error(`Unknown include: ${tag}`);
@@ -154,6 +151,9 @@ export function include(text, base = root) {
       );
     return content;
   });
+  if (/(?<!\\)\{\{>/.test(expanded))
+    throw new Error('Malformed include in source');
+  return expanded;
 }
 
 function supportedEfforts(policy, tool, model) {

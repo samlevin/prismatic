@@ -790,7 +790,7 @@ test("the delivery owner sends each handoff that handoff's own Policy line", () 
     );
     assert.match(
       implementer,
-      /You need APPROVE for that exact base\/head pair\. On REQUEST CHANGES: fix, rerun the affected checks, push, and re-review with the same packet, updated to the new head and check results, plus the previous head SHA and that round's findings verbatim\. After two rejected rounds, return BLOCKED with the open findings instead of looping\. Any base\/head change before the PR opens invalidates the approval\. Never self-approve/,
+      /You need APPROVE for that exact base\/head pair\. On REQUEST CHANGES: fix, rerun the affected checks, push, and re-review with the same packet, updated to the new base, head, changed-file summary, and check results, plus the previous round's base and head SHAs and that round's findings verbatim\. After two rejected rounds, return BLOCKED with the open findings instead of looping\. Any base\/head change before the PR opens invalidates the approval\. Never self-approve/,
       path,
     );
   }
@@ -965,7 +965,7 @@ test('the code reviewer finds everything in one pass and widens a re-review as f
     assert.doesNotMatch(reviewer, /Read each listed issue/, path);
     assert.ok(
       reviewer.includes(
-        'On a re-review, confirm each previous finding is fixed or carry it forward as open, and read `git diff <previous head>..<head>` for defects the changes introduced. Widen when the changes reach further: when they alter other behavior or invalidate evidence an earlier round relied on, such as a caller, a shared contract, or a test, review everything they affect as on a first pass, and when the base changed, make a full first pass. Raise no new finding on code that the earlier round reviewed and these changes do not affect, unless the earlier round missed a defect that blocks acceptance.',
+        'On a re-review, confirm each previous finding is fixed or carry it forward as open, and read `git diff <previous head>..<head>` for defects the changes introduced. Widen when the changes reach further: when they alter other behavior or invalidate evidence an earlier round relied on, such as a caller, a shared contract, or a test, review everything they affect as on a first pass, and when the base differs from the previous base SHA, make a full first pass. Raise no new finding on code that the earlier round reviewed and these changes do not affect, unless the earlier round missed a defect that blocks acceptance.',
       ),
       path,
     );
@@ -1006,6 +1006,18 @@ test('include inserts a shared source and rejects an unknown one', () => {
       (error) => error.message === `Unknown include: ${tag}`,
       tag,
     );
+  for (const tag of ['{{> shared-rule}', '{{> a}b}}', '{{>']) {
+    assert.throws(
+      () => include(`A {{> shared-rule}} B ${tag}`, base),
+      /Malformed include in source/,
+      tag,
+    );
+    assert.equal(
+      substitute(include(`A \\${tag} B`, base), policy),
+      `A ${tag} B`,
+      tag,
+    );
+  }
   writeFileSync(
     join(base, '.agents/includes/nested.md'),
     '{{> shared-rule}}\n',
@@ -1074,7 +1086,7 @@ test('the review packet has one source that the reviewer, the delivery procedure
     'a changed-file summary from `git diff --stat <base>..<head>`',
     'the local check results with the SHA they ran at',
     'for a branch stacked on another PR, that PR with the head SHA it was verified at',
-    "A re-review packet adds the previous round's head SHA and its findings verbatim.",
+    "A re-review packet adds the previous round's base and head SHAs (its `Base/Head:` line) and its findings verbatim.",
   ])
     assert.ok(packet.includes(field), field);
   for (const path of [
