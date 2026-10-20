@@ -20,7 +20,7 @@
   },
   "capabilities": {
     "issue-creation": {
-      "summary": "Plan, draft, and publish issues in the main thread",
+      "summary": "Plan, draft, classify, and publish issues in the main thread",
       "claude": {
         "model": "sonnet",
         "effort": "medium"
@@ -31,7 +31,7 @@
       }
     },
     "issue-triage": {
-      "summary": "Independent read-only classification of drafted issues",
+      "summary": "Independent read-only classification, decomposition, and dependency judgment of drafted issues, when filing needs it",
       "claude": {
         "model": "haiku",
         "effort": "low"
@@ -41,19 +41,8 @@
         "effort": "low"
       }
     },
-    "orchestration": {
-      "summary": "Dispatch of a container's executable leaves, concurrent only across recorded independence groups",
-      "claude": {
-        "model": "sonnet",
-        "effort": "medium"
-      },
-      "codex": {
-        "model": "gpt-6-luna",
-        "effort": "medium"
-      }
-    },
     "implementation": {
-      "summary": "Leaf delivery and PR rework through a ready-for-review PR",
+      "summary": "Leaf delivery, PR rework, and container queues through ready-for-review PRs; binding for an isolated implementer, advisory for the main thread",
       "claude": {
         "model": "opus",
         "effort": "high"
@@ -61,17 +50,6 @@
       "codex": {
         "model": "gpt-6.1-sol",
         "effort": "high"
-      }
-    },
-    "stack-management": {
-      "summary": "Branch topology and gh stack operations for the implementer",
-      "claude": {
-        "model": "sonnet",
-        "effort": "low"
-      },
-      "codex": {
-        "model": "gpt-6-luna",
-        "effort": "low"
       }
     },
     "code-review": {
@@ -99,9 +77,7 @@
   },
   "roles": {
     "issue-triager": "issue-triage",
-    "orchestrator": "orchestration",
     "implementer": "implementation",
-    "stack-manager": "stack-management",
     "code-reviewer": "code-review",
     "security-reviewer": "security-review"
   },

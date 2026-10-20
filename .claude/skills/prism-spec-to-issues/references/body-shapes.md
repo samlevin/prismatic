@@ -22,7 +22,7 @@ One per specification, keyed `Plan`. The specification title is its first `# ` h
 The <specification title> delivery plan: the <count> <phase epic|phase epics> listed under How and every container and slice under them. This issue groups them and has no work of its own. It closes when the epics close.
 
 ### Why
-`prism-orchestrator` plans from one issue's native sub-issue tree and the blocked-by edges on its leaves. Without a common parent, `implement` could target only one phase at a time; with this issue as the parent of every phase epic, `implement` on it delivers the whole plan in dependency order.
+`prism-implement` builds its dependency queue from one issue's native sub-issue tree and the blocked-by edges on its leaves. Without a common parent, `implement` could target only one phase at a time; with this issue as the parent of every phase epic, `implement` on it delivers the whole plan in dependency order.
 
 ### How
 Phases in plan order:

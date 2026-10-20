@@ -1,0 +1,7 @@
+# Generated from .agents/workflows/stack.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`.
+interface:
+  display_name: 'Prismatic: Stack'
+  short_description: Build, link, rebase, and sync stacked Prismatic branches safely
+  default_prompt: Use $prism-stack to manage the stacked branches of this Prismatic delivery.
+policy:
+  allow_implicit_invocation: true

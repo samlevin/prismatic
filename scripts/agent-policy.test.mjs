@@ -420,6 +420,7 @@ test('every role and workflow renders for both tools with matching bodies', () =
     'review-security',
     'plain-language',
     'spec-to-issues',
+    'stack',
   ]) {
     assert.ok(
       names.includes(`.claude/skills/${PREFIX}${skill}/SKILL.md`),
@@ -434,7 +435,7 @@ test('every role and workflow renders for both tools with matching bodies', () =
       skill,
     );
   }
-  // Shared references are copied into both skills byte for byte.
+  // A reference with no tool-only block is the same in both skills.
   assert.equal(
     files.get(
       `.claude/skills/${PREFIX}create-github-issue/references/github-operations.md`,
@@ -444,30 +445,87 @@ test('every role and workflow renders for both tools with matching bodies', () =
     ),
   );
   // Tool-only blocks aside, the two renderings of a source are the same text.
-  for (const role of Object.keys(policy.roles)) {
-    const shared = renderBody(
-      parseSource(
-        substitute(
-          readFileSync(
-            new URL(`../.agents/roles/${role}.md`, import.meta.url),
-            'utf8',
-          ),
-          policy,
-        ),
-      ).body,
-      'claude',
-    )
-      .split('\n')
-      .filter(
-        (line) =>
-          !/^(Spawn|Isolation|You also receive)/.test(line) && line.trim(),
-      );
-    for (const line of shared.slice(0, 3))
-      assert.ok(
-        files.get(`.codex/agents/${PREFIX}${role}.toml`).includes(line),
-        `${role}: ${line.slice(0, 40)}`,
-      );
+  for (const { source, outputs } of sources())
+    for (const line of sharedLines(source))
+      for (const output of outputs)
+        assert.ok(
+          files.get(output).includes(line),
+          `${output}: ${line.slice(0, 60)}`,
+        );
+  // Each tool's reference keeps its own tool-only blocks and drops the other's.
+  const delivery = (root) =>
+    files.get(`${root}/${PREFIX}implement/references/delivery.md`);
+  assert.match(
+    delivery('.claude/skills'),
+    /git worktree add -b <branch> \.claude\/worktrees\//,
+  );
+  assert.doesNotMatch(
+    delivery('.claude/skills'),
+    /exec_command\.workdir|-only -->/,
+  );
+  assert.match(
+    delivery('.agents/skills'),
+    /git worktree add -b <branch> \.codex\/worktrees\//,
+  );
+  assert.doesNotMatch(
+    delivery('.agents/skills'),
+    /\.claude\/worktrees|-only -->/,
+  );
+});
+
+// Every role, workflow, and Markdown reference source with the generated
+// files it renders to, one per tool.
+function sources() {
+  const list = [];
+  const read = (path) =>
+    substitute(
+      readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'),
+      policy,
+    );
+  for (const role of Object.keys(policy.roles))
+    list.push({
+      source: parseSource(read(`.agents/roles/${role}.md`)).body,
+      outputs: [
+        `.claude/agents/${PREFIX}${role}.md`,
+        `.codex/agents/${PREFIX}${role}.toml`,
+      ],
+    });
+  const skill = new RegExp(`^\\.claude/skills/${PREFIX}([a-z-]+)/(.+\\.md)$`);
+  for (const [path] of render()) {
+    const match = path.match(skill);
+    if (!match) continue;
+    const [, name, file] = match;
+    const source =
+      file === 'SKILL.md'
+        ? parseSource(read(`.agents/workflows/${name}.md`)).body
+        : read(`.agents/workflows/${name}/${file}`);
+    list.push({
+      source,
+      outputs: [path, path.replace(/^\.claude\/skills\//, '.agents/skills/')],
+    });
   }
+  return list;
+}
+
+// The non-empty lines of a source outside its tool-only blocks.
+function sharedLines(text) {
+  return text
+    .replace(/<!-- (claude|codex)-only -->\n[\s\S]*?<!-- \/\1-only -->\n?/g, '')
+    .split('\n')
+    .filter((line) => line.trim());
+}
+
+test('each source names the same agents and skills in both tools', () => {
+  const named = (text) =>
+    [
+      ...new Set(text.match(new RegExp(`\\b${PREFIX}[a-z-]+[a-z]`, 'g'))),
+    ].sort();
+  for (const { source, outputs } of sources())
+    assert.deepEqual(
+      named(renderBody(source, 'claude')),
+      named(renderBody(source, 'codex')),
+      outputs[0],
+    );
 });
 
 test('the review-code skill resolves #N as a pull request in both tools', () => {
@@ -579,7 +637,7 @@ const RELAYED_RESULTS = {
   implement: {
     heading: 'Report',
     result:
-      /^Relay the agent's READY FOR REVIEW or BLOCKED result verbatim, including every `Requested settings:` line\./,
+      /^Return the result the procedure defines, with your `Advisory policy:` line and every `Requested settings:` line verbatim, including an isolated implementer's\./,
   },
   'review-code': {
     heading: 'Report',
@@ -652,33 +710,45 @@ test('reports carry requested settings and no runtime model claims', () => {
     assert.doesNotMatch(text, /runtime (model|reports)/i, path);
   }
   for (const path of [
+    ...inBoth('implement/references/delivery.md'),
     `.claude/agents/${PREFIX}implementer.md`,
     `.codex/agents/${PREFIX}implementer.toml`,
   ])
     assert.match(
       files.get(path),
       new RegExp(
-        `one \`Requested settings: Policy: <as sent>\` line per ${PREFIX}code-reviewer or ${PREFIX}stack-manager you spawned, in spawn order`,
+        `one \`Requested settings: Policy: <as sent>\` line per ${PREFIX}code-reviewer you spawned, in spawn order`,
       ),
+      path,
     );
-  for (const path of [
-    `.claude/agents/${PREFIX}orchestrator.md`,
-    `.codex/agents/${PREFIX}orchestrator.toml`,
-  ])
+  for (const path of inBoth('implement/references/delivery.md'))
     assert.ok(
       files
         .get(path)
-        .includes("the implementer's `Requested settings:` lines verbatim"),
+        .includes(
+          '`Advisory policy: ...` in the main thread, `Requested settings: Policy: <as dispatched>` in an isolated implementer',
+        ),
+      path,
+    );
+  for (const path of inBoth('implement/references/queue.md'))
+    assert.ok(
+      files
+        .get(path)
+        .includes(
+          "Relay an isolated implementer's `Requested settings:` lines verbatim in its row.",
+        ),
       path,
     );
 });
 
-test("the implementer sends each handoff that handoff's own Policy line", () => {
+// A file of a generated skill, in the Claude Code and the Codex skill.
+function inBoth(file) {
+  return [`.claude/skills/${PREFIX}${file}`, `.agents/skills/${PREFIX}${file}`];
+}
+
+test("the delivery owner sends each handoff that handoff's own Policy line", () => {
   const files = render();
-  for (const path of [
-    `.claude/agents/${PREFIX}implementer.md`,
-    `.codex/agents/${PREFIX}implementer.toml`,
-  ]) {
+  for (const path of inBoth('implement/references/delivery.md')) {
     const implementer = files.get(path);
     assert.ok(
       implementer.includes(
@@ -691,23 +761,30 @@ test("the implementer sends each handoff that handoff's own Policy line", () => 
       /`review_mode=pre_pr`, and the `Policy:` line\./,
       path,
     );
-    assert.ok(
-      implementer.includes(
-        `End each ${PREFIX}stack-manager line with the operation you sent it in parentheses, such as \`Requested settings: Policy: <as sent> (link)\`.`,
-      ),
-      path,
-    );
     assert.match(
       implementer,
-      /You need APPROVE for that exact base\/head pair\. On REQUEST CHANGES: fix, rerun the affected gates, push, and re-review with the same packet plus the previous head SHA and that round's findings verbatim\. After two rejected rounds, return BLOCKED with the open findings instead of looping\. Any base\/head change before the PR opens invalidates the approval\. Never self-approve\./,
-      path,
-    );
-    assert.match(
-      implementer,
-      /Echo it in your result as `Requested settings: Policy: <as dispatched>`\./,
+      /You need APPROVE for that exact base\/head pair\. On REQUEST CHANGES: fix, rerun the affected gates, push, and re-review with the same packet plus the previous head SHA and that round's findings verbatim\. After two rejected rounds, return BLOCKED with the open findings instead of looping\. Any base\/head change before the PR opens invalidates the approval\. Never self-approve/,
       path,
     );
   }
+  for (const path of inBoth('implement/SKILL.md'))
+    assert.ok(
+      files
+        .get(path)
+        .includes(
+          `its \`Policy:\` line: \`Policy: tool=<tool> role=${PREFIX}implementer model=<model> effort=<effort> (model: <source>, effort: <source>); handoff overrides: <reviewer overrides or none>\``,
+        ),
+      path,
+    );
+  for (const path of [
+    `.claude/agents/${PREFIX}implementer.md`,
+    `.codex/agents/${PREFIX}implementer.toml`,
+  ])
+    assert.match(
+      files.get(path),
+      /with `Requested settings: Policy: <as dispatched>` as your settings line/,
+      path,
+    );
 });
 
 test('Codex issue filing states its policy as advisory; Claude pins it', () => {
@@ -748,10 +825,7 @@ test('Codex issue filing states its policy as advisory; Claude pins it', () => {
 
 test('only automation moves an issue to In review', () => {
   const files = render();
-  for (const path of [
-    `.claude/agents/${PREFIX}implementer.md`,
-    `.codex/agents/${PREFIX}implementer.toml`,
-  ]) {
+  for (const path of inBoth('implement/references/delivery.md')) {
     const implementer = files.get(path);
     assert.match(
       implementer,
@@ -776,10 +850,11 @@ test('only automation moves an issue to In review', () => {
     assert.doesNotMatch(implementer, /Move the issue to In review/, path);
   }
   for (const path of [
-    `.claude/agents/${PREFIX}orchestrator.md`,
-    `.codex/agents/${PREFIX}orchestrator.toml`,
-    `.claude/skills/${PREFIX}implement/SKILL.md`,
-    `.agents/skills/${PREFIX}implement/SKILL.md`,
+    `.claude/agents/${PREFIX}implementer.md`,
+    `.codex/agents/${PREFIX}implementer.toml`,
+    ...inBoth('implement/SKILL.md'),
+    ...inBoth('implement/references/queue.md'),
+    ...inBoth('stack/SKILL.md'),
   ])
     assert.doesNotMatch(files.get(path), /move [^\n.]*In review/i, path);
 });
@@ -822,6 +897,8 @@ test('AGENTS.md holds the code-and-comments rules and the reviewer enforces them
       /describe the current state/,
     );
   }
+  for (const path of inBoth('implement/references/delivery.md'))
+    assert.doesNotMatch(files.get(path), /describe the current state/, path);
 });
 
 test('the code reviewer finds everything in one pass and scopes re-reviews to the fixes', () => {
@@ -1337,6 +1414,7 @@ test('the review-code skill posts PR reviews only through publish-review', () =>
   for (const path of [
     `.claude/agents/${PREFIX}implementer.md`,
     `.codex/agents/${PREFIX}implementer.toml`,
+    ...inBoth('implement/references/delivery.md'),
   ])
     assert.doesNotMatch(files.get(path), /publish-review/, path);
   const agentsMd = readFileSync(
@@ -1352,27 +1430,18 @@ test('the review-code skill posts PR reviews only through publish-review', () =>
     /`publish-review`, which posts a `prism-review-code` report as one review on an open PR/,
   );
 });
-
 const STACK_CHECK =
-  'run `gh stack --help`. If it exits non-zero, run `gh --version`';
+  'Run `gh stack --help` before any other command here. If it exits non-zero, run `gh --version`';
 
 test('stacking checks for gh stack and only the implement skill prompts the install', () => {
   const files = render();
-  for (const role of ['implementer', 'stack-manager', 'orchestrator'])
-    for (const path of [
-      `.claude/agents/${PREFIX}${role}.md`,
-      `.codex/agents/${PREFIX}${role}.toml`,
-    ]) {
-      const text = files.get(path);
-      assert.ok(text.includes(STACK_CHECK), path);
-      assert.ok(text.includes('`BLOCKED: gh stack not installed`'), path);
-      assert.match(
-        returnParagraph(text),
-        /BLOCKED: gh stack not installed/,
-        path,
-      );
-      assert.match(text, /never install the extension/i, path);
-    }
+  for (const path of inBoth('stack/SKILL.md')) {
+    const text = section(files.get(path), 'Check the extension');
+    assert.ok(text.includes(STACK_CHECK), path);
+    assert.ok(text.includes('`BLOCKED: gh stack not installed`'), path);
+    assert.match(text, /Never install the extension yourself\./, path);
+    assert.match(text, /stop before any branch, stack, or PR work/, path);
+  }
   for (const path of [
     `.claude/agents/${PREFIX}implementer.md`,
     `.codex/agents/${PREFIX}implementer.toml`,
@@ -1380,15 +1449,23 @@ test('stacking checks for gh stack and only the implement skill prompts the inst
     const implementer = files.get(path);
     assert.match(
       implementer,
-      /before you create a branch on an unmerged base or when you decide to split, run `gh stack --help`/,
-      path,
-    );
-    assert.match(
-      implementer,
-      /Do not create, rebase, or push a branch or open a PR first/,
+      /return `BLOCKED: gh stack not installed` with the `gh` version before any branch, stack, or PR work, and never install the extension/,
       path,
     );
     assert.match(implementer, /resume with the same claim and worktree/, path);
+  }
+  for (const path of inBoth('implement/references/delivery.md')) {
+    const delivery = files.get(path);
+    assert.match(
+      delivery,
+      /before you create a branch on an unmerged base, when you decide to split, or before you rework a stacked PR, load the skill and run its extension check\. Do not create, rebase, or push a branch or open a PR first\./,
+      path,
+    );
+    assert.match(
+      section(delivery, 'Result'),
+      /`BLOCKED: gh stack not installed` with the `gh` version/,
+      path,
+    );
   }
   for (const root of ['.claude/skills', '.agents/skills']) {
     const skill = files.get(`${root}/${PREFIX}implement/SKILL.md`);
@@ -1411,50 +1488,468 @@ test('stacking checks for gh stack and only the implement skill prompts the inst
     assert.match(check, /Never run `gh extension install` yourself\./, root);
     assert.match(check, /continue that same agent/, root);
     assert.ok(
-      skill.indexOf('## Check gh stack') < skill.indexOf('## Dispatch'),
+      skill.indexOf('## Check gh stack') <
+        skill.indexOf('## Isolated implementer exception'),
       root,
     );
   }
   for (const [path, text] of files)
-    if (!path.includes(`/${PREFIX}implement/`))
+    if (!path.endsWith(`/${PREFIX}implement/SKILL.md`))
       assert.doesNotMatch(text, /! gh extension install/, path);
 });
 
-test('no role or skill describes a manual stacking fallback', () => {
+test('stack operations go through gh stack, except one guarded bottom-layer rebase', () => {
   const files = render();
+  const stackSkills = inBoth('stack/SKILL.md');
   for (const [path, text] of files) {
+    // Outside the stack skill's Never list, no file names a command that moves
+    // the local trunk, overwrites a push, creates a PR, or sets a PR base.
+    const scope = stackSkills.includes(path)
+      ? text.replace(section(text, 'Never run'), '')
+      : text;
+    assert.doesNotMatch(
+      scope,
+      /`gh stack (sync|push|submit|merge|unstack)|gh pr edit|`gh stack rebase(?! --(no-trunk|continue|abort))/,
+      path,
+    );
+    assert.doesNotMatch(scope, /force-with-lease(?!=<branch>:<)/, path);
+    assert.doesNotMatch(scope, /git push --force\b(?!-with-lease=)/, path);
+    // Every rebase that moves commits carries rebase.updateRefs=false.
     assert.doesNotMatch(
       text,
-      /updateRefs|force-with-lease|git push --force|fall back to fetching/,
+      /`git (?!-c rebase\.updateRefs=false )[^`]*rebase --onto/,
       path,
     );
-    for (const line of text.split('\n').filter((l) => l.includes('gh pr edit')))
-      assert.match(line, /Never set a PR base with `gh pr edit --base`/, path);
+    if (
+      !stackSkills.includes(path) &&
+      !path.includes('/references/delivery.md')
+    )
+      assert.doesNotMatch(text, /updateRefs|force-with-lease/, path);
   }
-  for (const path of [
-    `.claude/agents/${PREFIX}stack-manager.md`,
-    `.codex/agents/${PREFIX}stack-manager.toml`,
+  for (const path of stackSkills) {
+    const skill = files.get(path);
+    const never = section(skill, 'Never run');
+    for (const command of [
+      '`gh stack rebase` without `--no-trunk`, or `gh stack sync`',
+      '`gh stack push`',
+      '`gh stack submit`, or `gh stack link` with branch names',
+      'A `git rebase` without `-c rebase.updateRefs=false`',
+      'A bare `git push --force` or `git push --force-with-lease`',
+      '`gh pr edit --base`',
+    ])
+      assert.ok(never.includes(command), `${path}: ${command}`);
+    const operations = section(skill, 'Operations');
+    assert.match(operations, /`gh stack init --base main /, path);
+    assert.match(operations, /`gh stack rebase --no-trunk --upstack`/, path);
+    assert.match(
+      operations,
+      /`gh stack link --base main <PR URL> \.\.\.` bottom to top, prerequisite PRs first, with PR URLs only/,
+      path,
+    );
+    assert.match(
+      operations,
+      /`git push --force-with-lease=<branch>:<expected SHA> origin <branch>`/,
+      path,
+    );
+    assert.match(
+      operations,
+      /This is the one rebase outside `gh stack`, because every `gh stack` command that rebases onto the trunk moves the local trunk first\./,
+      path,
+    );
+    assert.equal(
+      (operations.match(/`git -c rebase\.updateRefs=false rebase/g) ?? [])
+        .length,
+      1,
+      path,
+    );
+    const inspect = section(skill, 'Inspect before every change');
+    assert.match(inspect, /`git worktree list --porcelain`/, path);
+    assert.match(
+      inspect,
+      /A command could move the local trunk, a branch another worktree has checked out, or a branch you do not own\./,
+      path,
+    );
+    assert.match(inspect, /Ownership is ambiguous/, path);
+    assert.match(
+      inspect,
+      /Trunk `main` and a prerequisite's branch are never yours\./,
+      path,
+    );
+    assert.match(
+      section(skill, 'Conflicts'),
+      /Otherwise run `gh stack rebase --abort` or `git rebase --abort`, which restores the branches, and stop with the conflicting files\./,
+      path,
+    );
+    assert.match(skill, /It never authorizes merges/, path);
+  }
+});
+
+test('the implement skill delivers in this thread and spawns an implementer only as an exception', () => {
+  const files = render();
+  for (const path of inBoth('implement/SKILL.md')) {
+    const skill = files.get(path);
+    const mode = section(skill, 'Pick the mode');
+    assert.match(
+      mode,
+      /^\| Leaf issue \| this thread \| \[references\/delivery\.md\]\(references\/delivery\.md\) \|$/m,
+      path,
+    );
+    assert.match(
+      mode,
+      /^\| PR rework \| this thread \| \[references\/delivery\.md\]\(references\/delivery\.md\), its Rework section \|$/m,
+      path,
+    );
+    assert.match(
+      mode,
+      /^\| Container or epic \| dependency queue in this thread, sequential by default \| \[references\/queue\.md\]\(references\/queue\.md\) \|$/m,
+      path,
+    );
+    assert.match(skill, /^You are the delivery owner\./m, path);
+    // Only the exception section spawns an implementer.
+    const exception = section(skill, 'Isolated implementer exception');
+    const outside = skill.replace(exception, '');
+    assert.match(exception, /`--role implementer`/, path);
+    assert.doesNotMatch(
+      outside,
+      /--role implementer|subagent_type: \S+implementer|spawn_agent/,
+      path,
+    );
+    assert.match(
+      exception,
+      /An isolated implementer spawns only \S+code-reviewer, never another implementer/,
+      path,
+    );
+    assert.match(
+      exception,
+      /The queue's parallel exception in \[references\/queue\.md\]\(references\/queue\.md\) is the only case where more than one runs at a time\./,
+      path,
+    );
+    // Inline work states the policy as advisory in both tools.
+    const settings = section(skill, 'Settings');
+    assert.match(
+      settings,
+      /A skill cannot change them in either tool, and you spawn no agent only to enforce a model choice\./,
+      path,
+    );
+    assert.ok(
+      settings.includes(
+        '`Advisory policy: tool=<tool> capability=implementation model=<model> effort=<effort> (session settings apply)`. Never present it as `Requested settings:`, because no dispatcher requested it.',
+      ),
+      path,
+    );
+  }
+  const claude = files.get(`.claude/skills/${PREFIX}implement/SKILL.md`);
+  assert.doesNotMatch(claude, /^(model|effort):/m);
+  assert.match(
+    section(claude, 'Isolated implementer exception'),
+    new RegExp(
+      `Use the Agent tool with \`subagent_type: ${PREFIX}implementer\``,
+    ),
+  );
+  const codex = files.get(`.agents/skills/${PREFIX}implement/SKILL.md`);
+  assert.match(
+    section(codex, 'Isolated implementer exception'),
+    /Use `spawn_agent` with `agent_type`, `model`, and `reasoning_effort` copied from the resolver's `spawn` object and `fork_turns: "none"`, so the child gets only the assignment and none of this conversation\./,
+  );
+});
+
+test('the isolated implementer runs the shared procedure and spawns only the reviewer', () => {
+  const files = render();
+  for (const [path, tool] of [
+    [`.claude/agents/${PREFIX}implementer.md`, 'claude'],
+    [`.codex/agents/${PREFIX}implementer.toml`, 'codex'],
   ]) {
-    const manager = files.get(path);
-    assert.match(
-      manager,
-      /Every build, link, cascade, and push goes through `gh stack`\./,
+    const implementer = files.get(path);
+    const skills = tool === 'claude' ? '.claude/skills' : '.agents/skills';
+    assert.ok(
+      implementer.includes(
+        `\`git show origin/main:${skills}/${PREFIX}implement/references/delivery.md\``,
+      ),
+      path,
+    );
+    assert.ok(
+      files.has(`${skills}/${PREFIX}implement/references/delivery.md`),
       path,
     );
     assert.match(
-      manager,
-      /never rebase, reset, or force-push a stacked branch with plain `git`/,
+      implementer,
+      /Spawn only \S+code-reviewer, as the procedure describes\. Never spawn another implementer or any other agent\./,
       path,
     );
-    assert.doesNotMatch(manager, /fallback/i, path);
+    assert.match(implementer, /return `BLOCKED: container`/, path);
+    assert.match(implementer, /`Owned by other running leaves:`/, path);
+  }
+  assert.match(
+    files.get(`.claude/agents/${PREFIX}implementer.md`),
+    /^isolation: worktree$/m,
+  );
+  assert.deepEqual(
+    resolve(policy, { tool: 'codex', role: 'implementer' }).spawn.fork_turns,
+    'none',
+  );
+});
+
+test('the container queue is sequential by default and parallel only on request', () => {
+  const files = render();
+  for (const path of inBoth('implement/references/queue.md')) {
+    const queue = files.get(path);
+    assert.match(queue, /No separate orchestrator agent exists\./, path);
+    const build = section(queue, 'Build the queue');
+    assert.match(build, /Detect cycles in the blocked-by edges\./, path);
+    for (const state of [
+      'done',
+      'in review',
+      'owned elsewhere',
+      'resume',
+      'waiting',
+      'ready',
+    ])
+      assert.ok(build.includes(`- \`${state}\`: `), `${path}: ${state}`);
+    const deliver = section(queue, 'Deliver');
+    assert.match(deliver, /^Delivery is sequential by default\./m, path);
+    assert.match(
+      deliver,
+      /record its result, an open PR or a recorded blocker, in the ledger before you start the next leaf/,
+      path,
+    );
+    const parallel = section(queue, 'Parallel exception');
+    for (const condition of [
+      '- The request asks for parallel delivery.',
+      '- Each leaf is `ready`, passes the gate, and is sized M',
+      'valid independence record on their immediate parent, as `.agents/issue-creation.md` defines it. Never infer, form, or widen groups yourself.',
+      '- Their implementation notes name no overlapping files or shared contracts.',
+    ])
+      assert.ok(parallel.includes(condition), `${path}: ${condition}`);
+    assert.match(parallel, /At most one leaf per group runs at a time/, path);
+    assert.match(
+      parallel,
+      /A leaf the record does not list runs alone\./,
+      path,
+    );
+    assert.match(
+      parallel,
+      /When any condition fails, deliver sequentially and say why\./,
+      path,
+    );
+  }
+  assert.match(
+    files.get(`.claude/skills/${PREFIX}implement/references/queue.md`),
+    /`run_in_background: true`/,
+  );
+  assert.match(
+    files.get(`.agents/skills/${PREFIX}implement/references/queue.md`),
+    /Spawn every concurrent leaf's implementer before you wait/,
+  );
+  const record = readFileSync(
+    new URL('../.agents/issue-creation.md', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    record,
+    new RegExp(
+      `<!-- ${PREFIX}independence-groups -->\\n- #12 #14\\n- #13\\n<!-- /${PREFIX}independence-groups -->`,
+    ),
+  );
+  assert.match(
+    record,
+    /Delivery stays sequential unless the request asks for parallel delivery, and a request never widens the record\./,
+  );
+});
+
+test('the delivery owner runs prism-stack itself in the worktree it created', () => {
+  const files = render();
+  for (const path of inBoth('implement/references/delivery.md')) {
+    const stack = section(files.get(path), 'Stack');
+    assert.match(
+      stack,
+      /You run every stack operation yourself with the \S+stack skill, in the worktree you created/,
+      path,
+    );
+  }
+  assert.match(
+    files.get(`.claude/skills/${PREFIX}implement/references/delivery.md`),
+    new RegExp(`Load it with the Skill tool \\(\`${PREFIX}stack\`\\)\\.`),
+  );
+  assert.match(
+    files.get(`.agents/skills/${PREFIX}implement/references/delivery.md`),
+    new RegExp(`Load it as \`\\$${PREFIX}stack\`\\.`),
+  );
+  for (const path of inBoth('stack/SKILL.md'))
+    assert.match(
+      files.get(path),
+      /You run every command here yourself, in the worktree you created for the delivery\. No other agent runs it for you, and you never run it in a worktree you did not create\./,
+      path,
+    );
+  assert.match(
+    readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8'),
+    /The writer that creates a worktree runs every change in it, stack operations included; other agents only inspect it\./,
+  );
+});
+
+test('the pre-PR review stays independent, mandatory on its paths, and tied to exact SHAs', () => {
+  const files = render();
+  const agentsMd = readFileSync(
+    new URL('../AGENTS.md', import.meta.url),
+    'utf8',
+  );
+  assert.ok(
+    agentsMd.includes(
+      'Always use it, however small the diff, for any change to `.agents/`, `.claude/`, `.codex/`, `AGENTS.md`, `scripts/agent-policy*`, or `.github/workflows/`.',
+    ),
+  );
+  for (const path of inBoth('implement/references/delivery.md')) {
+    const review = section(files.get(path), 'Pre-PR review');
+    assert.match(
+      review,
+      /The independent-review rule in `AGENTS\.md` decides whether the change needs review: always for the agent-instruction and workflow paths it lists, however small the diff/,
+      path,
+    );
+    assert.match(review, /`Pre-PR review: skipped \(<reason>\)`/, path);
+    assert.match(
+      review,
+      /`node scripts\/agent-policy\.mjs resolve --tool <tool> --role code-reviewer`/,
+      path,
+    );
+    assert.match(review, /Spawn a fresh \S+code-reviewer/, path);
+    assert.match(review, /Leave out your self-assessment/, path);
+    assert.match(
+      review,
+      /never review your own diff in place of the reviewer/,
+      path,
+    );
   }
   for (const path of [
-    `.claude/agents/${PREFIX}implementer.md`,
-    `.codex/agents/${PREFIX}implementer.toml`,
+    `.claude/agents/${PREFIX}code-reviewer.md`,
+    `.codex/agents/${PREFIX}code-reviewer.toml`,
+  ]) {
+    const reviewer = files.get(path);
+    assert.match(
+      reviewer,
+      /Pre-PR gate when spawned by a delivery owner/,
+      path,
+    );
+    assert.match(reviewer, /In `pre_pr` mode a PR must not exist yet/, path);
+  }
+  // Only the review-security skill spawns the security reviewer.
+  for (const [path, text] of files)
+    if (!path.includes(`/${PREFIX}review-security/`))
+      assert.doesNotMatch(
+        text,
+        new RegExp(
+          `(subagent_type|agent_type): ${PREFIX}security-reviewer|--role security-reviewer`,
+        ),
+        path,
+      );
+});
+
+test('issue filing triages inline unless it needs independent judgment', () => {
+  const files = render();
+  for (const path of inBoth('create-github-issue/SKILL.md')) {
+    const skill = files.get(path);
+    const triage = section(skill, 'Triage');
+    assert.match(triage, /^Classify inline by default:/m, path);
+    for (const reason of [
+      '- Classification: the request asks for independent triage',
+      '- Decomposition: a draft may hold more than one logical outcome, or the batch creates a container or epic.',
+      '- Dependency judgment: a new container or epic has two or more leaf drafts, which need independence groups',
+    ])
+      assert.ok(triage.includes(reason), `${path}: ${reason}`);
+    assert.match(triage, /Only the triager forms independence groups\./, path);
+    assert.match(
+      triage,
+      /once you spawn it, never override its verdict with your own/,
+      path,
+    );
+    assert.ok(
+      section(skill, 'Verify and return').includes(
+        "either `Triage: inline` or the triager's `Requested settings:` line verbatim with the reason you spawned it",
+      ),
+      path,
+    );
+    // The record format has one source.
+    assert.doesNotMatch(skill, /independence-groups -->/, path);
+    assert.match(
+      skill,
+      /append the section that `\.agents\/issue-creation\.md` shows/,
+      path,
+    );
+  }
+  for (const path of [
+    `.claude/agents/${PREFIX}issue-triager.md`,
+    `.codex/agents/${PREFIX}issue-triager.toml`,
+  ]) {
+    const triager = files.get(path);
+    assert.match(
+      triager,
+      /only when a filing needs independent classification, decomposition, or dependency judgment/,
+      path,
+    );
+    assert.match(
+      triager,
+      /by the definition in `\.agents\/issue-creation\.md`/,
+      path,
+    );
+  }
+});
+
+test('delivery owners and reviewers share one retrieval rule', () => {
+  const files = render();
+  const evidence = readFileSync(
+    new URL('../.agents/evidence.md', import.meta.url),
+    'utf8',
+  );
+  assert.match(evidence, /It decides how you read, never how much/);
+  assert.match(
+    evidence,
+    /fetch the missing part with a narrower query, a line range, or the next page/,
+  );
+  assert.match(evidence, /never to meet a size or a count/);
+  for (const path of [
+    ...inBoth('implement/references/delivery.md'),
+    ...inBoth('implement/references/queue.md'),
+    `.claude/agents/${PREFIX}code-reviewer.md`,
+    `.codex/agents/${PREFIX}code-reviewer.toml`,
   ])
     assert.match(
       files.get(path),
-      /Build, link, and cascade it only through \S+stack-manager with `gh stack`\. Never set a PR base with `gh pr edit --base` or the API, and never rebase a stacked branch yourself\./,
+      /`(git show origin\/main:)?\.agents\/evidence\.md` describes/,
       path,
+    );
+});
+
+test('removed delivery roles cannot be selected through any entry point', () => {
+  const files = render();
+  for (const tool of TOOLS) {
+    for (const role of ['orchestrator', 'stack-manager'])
+      assert.throws(() => resolve(policy, { tool, role }), /Unknown role/);
+    for (const capability of ['orchestration', 'stack-management'])
+      assert.throws(
+        () => resolve(policy, { tool, capability }),
+        /Unknown capability/,
+      );
+  }
+  assert.deepEqual(Object.keys(policy.roles).sort(), [
+    'code-reviewer',
+    'implementer',
+    'issue-triager',
+    'security-reviewer',
+  ]);
+  const stale = new RegExp(
+    `${PREFIX}(orchestrator|stack-manager)|--role (orchestrator|stack-manager)`,
+  );
+  for (const [path, text] of files) {
+    assert.doesNotMatch(path, /orchestrator|stack-manager/, path);
+    assert.doesNotMatch(text, stale, path);
+  }
+  for (const doc of [
+    'AGENTS.md',
+    '.agents/README.md',
+    '.agents/issue-creation.md',
+    '.agents/spec-slicing.md',
+  ])
+    assert.doesNotMatch(
+      readFileSync(new URL(`../${doc}`, import.meta.url), 'utf8'),
+      stale,
+      doc,
     );
 });
