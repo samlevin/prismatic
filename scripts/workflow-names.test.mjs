@@ -165,7 +165,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   };
   const node = {
     uses: 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
-    with: { 'node-version': '22.16.0' },
+    with: { 'node-version': '24.22.0' },
     env: undefined,
     run: undefined,
   };

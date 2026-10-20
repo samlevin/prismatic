@@ -53,6 +53,12 @@ test('tooling, manifest, and unknown paths select every check', () => {
     '.prettierignore',
     'eslint.config.mjs',
     'packages/api/src/index.js',
+    'src/prompts/system.md',
+    'src/core/index.ts',
+    'apps/action/README.md',
+    'tooling/CoverageGate.ts',
+    'tests/security/README.md',
+    'evals/README.md',
     'unexpected/file',
     'LICENSE.txt',
     'docs/LICENSE',
@@ -65,7 +71,7 @@ test('tooling, manifest, and unknown paths select every check', () => {
   assert.deepEqual(selectScopes([]), { full: true });
 });
 
-test('the full selection runs format, lint, agent definitions, and every script test', () => {
+test('the full selection runs format, lint, typecheck, agent definitions, every script test, and the coverage-gated unit tests', () => {
   const tests = readdirSync(new URL('.', import.meta.url))
     .filter((name) => name.endsWith('.test.mjs'))
     .map((name) => `scripts/${name}`)
@@ -75,16 +81,30 @@ test('the full selection runs format, lint, agent definitions, and every script 
   assert.deepEqual(checks({ full: true }), [
     ['npm', ['run', 'format:check']],
     ['npm', ['run', 'lint']],
+    ['npm', ['run', 'typecheck']],
     ['npm', ['run', 'agents:check']],
     ['node', ['--test', ...tests]],
+    ['npm', ['run', 'test:unit']],
   ]);
   assert.deepEqual(checks({ full: false }), documentationChecks);
   const { scripts } = JSON.parse(
     readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
   );
-  for (const name of ['format:check', 'lint', 'lint:md', 'agents:check'])
+  for (const name of [
+    'format:check',
+    'lint',
+    'lint:md',
+    'agents:check',
+    'typecheck',
+    'test:unit',
+  ])
     assert.equal(typeof scripts[name], 'string', name);
   assert.equal(scripts.lint, 'eslint . --max-warnings 0');
+  // The unit tests fail when coverage drops below the gate's thresholds.
+  assert.match(
+    scripts['test:unit'],
+    /^vitest run --coverage && node tooling\/CoverageGate\.ts /,
+  );
   // Both lint scripts fail on any warning, so a Markdown problem fails CI.
   assert.equal(scripts['lint:md'], 'eslint --max-warnings 0 "**/*.md"');
   // Markdown lint only reports. `lint:fix` fixes code and never rewrites

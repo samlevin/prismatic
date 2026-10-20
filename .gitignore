@@ -3,3 +3,5 @@
 CLAUDE.local.md
 node_modules/
 .codex/worktrees/
+coverage/
+dist/

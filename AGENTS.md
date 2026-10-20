@@ -1,6 +1,6 @@
 # Agent rules
 
-These rules apply to every coding agent, including Claude Code and Codex. Prismatic has no product code yet. It holds the issue workflow (issue forms, labels, and the Node scripts in `scripts/` that keep the project board in sync) and the agent workflows described below. CONTRIBUTING.md is the guide for people. Read it or any other guide only when the task changes that file or a rule here sends you there.
+These rules apply to every coding agent, including Claude Code and Codex. Prismatic is a pull request review agent in one npm package: product modules under `src/` with lint-enforced import boundaries ([docs/adr/0002-single-package.md](docs/adr/0002-single-package.md)), maintainer tooling under `tooling/`, the issue workflow (issue forms, labels, and the Node scripts in `scripts/` that keep the project board in sync) and the agent workflows described below. CONTRIBUTING.md is the guide for people. Read it or any other guide only when the task changes that file or a rule here sends you there.
 
 ## Checks
 
@@ -9,7 +9,7 @@ While editing, run only the focused tests for what you touched. Before the first
 | Changed | Run |
 | --- | --- |
 | Docs only | `npm run lint:md` |
-| `scripts/`, `.github/`, or root configuration | `npm run check` (format, lint, agent definitions, and every script test) |
+| `src/`, `apps/`, `tooling/`, `scripts/`, `.github/`, or root configuration | `npm run check` (format, lint with import boundaries, typecheck, agent definitions, every script test, and the unit tests with the 90% coverage gate) |
 | `.agents/`, `.claude/`, `.codex/`, or `scripts/agent-policy*` | `npm run agents:generate` after editing a source, then `npm run check` |
 
 CI picks its checks from the changed files, as CONTRIBUTING.md describes. Tests mock GitHub and never call it.
