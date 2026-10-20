@@ -1953,3 +1953,59 @@ test('removed delivery roles cannot be selected through any entry point', () => 
       doc,
     );
 });
+
+test('specification filing asks the triager for independence groups only', () => {
+  const files = render();
+  for (const path of inBoth('spec-to-issues/SKILL.md')) {
+    const skill = files.get(path);
+    const groups = section(skill, '3. Independence groups');
+    assert.match(
+      groups,
+      /^Only the triager forms independence groups, by the definition in `\.agents\/issue-creation\.md`\./m,
+      path,
+    );
+    assert.match(groups, /resolve --tool <tool> --role issue-triager`/, path);
+    assert.match(
+      groups,
+      /`dependency judgment: independence groups only; metadata comes from the specification`/,
+      path,
+    );
+    assert.match(groups, /Apply only its `groups` lines/, path);
+    assert.match(
+      groups,
+      /On resume, reuse the recorded groups and never spawn the triager again\./,
+      path,
+    );
+    assert.match(
+      section(skill, '5. File'),
+      /^5\. Record groups\. [^\n]*`\.agents\/issue-creation\.md`[^\n]*set `groupsRecorded`\./m,
+      path,
+    );
+    assert.doesNotMatch(skill, /so no triager runs/, path);
+  }
+  assert.match(
+    files.get(`.agents/skills/${PREFIX}spec-to-issues/SKILL.md`),
+    new RegExp(
+      `Spawn with \`spawn_agent\`: \`agent_type: ${PREFIX}issue-triager\`[^\\n]*\`fork_turns: "none"\``,
+    ),
+  );
+  assert.match(
+    files.get(`.claude/skills/${PREFIX}spec-to-issues/SKILL.md`),
+    new RegExp(
+      `Spawn with the Agent tool: \`subagent_type: ${PREFIX}issue-triager\``,
+    ),
+  );
+});
+
+test('stacked layers start from the branch the worktree step created', () => {
+  const files = render();
+  for (const path of inBoth('stack/SKILL.md')) {
+    const operations = section(files.get(path), 'Operations');
+    assert.match(
+      operations,
+      /- Build: layer 1 is the branch the delivery procedure's worktree step created on the base SHA\. Create each later layer on the one below it, bottom to top, with `git switch -c <layer n> <layer n-1>`/,
+      path,
+    );
+    assert.doesNotMatch(operations, /git switch -c <layer 1>/, path);
+  }
+});

@@ -35,7 +35,7 @@ Stop and report when any of these holds:
 
 Every branch keeps its actual immediate base: `main` for layer 1, the previous layer, or the prerequisite's pushed head.
 
-- Build: create the layers bottom to top with `git switch -c <layer 1> <base SHA>`, then `git switch -c <layer n> <layer n-1>`, with names from `node scripts/branch-name.mjs <issue> --actor agent --layer <n>`. Track them with `gh stack init --base main <layer 1> ... <layer n>`. `init` adopts existing branches and creates missing ones, so verify the names first; a typo becomes a new branch. To grow a tracked stack, switch to its top layer and run `gh stack add <new layer>`. Commit with explicit paths yourself.
+- Build: layer 1 is the branch the delivery procedure's worktree step created on the base SHA. Create each later layer on the one below it, bottom to top, with `git switch -c <layer n> <layer n-1>` and a name from `node scripts/branch-name.mjs <issue> --actor agent --layer <n>`. Track them with `gh stack init --base main <layer 1> ... <layer n>`. `init` adopts existing branches and creates missing ones, so verify the names first; a typo becomes a new branch. To grow a tracked stack, switch to its top layer and run `gh stack add <new layer>`. Commit with explicit paths yourself.
 - Adopt: for branches you own, verify the names and ancestry, then run `gh stack init --base main <branches bottom to top>`.
 - Prerequisite: base layer 1 on the prerequisite PR's pushed head SHA, which the delivery gate must allow, and record that SHA. Track only your own layers. Link the prerequisite's PR by URL.
 - Cascade: after a layer changes, switch to the layer above it and run `gh stack rebase --no-trunk --upstack`. It rebases that layer and every layer above it onto their parents.
