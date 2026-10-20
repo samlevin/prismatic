@@ -1,0 +1,10 @@
+# Extends the default rules. The one allowlist drops a false positive: the cache spike's results name the tokenizer under a key that contains the word "token".
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Tokenizer names in experiments/cache results are not credentials"
+regexTarget = "line"
+regexes = [
+  '''"(tokenizer|plannerTokenizer|selectedTokenizer)": "(o200k_base|cl100k_base|utf8-bytes-div-4)"''',
+]
