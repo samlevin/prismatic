@@ -146,5 +146,5 @@ The skill builds the whole plan offline and checks it before any GitHub call. It
 | `plan-id-reference` | A Plan ID mention names no slice |
 | `no-filler` | A field is empty or holds a placeholder such as `TBD` |
 | `label-exists` | A label is missing from `.github/labels.json`, or from the repository when filing |
-| `body-size` | A rendered body, the root's included, reaches 65,536 characters |
+| `body-size` | A rendered body, the root's included, reaches 65,536 characters; an epic's counts its largest possible independence record |
 | `template-headings` | A rendered body's headings, the root's included, do not match its issue form |

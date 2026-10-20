@@ -709,18 +709,37 @@ test('reports carry requested settings and no runtime model claims', () => {
     assert.doesNotMatch(text, /Runtime:|unverified/, path);
     assert.doesNotMatch(text, /runtime (model|reports)/i, path);
   }
+  // The delivery result names a line for every agent spawned, including a
+  // triager that a decomposition through the filing skill spawns.
+  for (const path of inBoth('implement/references/delivery.md'))
+    assert.ok(
+      section(files.get(path), 'Result').includes(
+        `one \`Requested settings: Policy: <as sent>\` line per agent you or a skill you ran spawned, such as ${PREFIX}code-reviewer or ${PREFIX}issue-triager, in spawn order`,
+      ),
+      path,
+    );
   for (const path of [
-    ...inBoth('implement/references/delivery.md'),
     `.claude/agents/${PREFIX}implementer.md`,
     `.codex/agents/${PREFIX}implementer.toml`,
-  ])
+  ]) {
+    const implementer = files.get(path);
     assert.match(
-      files.get(path),
+      implementer,
       new RegExp(
         `one \`Requested settings: Policy: <as sent>\` line per ${PREFIX}code-reviewer you spawned, in spawn order`,
       ),
       path,
     );
+    // The isolated implementer spawns only the reviewer, so a leaf that
+    // fails the gate goes back to the owner instead of the filing skill.
+    assert.match(
+      implementer,
+      new RegExp(
+        `A leaf that fails the procedure's gate is not yours to plan or decompose: return BLOCKED with the reason, so the owner decomposes it\\. Never run the ${PREFIX}create-github-issue skill yourself\\.`,
+      ),
+      path,
+    );
+  }
   for (const path of inBoth('implement/references/delivery.md'))
     assert.ok(
       files
@@ -1716,7 +1735,7 @@ test('the container queue is sequential by default and parallel only on request'
     for (const condition of [
       '- The request asks for parallel delivery.',
       '- Each leaf is `ready`, passes the gate, and is sized M',
-      'valid independence record on their immediate parent, as `.agents/issue-creation.md` defines it. Never infer, form, or widen groups yourself.',
+      'valid independence record on their immediate parent, as `.agents/issue-creation.md` defines it. Never infer, form, or widen groups yourself, even when the request asks.',
       '- Their implementation notes name no overlapping files or shared contracts.',
     ])
       assert.ok(parallel.includes(condition), `${path}: ${condition}`);
@@ -1752,7 +1771,22 @@ test('the container queue is sequential by default and parallel only on request'
   );
   assert.match(
     record,
-    /Delivery stays sequential unless the request asks for parallel delivery, and a request never widens the record\./,
+    /A leaf counts as unlisted when the section does not parse, when the leaf appears in two groups, or when a native blocked-by edge now links it to a leaf in another group\./,
+  );
+  // The parallel conditions have one source: the queue. The group definition
+  // and the routing summary point to it instead of restating delivery rules.
+  assert.doesNotMatch(record, /sequential|parallel delivery|prism-implement/);
+  const agentsMd = readFileSync(
+    new URL('../AGENTS.md', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    agentsMd,
+    /Leaves run at the same time only under the queue's parallel exception, which `queue\.md` defines\./,
+  );
+  assert.doesNotMatch(
+    agentsMd,
+    /leaf is substantial|at most one implementer|sized M|asks for parallel delivery/i,
   );
 });
 
@@ -2030,4 +2064,28 @@ test('stacked layers start from the branch the worktree step created', () => {
     );
     assert.doesNotMatch(operations, /git switch -c <layer 1>/, path);
   }
+});
+
+test('the heading and size checks allow for the independence record on an epic', () => {
+  const files = render();
+  for (const path of inBoth('spec-to-issues/references/body-shapes.md')) {
+    const shapes = files.get(path);
+    assert.match(
+      section(shapes, 'Heading check (rule `template-headings`)'),
+      /The only other headings allowed are on an epic: `Contracts`, then `Independence groups`, which the groups step appends after pre-flight and which always comes last\./,
+      path,
+    );
+    assert.match(
+      section(shapes, 'Size check (rule `body-size`)'),
+      /an epic with two or more direct leaf children also counts the largest record that step can append: the section `\.agents\/issue-creation\.md` shows, with each of those leaves as `#9999999` in a group of its own\./,
+      path,
+    );
+  }
+  assert.match(
+    readFileSync(
+      new URL('../.agents/spec-slicing.md', import.meta.url),
+      'utf8',
+    ),
+    /^\| `body-size` \| [^\n]*an epic's counts its largest possible independence record \|$/m,
+  );
 });

@@ -15,6 +15,7 @@ Your differences from the main-thread owner:
 - The assignment supplies the target, trunk and base SHAs, acceptance criteria, accepted decisions, verified prerequisites, validation requirements, the project binding, the expected result fields, and a `Policy:` line with any `reviewer` overrides. Reuse those facts and fetch only what is missing or stale. Return BLOCKED when the assignment lacks the target or the acceptance criteria.
 - A container is not yours: return `BLOCKED: container` so the owner's queue takes it.
 - Spawn only prism-code-reviewer, as the procedure describes. Never spawn another implementer or any other agent.
+- A leaf that fails the procedure's gate is not yours to plan or decompose: return BLOCKED with the reason, so the owner decomposes it. Never run the prism-create-github-issue skill yourself.
 - You cannot prompt the user. When the prism-stack extension check fails, return `BLOCKED: gh stack not installed` with the `gh` version before any branch, stack, or PR work, and never install the extension. When you are continued after the install, run the check again and resume with the same claim and worktree.
 - When your change needs a file or shared contract that the assignment's `Owned by other running leaves:` field names, stop and return BLOCKED.
 

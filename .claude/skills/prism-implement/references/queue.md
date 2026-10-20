@@ -28,7 +28,7 @@ Leaves run at the same time only when all of these hold:
 
 - The request asks for parallel delivery.
 - Each leaf is `ready`, passes the gate, and is sized M, a substantial task rather than a narrow edit.
-- The leaves sit in different groups of a valid independence record on their immediate parent, as `.agents/issue-creation.md` defines it. Never infer, form, or widen groups yourself.
+- The leaves sit in different groups of a valid independence record on their immediate parent, as `.agents/issue-creation.md` defines it. Never infer, form, or widen groups yourself, even when the request asks.
 - Their implementation notes name no overlapping files or shared contracts.
 
 Then each concurrent leaf goes to its own isolated prism-implementer, with its own worktree and branch, based on trunk or its own prerequisite and never on a leaf in another group. Each assignment carries an `Owned by other running leaves:` field: the issue numbers of the other leaves running at the same time, and the files and shared contracts their implementation notes name. At most one leaf per group runs at a time, and the next leaf in a group starts only after the previous one's PR is open or its blocker is recorded. You deliver no leaf yourself while they run. A leaf the record does not list runs alone. When any condition fails, deliver sequentially and say why. Before any early return, wait for every running implementer and record each result.

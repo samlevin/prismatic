@@ -17,7 +17,7 @@ Only `prism-issue-triager` forms independence groups, for a new container or epi
 
 Leaves in one group may depend on each other, because they run one at a time. A leaf that fits no group stays out of every group, and leaves stay in one group when the drafts do not settle a condition. Groups exist only when at least two form.
 
-Once the children exist, the filing flow records the groups by appending this section to the parent body, one list item of issue numbers per group. A new record replaces an existing section instead of adding a second one.
+The filing flow records the groups in this section at the end of the parent body, one list item per group, with the children's actual issue numbers once they exist. A new record replaces an existing section instead of adding a second one.
 
 ```markdown
 ### Independence groups
@@ -28,4 +28,4 @@ Once the children exist, the filing flow records the groups by appending this se
 <!-- /prism-independence-groups -->
 ```
 
-`prism-implement` reads a leaf's record only from its immediate parent. It treats the leaf as unlisted when the section does not parse, when the leaf appears in two groups, or when a native blocked-by edge now links it to a leaf in another group. A valid record makes leaves eligible for the delivery queue's parallel exception. Delivery stays sequential unless the request asks for parallel delivery, and a request never widens the record.
+A record applies only to the leaves of the parent whose body holds it. A leaf counts as unlisted when the section does not parse, when the leaf appears in two groups, or when a native blocked-by edge now links it to a leaf in another group.
