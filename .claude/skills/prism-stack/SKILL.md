@@ -7,7 +7,7 @@ argument-hint: <build|adopt|link|cascade|sync> [branches | PR URLs]
 
 # Prismatic stack
 
-You run every command here yourself, in the worktree you created for the delivery. No other agent runs it for you, and you never run it in a worktree you did not create. The delivery request authorizes building and pushing your own branches and linking their existing PRs into a native stack. It never authorizes merges, auto-merge, creating PRs (the delivery procedure opens them through REST), editing PR descriptions or bases, or deleting branches or stacks.
+You run every command here yourself, in the worktree you created for the delivery, under the worktree rule in `AGENTS.md` (Autonomous delivery). No other agent runs it for you. Within the authority `AGENTS.md` gives a delivery request, this skill builds and pushes your own branches and links their existing PRs into a native stack. It never creates PRs (the delivery procedure opens them through REST), edits PR descriptions or bases, or deletes branches or stacks.
 
 ## Check the extension
 

@@ -18,7 +18,7 @@ The main thread running prism-implement follows this file for a container or epi
 
 ## Deliver
 
-Delivery is sequential by default. Take the first `ready` leaf, deliver it through [delivery.md](delivery.md), and record its result, an open PR or a recorded blocker, in the ledger before you start the next leaf. After each result, recompute the `waiting` leaves, because a new ready-for-review PR can let a dependent leaf stack on it. An L leaf, or one that fails the gate, gets planning or decomposition through the prism-create-github-issue skill within the accepted scope, or a recorded blocker. Never create an epic implicitly, and never relax a gate. When a leaf ends BLOCKED, try one concrete correction if one exists; otherwise record the blocker and move on.
+Delivery is sequential by default. Take the first `ready` leaf, deliver it through [delivery.md](delivery.md), and record its result, an open PR or a recorded blocker, in the ledger before you start the next leaf. After each result, recompute the `waiting` leaves, because a new ready-for-review PR can let a dependent leaf stack on it. An L leaf, or one that fails the gate, gets planning or decomposition through the prism-create-github-issue skill within the accepted scope, or a recorded blocker. Never relax the gate. When a leaf ends BLOCKED, try one concrete correction if one exists; otherwise record the blocker and move on.
 
 When one leaf's exploration would crowd out the rest of the queue, you may hand that leaf to one isolated prism-implementer as the prism-implement skill describes, and wait for its result before you continue.
 

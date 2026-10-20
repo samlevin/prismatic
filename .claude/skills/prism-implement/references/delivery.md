@@ -8,26 +8,26 @@ You start from the target (an issue URL, or a PR URL for rework), trunk `main`, 
 
 ## Read
 
-- The loaded `AGENTS.md` may come from a stale checkout. Read `git show origin/main:AGENTS.md` and follow that copy: its checks table, review rule, PR title rules, and hard rules.
-- Read through REST what the inputs did not supply: `gh api repos/samlevin/prismatic/issues/<N>` for the body, plus `/comments`, `/parent` (404 when there is none), `/dependencies/blocked_by`, and `/sub_issues`. An issue with native sub-issues is a container. The main thread follows [queue.md](queue.md) for it instead of this file; an isolated implementer returns `BLOCKED: container`.
+- The loaded `AGENTS.md` may come from a stale checkout. Read `git show origin/main:AGENTS.md` and follow that copy: its checks table, its autonomous-delivery rules (authority, worktrees, prerequisites, stacking, handoffs, review), its PR title and issue-state rules, and its hard rules.
+- Read through REST what the inputs did not supply: `gh api repos/samlevin/prismatic/issues/<N>` for the body, plus `/comments`, `/parent` (404 when there is none), `/dependencies/blocked_by`, and `/sub_issues`. An issue with native sub-issues is a container. The main thread follows [queue.md](queue.md) for it instead of this file.
 - Read the code you will change with its callers and tests. Read each file in full before you edit it.
 - Open `CONTRIBUTING.md` only when the loaded instructions lack a check command or rule you need, or when the task changes them. Read `.github/pull_request_template.md` when you open the PR.
 
 ## Gate
 
-Before claiming, check for one logical outcome, testable acceptance criteria, a validation plan, satisfied dependencies, and size XS, S, or M. Metadata `Ready` alone does not pass the gate. Independent outcomes become native sub-issues through the prism-create-github-issue skill, and the original becomes a container; never invent scope or epics. You may build on an unmerged blocker only if its PR is open and ready for review, passes its checks, and has a pre-PR APPROVE: base your branch on its pushed head and record that SHA in the claim. Anything that needs merged, deployed, or applied-infrastructure behavior stays blocked.
+Before claiming, check for one logical outcome, testable acceptance criteria, a validation plan, satisfied dependencies, and size XS, S, or M. Metadata `Ready` alone does not pass the gate. Independent outcomes become native sub-issues through the prism-create-github-issue skill, and the original becomes a container; never invent scope or epics. An unmerged blocker counts as satisfied only when its PR meets the prerequisite rule in `AGENTS.md` (Autonomous delivery); then base your branch on its pushed head and record that SHA in the claim. Anything that needs merged, deployed, or applied-infrastructure behavior stays blocked.
 
 ## Worktree
 
 Building on an unmerged blocker makes the branch stack-eligible, so run the [Stack](#stack) check before you create it. Run `git fetch origin`, then print the branch name with `node scripts/branch-name.mjs <issue> --actor agent`, adding `--layer <n>` for layer 2 and up.
 
-In the main thread, create the worktree from the checkout root with `git worktree add -b <branch> .claude/worktrees/<branch-slug> <base-SHA>`, where `<branch-slug>` is the branch name with `/` replaced by `-`. Run every later command in that worktree, never in the human checkout. An isolated implementer starts in the linked worktree the Agent tool created under `.claude/worktrees/` and runs `git switch -c <branch> <base-SHA>` there.
+In the main thread, create the worktree from the checkout root with `git worktree add -b <branch> .claude/worktrees/<branch-slug> <base-SHA>`, where `<branch-slug>` is the branch name with `/` replaced by `-`. Run every later command in that worktree. An isolated implementer starts in the linked worktree the Agent tool created under `.claude/worktrees/` and runs `git switch -c <branch> <base-SHA>` there.
 
-Run `npm ci` inside the worktree when the checks need Node dependencies; never symlink `node_modules`. Never edit, stage, stash, reset, check out, install, or build in the human checkout, and never move a branch it has checked out.
+Run `npm ci` inside the worktree when the checks need Node dependencies; never symlink `node_modules`. The worktree rule in `AGENTS.md` (Autonomous delivery) covers the human checkout and other worktrees.
 
 ## Claim
 
-Check for existing claims, PRs, and branches. Post one claim comment (agent, branch, worktree, approach, likely files, planned checks) with `gh api -X POST repos/samlevin/prismatic/issues/<N>/comments -F body=@/abs/claim.md`. Move the project item to In progress: discover the Status field ID and option IDs with `gh api users/samlevin/projectsV2/2/fields`, find the item whose `content.id` is the issue's REST `id` in `gh api 'users/samlevin/projectsV2/2/items?per_page=100' --paginate`, then run `gh api -X PATCH users/samlevin/projectsV2/2/items/<ITEM> --input /abs/status.json` with `{"fields": [{"id": <STATUS_FIELD_ID>, "value": "<OPTION_ID>"}]}`. In progress is the only project status you ever set: never set In review or Done.
+Check for existing claims, PRs, and branches. Post one claim comment (agent, branch, worktree, approach, likely files, planned checks) with `gh api -X POST repos/samlevin/prismatic/issues/<N>/comments -F body=@/abs/claim.md`. Move the project item to In progress: discover the Status field ID and option IDs with `gh api users/samlevin/projectsV2/2/fields`, find the item whose `content.id` is the issue's REST `id` in `gh api 'users/samlevin/projectsV2/2/items?per_page=100' --paginate`, then run `gh api -X PATCH users/samlevin/projectsV2/2/items/<ITEM> --input /abs/status.json` with `{"fields": [{"id": <STATUS_FIELD_ID>, "value": "<OPTION_ID>"}]}`. This is your only status move; the issue-state rule in `AGENTS.md` (Delivery binding) governs every other status.
 
 ## Build
 
@@ -37,7 +37,7 @@ Re-read: before the first push, and again before pushing each rework, re-read in
 
 ## Stack
 
-Split into stacked layers only when each layer is reviewable on its own; line count alone does not require a stack. Roughly 400 changed production lines against the immediate parent (tests, docs, generated files, and lockfiles excluded) is the point to consider one. Early layers reference the issue; only the final layer closes it.
+Split into stacked layers only as the stacking rule in `AGENTS.md` (Autonomous delivery) allows. Roughly 400 changed production lines against the immediate parent (tests, docs, generated files, and lockfiles excluded) is the point to consider a split. Early layers reference the issue; only the final layer closes it.
 
 A branch based on an unmerged prerequisite PR, every layer of a split leaf, and a rework PR whose base is not `main` are stack-eligible. You run every stack operation yourself with the prism-stack skill, in the worktree you created: building or adopting layers, stacking on a prerequisite, linking PRs, cascading rebases, and syncing after a merge. As soon as stacking is known, before you create a branch on an unmerged base, when you decide to split, or before you rework a stacked PR, load the skill and run its extension check. Do not create, rebase, or push a branch or open a PR first. Resolve semantic conflicts yourself.
 
@@ -57,15 +57,15 @@ You need APPROVE for that exact base/head pair. On REQUEST CHANGES: fix, rerun t
 
 ## PR
 
-Only the delivery owner opens PRs. Load the prism-plain-language skill, write the body to a file, and open the PR through REST with `gh api -X POST repos/samlevin/prismatic/pulls -f title=<title> -f head=<branch> -f base=<base> -F body=@/abs/body.md`. Give it a Conventional Commits title that has a component scope, the repository template, the immediate base, `Closes #N` on the final layer only, `Parent issue or epic: #P` when one exists, and validation evidence including the pre-PR approval base/head SHAs and the settings lines from your result. Open it ready for review, then link stacked PRs bottom to top with the prism-stack skill. Never move the issue to In review: repository automation does that when the PR opens. If the issue is not In review when you hand off, because the automation has not run, skipped the issue, or failed, report the state you see and leave it unchanged. Once a PR exists, never invoke prism-code-reviewer for that branch again; rework goes through your checks plus formal review. Replies to review comments go on the PR.
+Only the delivery owner opens PRs. Load the prism-plain-language skill, write the body to a file, and open the PR through REST with `gh api -X POST repos/samlevin/prismatic/pulls -f title=<title> -f head=<branch> -f base=<base> -F body=@/abs/body.md`. Give it a Conventional Commits title that has a component scope, the repository template, the immediate base, `Closes #N` on the final layer only, `Parent issue or epic: #P` when one exists, and validation evidence including the pre-PR approval base/head SHAs and the settings lines from your result. Open it ready for review, then link stacked PRs bottom to top with the prism-stack skill. Repository automation moves the issue when the PR opens; report the state you find at handoff as the issue-state rule in `AGENTS.md` says. Once a PR exists, never invoke prism-code-reviewer for that branch again; rework goes through your checks plus formal review. Replies to review comments go on the PR.
 
 ## Rework
 
 For a PR URL, read the PR's state, head, base, and review comments, and the issue it closes. Check with `git ls-remote origin <branch>` that the remote branch is at the PR's head SHA. The existing claim stands; post no second claim and move no project status. Work in a worktree of your own detached at `origin/<branch>`: add one with `git worktree add --detach <path> origin/<branch>` under your tool's worktree directory, or run `git switch --detach origin/<branch>` in the worktree the Agent tool created for you. Fix what the review asks within the issue's scope, rerun the affected gates, and re-read your edits as [Build](#build) describes. Push with `git push --force-with-lease=<branch>:<head you started from> origin HEAD:<branch>`, or a plain push when the history did not change, and stop when the lease rejects it. A stacked rework goes through the prism-stack skill's rework rule instead. No pre-PR review runs, and the approval SHAs from the initial submission are reported as historical.
 
-## Never
+## Authority
 
-Never: merge, enable auto-merge, deploy, apply infrastructure, change repository or workstation settings, invoke prism-security-reviewer, or wait for, poll, or rerun remote CI. Report CI status as-is and hand off. If you stop early, release the claim with a comment.
+Stay inside the authority that `AGENTS.md` (Autonomous delivery) gives a delivery request, and report CI status as it is when you hand off. If you stop early, release the claim with a comment.
 
 ## Result
 

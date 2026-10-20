@@ -844,26 +844,41 @@ test('Codex issue filing states its policy as advisory; Claude pins it', () => {
 
 test('only automation moves an issue to In review', () => {
   const files = render();
+  // AGENTS.md is the one source of the status rule; the procedure only moves
+  // the item to In progress and points to it.
+  const agentsMd = readFileSync(
+    new URL('../AGENTS.md', import.meta.url),
+    'utf8',
+  );
+  assert.ok(
+    agentsMd.includes(
+      'That is the only status an agent sets; agents never set `In review` or `Done`.',
+    ),
+  );
+  assert.match(
+    agentsMd,
+    /report the state you see in the handoff and leave it unchanged/,
+  );
   for (const path of inBoth('implement/references/delivery.md')) {
     const implementer = files.get(path);
     assert.match(
       implementer,
-      /Move the project item to In progress[^\n]*In progress is the only project status you ever set: never set In review or Done\./,
+      /Move the project item to In progress[^\n]*This is your only status move; the issue-state rule in `AGENTS\.md` \(Delivery binding\) governs every other status\./,
       path,
     );
     assert.match(
       implementer,
-      /Never move the issue to In review: repository automation does that when the PR opens\./,
-      path,
-    );
-    assert.match(
-      implementer,
-      /report the state you see and leave it unchanged/,
+      /Repository automation moves the issue when the PR opens; report the state you find at handoff as the issue-state rule in `AGENTS\.md` says\./,
       path,
     );
     assert.match(
       implementer,
       /project state as you found it \(reported, never corrected\)/,
+      path,
+    );
+    assert.doesNotMatch(
+      implementer,
+      /only project status you ever set|never set In review or Done|leave it unchanged/,
       path,
     );
     assert.doesNotMatch(implementer, /Move the issue to In review/, path);
@@ -1466,11 +1481,14 @@ test('stacking checks for gh stack and only the implement skill prompts the inst
     `.codex/agents/${PREFIX}implementer.toml`,
   ]) {
     const implementer = files.get(path);
+    // The stack skill owns the check and the no-install rule; the role only
+    // says how an agent that cannot prompt the user ends.
     assert.match(
       implementer,
-      /return `BLOCKED: gh stack not installed` with the `gh` version before any branch, stack, or PR work, and never install the extension/,
+      /You cannot prompt the user, so a failed extension check in the \S+stack skill ends in the `BLOCKED: gh stack not installed` result that skill names\./,
       path,
     );
+    assert.doesNotMatch(implementer, /never install the extension/i, path);
     assert.match(implementer, /resume with the same claim and worktree/, path);
   }
   for (const path of inBoth('implement/references/delivery.md')) {
@@ -1599,7 +1617,14 @@ test('stack operations go through gh stack, except one guarded bottom-layer reba
       /Otherwise run `gh stack rebase --abort` or `git rebase --abort`, which restores the branches, and stop with the conflicting files\./,
       path,
     );
-    assert.match(skill, /It never authorizes merges/, path);
+    // Merges stay under the AGENTS.md authority rule, and the skill bans the
+    // one gh stack command that merges.
+    assert.match(
+      skill,
+      /Within the authority `AGENTS\.md` gives a delivery request, this skill builds and pushes your own branches/,
+      path,
+    );
+    assert.match(never, /`gh stack merge`/, path);
   }
 });
 
@@ -1811,7 +1836,7 @@ test('the delivery owner runs prism-stack itself in the worktree it created', ()
   for (const path of inBoth('stack/SKILL.md'))
     assert.match(
       files.get(path),
-      /You run every command here yourself, in the worktree you created for the delivery\. No other agent runs it for you, and you never run it in a worktree you did not create\./,
+      /You run every command here yourself, in the worktree you created for the delivery, under the worktree rule in `AGENTS\.md` \(Autonomous delivery\)\. No other agent runs it for you\./,
       path,
     );
   assert.match(
@@ -2088,4 +2113,66 @@ test('the heading and size checks allow for the independence record on an epic',
     ),
     /^\| `body-size` \| [^\n]*an epic's counts its largest possible independence record \|$/m,
   );
+});
+
+test('the delivery procedures point to AGENTS.md rules instead of restating them', () => {
+  const files = render();
+  const agentsMd = readFileSync(
+    new URL('../AGENTS.md', import.meta.url),
+    'utf8',
+  );
+  // Each rule keeps its one statement in AGENTS.md.
+  for (const rule of [
+    'When a leaf depends on an unmerged prerequisite PR that is open, ready for review, passing checks, and pre-PR approved, stack on it without asking',
+    'Split one leaf into stacked layers only when each layer is reviewable on its own; line count alone does not require a stack.',
+    'Never edit, install, build, or switch branches in the human checkout, and never modify a worktree you did not create.',
+    'That is the only status an agent sets; agents never set `In review` or `Done`.',
+    'Merges, deployments, destructive operations, and changes to GitHub repository settings, CI secrets, or agent tool settings require explicit user authorization.',
+    'Report current CI status without waiting for, polling, or rerunning remote CI.',
+  ])
+    assert.ok(agentsMd.includes(rule), rule);
+  const restated =
+    /open and ready for review, passes its checks|reviewable on its own|line count alone|in the human checkout, and never move|only project status you ever set|never set In review or Done|Never: merge|enable auto-merge|wait for, poll, or rerun remote CI|you never run it in a worktree you did not create|never authorizes merges/;
+  for (const path of [
+    ...inBoth('implement/references/delivery.md'),
+    ...inBoth('implement/references/queue.md'),
+    ...inBoth('stack/SKILL.md'),
+    `.claude/agents/${PREFIX}implementer.md`,
+    `.codex/agents/${PREFIX}implementer.toml`,
+  ])
+    assert.doesNotMatch(files.get(path), restated, path);
+  for (const path of inBoth('implement/references/delivery.md')) {
+    const delivery = files.get(path);
+    for (const pointer of [
+      'counts as satisfied only when its PR meets the prerequisite rule in `AGENTS.md` (Autonomous delivery)',
+      'The worktree rule in `AGENTS.md` (Autonomous delivery) covers the human checkout and other worktrees.',
+      'Split into stacked layers only as the stacking rule in `AGENTS.md` (Autonomous delivery) allows. Roughly 400 changed production lines',
+      'Stay inside the authority that `AGENTS.md` (Autonomous delivery) gives a delivery request, and report CI status as it is when you hand off.',
+    ])
+      assert.ok(delivery.includes(pointer), `${path}: ${pointer}`);
+  }
+});
+
+test('only inline work whose skill cannot pin the model reports an advisory policy', () => {
+  assert.match(
+    readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8'),
+    /Inline work whose skill cannot pin the model, meaning `prism-implement` in both tools and the Codex filing skills, reports `Advisory policy: \.\.\.` instead/,
+  );
+  assert.match(
+    readFileSync(new URL('../.agents/README.md', import.meta.url), 'utf8'),
+    /So `prism-implement` in both tools and the Codex filing skills report `Advisory policy: \.\.\.` instead\./,
+  );
+  const files = render();
+  for (const skill of ['create-github-issue', 'spec-to-issues'])
+    assert.doesNotMatch(
+      files.get(`.claude/skills/${PREFIX}${skill}/SKILL.md`),
+      /Advisory policy/,
+      skill,
+    );
+  for (const path of inBoth('implement/SKILL.md'))
+    assert.match(
+      files.get(path),
+      /`Advisory policy: tool=<tool> capability=implementation/,
+      path,
+    );
 });
