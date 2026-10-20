@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Prismatic, a pull request review agent, in one package: product modules under src/, maintainer tooling, the issue workflow scripts, and the generated agent workflows.",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.2"
   },
   "workspaces": [
     "packages/*"

@@ -214,7 +214,7 @@ describe('main', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     expect(main([summary(9)])).toBe(0);
     expect(log).toHaveBeenCalledWith(
-      'Coverage gate passed: 1 files at or above 90% on every metric.',
+      'Coverage gate passed: totals across 1 file are at or above 90% on every metric.',
     );
   });
 

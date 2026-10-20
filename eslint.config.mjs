@@ -4,11 +4,23 @@ import markdown from '@eslint/markdown';
 import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
-import boundaries from './tooling/eslint/importBoundaries.ts';
+import boundaries, {
+  sourceModules,
+} from './tooling/eslint/importBoundaries.ts';
 
 const javascriptFiles = ['**/*.{js,mjs,cjs}'];
 const typescriptFiles = ['**/*.ts'];
 const codeFiles = [...javascriptFiles, ...typescriptFiles];
+
+// The adapters come from the boundary rule's module table, so the two lists
+// cannot drift.
+const adapters = Object.entries(sourceModules)
+  .filter(([, kind]) => kind === 'adapter')
+  .map(([name]) => name);
+const adapterList = `${adapters.slice(0, -1).join(', ')}, and ${adapters.at(-1)}`;
+const ioGlobals = ['fetch', 'WebSocket', 'EventSource'];
+const ioMessage = `Only the ${adapterList} adapters do I/O.`;
+const nativeMessage = `Only the ${adapterList} adapters load built-in or native modules.`;
 
 export default [
   {
@@ -63,28 +75,25 @@ export default [
   // the filesystem, or native code through globals that need no import.
   {
     files: ['src/**/*.ts', 'apps/**/*.ts'],
-    ignores: [
-      '**/*.test.ts',
-      'src/github/**',
-      'src/repository/**',
-      'src/model/**',
-    ],
+    ignores: ['**/*.test.ts', ...adapters.map((name) => `src/${name}/**`)],
     rules: {
       'no-restricted-globals': [
         'error',
-        ...['fetch', 'WebSocket', 'EventSource'].map((name) => ({
-          name,
-          message: 'Only the github, repository, and model adapters do I/O.',
-        })),
+        ...ioGlobals.map((name) => ({ name, message: ioMessage })),
       ],
       'no-restricted-properties': [
         'error',
+        ...ioGlobals.map((property) => ({
+          object: 'globalThis',
+          property,
+          message: ioMessage,
+        })),
         ...['getBuiltinModule', 'binding', 'dlopen'].map((property) => ({
           object: 'process',
           property,
-          message:
-            'Only the github, repository, and model adapters load built-in or native modules.',
+          message: nativeMessage,
         })),
+        { object: 'globalThis', property: 'process', message: nativeMessage },
       ],
     },
   },

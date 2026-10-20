@@ -153,8 +153,9 @@ export function main(
       io.cwd,
     );
     new CoverageGate().assertThresholds(report);
+    const files = Object.keys(report).length;
     io.log(
-      `Coverage gate passed: ${Object.keys(report).length} files at or above ${defaultThreshold}% on every metric.`,
+      `Coverage gate passed: totals across ${files} ${files === 1 ? 'file' : 'files'} are at or above ${defaultThreshold}% on every metric.`,
     );
     return 0;
   } catch (error) {

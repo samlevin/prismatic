@@ -26,7 +26,7 @@ test('the root package runs lint, typecheck, test, and build', () => {
 
 test('Node 24 is pinned and required', () => {
   expect(read('.tool-versions')).toMatch(/^nodejs 24\.\d+\.\d+$/m);
-  expect(manifest.engines['node']).toBe('>=24');
+  expect(manifest.engines['node']).toBe('>=24.2');
   expect(read('.npmrc')).toMatch(/^engine-strict=true$/m);
 });
 

@@ -30,9 +30,9 @@ export function classify(path) {
   return 'full';
 }
 
-// `full` selects lint of every file, the agent definition check, and every
-// script test on top of the format check, which always runs. Otherwise the
-// Markdown lint joins the format check. An empty list selects every check
+// `full` selects lint of every file, typecheck, the agent definition check,
+// every script test, and the coverage-gated unit tests on top of the format
+// check, which always runs. Otherwise the Markdown lint joins the format check. An empty list selects every check
 // because it means the comparison found nothing to classify.
 export function selectScopes(paths) {
   return {
