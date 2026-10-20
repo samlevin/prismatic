@@ -9,8 +9,9 @@
 // redacted before a caller can log it or put it in an error.
 //
 // Local fixture remotes need the file transport, which the normative options
-// refuse. The switch that allows it belongs to the test harness, outside the
-// directories production code may import, and nothing here can turn it on.
+// refuse. The switch that allows it belongs to the test harness and works
+// through the spawner seam, which the `process-runner/seam` lint rule keeps
+// out of production code. Nothing here can turn it on.
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import path from 'node:path';
 import type { SecretRedactor } from '../shared/redaction.ts';
@@ -36,7 +37,6 @@ export const normativeGitConfig: readonly string[] = Object.freeze([
   'credential.helper=',
 ]);
 
-// The options in front of every git subcommand, in order.
 export const normativeGitArguments: readonly string[] = Object.freeze(
   normativeGitConfig.flatMap((entry) => ['-c', entry]),
 );
@@ -64,7 +64,6 @@ export const maxProcessTimeoutMs = 22 * 60 * 1000;
 export const maxProcessOutputBytes = 64 * 1024 * 1024;
 export const maxProcessInputBytes = 64 * 1024 * 1024;
 
-// The limits and working directory of one run.
 export interface ProcessLimits {
   // Absolute directory the process starts in.
   readonly cwd: string;
@@ -124,7 +123,8 @@ export class ProcessRunnerError extends Error {
 }
 
 // One process start, after the runner has applied its policy. The spawner is
-// the seam for tests; production uses nodeProcessSpawner.
+// the seam for tests; tooling/eslint/processRunnerSeam.ts refuses it in
+// production code, which always gets nodeProcessSpawner.
 export interface SpawnRequest {
   readonly file: string;
   readonly args: readonly string[];

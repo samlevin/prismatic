@@ -13,7 +13,9 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { ESLint, type Linter } from 'eslint';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import repositoryConfig from '../../eslint.config.mjs';
 import {
   normativeGitArguments,
   type ProcessLimits,
@@ -226,14 +228,36 @@ describe('the file-protocol hook', () => {
     );
   }
 
-  it('is unreachable from production code', () => {
+  it('is unreachable from production code', async () => {
+    const eslint = new ESLint({
+      cwd: repositoryRoot,
+      overrideConfigFile: true,
+      overrideConfig: repositoryConfig,
+    });
     const files = productionFiles();
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
-      const text = readFileSync(file, 'utf8');
-      expect(text, file).not.toMatch(/protocol\.file/);
-      expect(text, file).not.toMatch(/tests\/support/);
+      const config = (await eslint.calculateConfigForFile(
+        file,
+      )) as Linter.Config;
+      expect(config.rules?.['process-runner/seam'], file).toEqual([
+        2,
+        { root: `${repositoryRoot}${path.sep}` },
+      ]);
     }
+    // Copied into production code, the harness itself fails lint.
+    const [result] = await eslint.lintText(
+      readFileSync(
+        path.join(repositoryRoot, 'tests/support/processHarness.ts'),
+        'utf8',
+      ),
+      { filePath: 'apps/action/processHarness.ts' },
+    );
+    expect(
+      result?.messages
+        .filter(({ ruleId }) => ruleId === 'process-runner/seam')
+        .map(({ messageId }) => messageId),
+    ).toEqual(['seam', 'seam', 'runnerUse']);
   });
 
   it('lives outside the compiled build', () => {

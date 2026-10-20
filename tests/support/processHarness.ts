@@ -4,8 +4,9 @@
 // refuse. The harness spawner maps each approved binary to a local one and,
 // when asked, adds `-c protocol.file.allow=always` to git runs after the
 // normative options. Production code cannot import anything outside src/ and
-// apps/ (the import-boundary lint rule) and the build never compiles this
-// directory, so production never reaches this switch.
+// apps/ (the import-boundary lint rule), cannot import a spawner or pass one
+// to the runner (the `process-runner/seam` lint rule), and the build never
+// compiles this directory, so production never reaches this switch.
 import { accessSync, constants } from 'node:fs';
 import path from 'node:path';
 import {
@@ -29,7 +30,6 @@ export interface HarnessOptions {
   readonly binaries?: Partial<Record<ApprovedBinary, string>>;
   // Adds `-c protocol.file.allow=always` to every git run.
   readonly allowFileProtocol?: boolean;
-  // The spawner that starts the mapped process.
   readonly spawner?: ProcessSpawner;
 }
 
