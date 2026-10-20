@@ -109,7 +109,7 @@
         ],
         "eligible": false,
         "available": false,
-        "summary": "The vendored escapeLabel no longer escapes <, so a caller-supplied unit can inject markup. The file is vendored and excluded by policy, so this defect is ineligible and never counts toward recall."
+        "summary": "The vendored escapeLabel no longer escapes <, so a caller-supplied unit can inject markup. The file is vendored and excluded by policy, so this defect is ineligible and never counts toward severe recall, only toward end-to-end recall."
       }
     ],
     "decoys": []

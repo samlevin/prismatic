@@ -558,6 +558,7 @@ describe('scoreVariant', () => {
     });
     expect(report.cleanFalseFindingsPerPr).toEqual({
       histories: 0,
+      total: 0,
       value: null,
       interval: null,
     });

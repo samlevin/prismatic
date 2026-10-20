@@ -56,7 +56,7 @@ export interface CorpusSummary {
   readonly maxRound: number;
   readonly languages: Readonly<Record<string, number>>;
   readonly scenarios: Readonly<Record<Scenario, number>>;
-  // Histories whose labels still wait for the second person's check.
+  // Histories whose labels still wait for the second check.
   readonly pendingChecks: readonly string[];
 }
 

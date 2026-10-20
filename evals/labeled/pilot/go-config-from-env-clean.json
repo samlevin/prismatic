@@ -157,7 +157,7 @@
       "status": "amended",
       "by": "agent:label-checker",
       "on": "2026-10-20",
-      "notes": "Checked round 1 config.go and the round 2 test against the PR body. Line 36 converted READ_TIMEOUT_MS with time.Duration(ms) * time.Millisecond and no upper bound, so a value above 9223372036854 overflowed int64 and silently disabled the read timeout that main.go line 17 installs. Amended line 33 to reject ms above 3600000 (one hour), which makes the history genuinely clean. No labels; the clean-pr scenario stands."
+      "notes": "Checked round 1 config.go and the round 2 test against the PR body. Line 36 converted READ_TIMEOUT_MS with time.Duration(ms) * time.Millisecond and no upper bound, so a value above 9223372036854 overflowed int64 and silently disabled the read timeout that main.go line 18 installs. Amended line 33 to reject ms above 3600000 (one hour), which makes the history genuinely clean. No labels; the clean-pr scenario stands."
     },
     "defects": [],
     "decoys": []

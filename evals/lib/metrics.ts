@@ -308,8 +308,6 @@ export function scoreRun(
   };
 }
 
-// --- Aggregation across histories. ---
-
 export interface ProportionEstimate {
   // Sums of run-averaged counts, so they can be fractional with repeats.
   readonly successes: number;
@@ -324,6 +322,8 @@ export interface ProportionEstimate {
 
 export interface RateEstimate {
   readonly histories: number;
+  // Sum of run-averaged event counts over those histories.
+  readonly total: number;
   readonly value: number | null;
   // Union of the exact Poisson interval on the averaged total, rounded
   // outward, and the history-cluster bootstrap. null with no histories.
@@ -338,6 +338,7 @@ export interface ScoreOptions extends BootstrapOptions {
 }
 
 export interface Distribution {
+  readonly histories: number;
   readonly mean: number;
   readonly meanInterval: Interval | null;
   readonly median: number;
@@ -402,9 +403,12 @@ function proportion(
   const low = Math.min(Math.floor(successes + 1e-9), n);
   const high = Math.min(Math.ceil(successes - 1e-9), n);
   const exact = {
-    lower: clopperPearson(low, n).lower,
-    upper: clopperPearson(high, Math.max(high, Math.floor(trials + 1e-9)))
-      .upper,
+    lower: clopperPearson(low, n, options.confidence).lower,
+    upper: clopperPearson(
+      high,
+      Math.max(high, Math.floor(trials + 1e-9)),
+      options.confidence,
+    ).upper,
   };
   const bootstrap = clusterBootstrap(
     contributing,
@@ -429,17 +433,26 @@ function rate(
   options: BootstrapOptions,
 ): RateEstimate {
   if (perHistory.length === 0) {
-    return { histories: 0, value: null, interval: null };
+    return { histories: 0, total: 0, value: null, interval: null };
   }
   const total = perHistory.reduce((sum, value) => sum + value, 0);
   const n = perHistory.length;
   return {
     histories: n,
+    total,
     value: total / n,
     interval: union(
       {
-        lower: poissonRateInterval(Math.floor(total + 1e-9), n).lower,
-        upper: poissonRateInterval(Math.ceil(total - 1e-9), n).upper,
+        lower: poissonRateInterval(
+          Math.floor(total + 1e-9),
+          n,
+          options.confidence,
+        ).lower,
+        upper: poissonRateInterval(
+          Math.ceil(total - 1e-9),
+          n,
+          options.confidence,
+        ).upper,
       },
       clusterBootstrap(perHistory, average, options),
     ),
@@ -454,6 +467,7 @@ function distribution(
   const mean = (sample: readonly number[]): number =>
     sample.reduce((sum, value) => sum + value, 0) / sample.length;
   return {
+    histories: values.length,
     mean: mean(values),
     meanInterval: clusterBootstrap(values, mean, options),
     median: quantile(sorted, 0.5),

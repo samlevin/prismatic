@@ -213,7 +213,7 @@ export class HistoryError extends Error {
   }
 }
 
-// --- Shape readers. Each takes the JSON path for its error messages. ---
+// Each shape reader takes the JSON path for its error messages.
 
 type Json = Record<string, unknown>;
 
@@ -518,8 +518,6 @@ function readExpected(value: unknown, at: string): ExpectedRound {
   };
 }
 
-// --- Source trees. ---
-
 // The files at the end of a round; round 0 is the base.
 export function treeAtRound(history: LabeledHistory, round: number): FileTree {
   if (
@@ -538,8 +536,6 @@ export function treeAtRound(history: LabeledHistory, round: number): FileTree {
   }
   return tree;
 }
-
-// --- Cross-reference checks. ---
 
 function checkLocation(
   trees: readonly FileTree[],

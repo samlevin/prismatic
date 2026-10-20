@@ -80,7 +80,7 @@
             "    return _ORDERS.get(order_id)",
             "",
             "",
-            "def _line_total(order: Order) -> int:",
+            "def _order_total(order: Order) -> int:",
             "    return sum(line.quantity * line.unit_price_cents for line in order.lines)",
             "",
             "",
@@ -88,7 +88,7 @@
             "    order = find_order(order_id)",
             "    if order is None:",
             "        raise OrderNotFound(order_id)",
-            "    return _line_total(order)"
+            "    return _order_total(order)"
           ]
         }
       }
@@ -98,10 +98,10 @@
     "labeledBy": "agent:prism-implementer",
     "labeledOn": "2026-10-19",
     "check": {
-      "status": "confirmed",
+      "status": "amended",
       "by": "agent:label-checker",
       "on": "2026-10-20",
-      "notes": "_line_total sums every line of the order, which is exactly what order_total_cents must return; only the singular name misleads, so the clean label stands. The line-total-none decoy on line 29 is a true decoy because the only caller raises OrderNotFound on None first."
+      "notes": "The helper was named _line_total although it sums every line of the order, and misleading-name-or-comment is a failure mode in the quality taxonomy, so a reviewer that flagged the name would have been scored as a false finding on a clean history. Renamed it to _order_total on lines 28 and 36; no label or decoy line moves. The line-total-none decoy on line 29 is a true decoy because the only caller raises OrderNotFound on None first."
     },
     "defects": [],
     "decoys": [
@@ -114,7 +114,7 @@
           "endLine": 29,
           "marker": "for line in order.lines"
         },
-        "summary": "_line_total reads order.lines without a None check, but its parameter is typed Order and its only caller raises OrderNotFound first. A finding here is false."
+        "summary": "_order_total reads order.lines without a None check, but its parameter is typed Order and its only caller raises OrderNotFound first. A finding here is false."
       }
     ]
   },

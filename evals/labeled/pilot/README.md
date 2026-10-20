@@ -15,7 +15,7 @@ The P0.11a pilot corpus: 10 synthetic pull request histories in the format [the 
 | `ts-retry-dismissed` | typescript | 3 | dismissed-finding | `zero-attempts` (medium, R1) | none |
 | `ts-vendored-chart-excluded` | typescript | 1 | unreviewable-change | `vendor-escape-dropped` (high, R1, ineligible) | none |
 
-In `go-display-name-nil-profile`, round 2 adds a nil check on the user rather than the profile, so the finding should persist; round 3 fixes it. In `ts-retry-dismissed`, the zero-attempts finding is a real but medium-severity gap, and the author dismisses the finding before round 2, and round 3 edits the same file and shifts its lines; the finding should stay dismissed. In `ts-vendored-chart-excluded`, the only defect is in a vendored file that policy excludes, so coverage should be partial and the defect never counts toward recall.
+In `go-display-name-nil-profile`, round 2 adds a nil check on the user rather than the profile, so the finding should persist; round 3 fixes it. In `ts-retry-dismissed`, the zero-attempts finding is a real but medium-severity gap, and the author dismisses the finding before round 2, and round 3 edits the same file and shifts its lines; the finding should stay dismissed. In `ts-vendored-chart-excluded`, the only defect is in a vendored file that policy excludes, so coverage should be partial and the defect never counts toward severe recall, only toward end-to-end recall.
 
 ## Label status
 

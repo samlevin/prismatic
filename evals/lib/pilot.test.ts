@@ -27,7 +27,7 @@ describe('pilot corpus', () => {
     expect(summary.maxRound).toBeGreaterThanOrEqual(6);
   });
 
-  test('is synthetic, licensed, and labeled by one person and checked by another', () => {
+  test('is synthetic, licensed, and labeled by one party and checked by another', () => {
     for (const history of histories) {
       expect(history.provenance.origin).toBe('synthetic');
       expect(history.provenance.license).toBe('MIT');
