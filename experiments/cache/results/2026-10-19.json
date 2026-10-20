@@ -1,0 +1,2377 @@
+{
+  "spike": "P0.9 live cache and request feasibility (#142)",
+  "dryRun": false,
+  "model": "gpt-6.1-sol",
+  "openaiSdk": "7.39.0",
+  "node": "v24.22.0",
+  "startedAt": "2026-10-19T13:10:14.688Z",
+  "finishedAt": "2026-10-19T13:18:14.337Z",
+  "priceCatalog": {
+    "version": "spike-2026-10",
+    "source": "Specification §9.5 worked example. Confirm against the model pricing page before a live run."
+  },
+  "maxOutputTokens": 8000,
+  "settleMs": 3000,
+  "plannerTokenizer": "o200k_base",
+  "plannedWorstCaseUsd": 3.161315000000002,
+  "budget": {
+    "limitUsd": 5,
+    "settledUsd": 0.8189094999999998,
+    "heldUsd": 0,
+    "remainingUsd": 4.1810905,
+    "refused": 0
+  },
+  "tokenizerMargins": [
+    {
+      "tokenizer": "o200k_base",
+      "samples": 18,
+      "slope": 0.9999911189773627,
+      "interceptTokens": 258.0239786176171,
+      "worstUnderPredictionRatio": 0.00000755083268046391,
+      "worstAbsoluteResidualRatio": 0.00011251686600992953,
+      "meanAbsoluteResidualRatio": 0.000012701381079386289,
+      "requiredMarginRatio": 0.00000755083268046391
+    },
+    {
+      "tokenizer": "cl100k_base",
+      "samples": 18,
+      "slope": 0.9994206611186695,
+      "interceptTokens": 248.98928974847695,
+      "worstUnderPredictionRatio": 0.000032666760118814885,
+      "worstAbsoluteResidualRatio": 0.00018651534150156455,
+      "meanAbsoluteResidualRatio": 0.00004969599946423162,
+      "requiredMarginRatio": 0.000032666760118814885
+    },
+    {
+      "tokenizer": "utf8-bytes-div-4",
+      "samples": 18,
+      "slope": 1.0008202086457956,
+      "interceptTokens": 855.1345611666457,
+      "worstUnderPredictionRatio": 0.026270009018003377,
+      "worstAbsoluteResidualRatio": 0.026270009018003377,
+      "meanAbsoluteResidualRatio": 0.005153060019484921,
+      "requiredMarginRatio": 0.026270009018003377
+    }
+  ],
+  "tokenizerSamples": {
+    "o200k_base": [
+      {
+        "label": "cold-warm/cold",
+        "local": 16436,
+        "provider": 16694
+      },
+      {
+        "label": "block4-early-change/prime",
+        "local": 16437,
+        "provider": 16695
+      },
+      {
+        "label": "block4-early-change/changed",
+        "local": 16440,
+        "provider": 16698
+      },
+      {
+        "label": "block4-late-change/prime",
+        "local": 16437,
+        "provider": 16695
+      },
+      {
+        "label": "block4-late-change/changed",
+        "local": 16437,
+        "provider": 16695
+      },
+      {
+        "label": "scope-change/prime",
+        "local": 16435,
+        "provider": 16693
+      },
+      {
+        "label": "scope-change/changed",
+        "local": 19491,
+        "provider": 19749
+      },
+      {
+        "label": "representation-change/prime",
+        "local": 16435,
+        "provider": 16693
+      },
+      {
+        "label": "representation-change/changed",
+        "local": 15501,
+        "provider": 15759
+      },
+      {
+        "label": "base-provenance-only/prime",
+        "local": 16437,
+        "provider": 16695
+      },
+      {
+        "label": "base-provenance-only/changed",
+        "local": 16438,
+        "provider": 16696
+      },
+      {
+        "label": "caching-disabled/first",
+        "local": 16435,
+        "provider": 16691
+      },
+      {
+        "label": "short-stable-prefix/unmarked",
+        "local": 4344,
+        "provider": 4602
+      },
+      {
+        "label": "short-stable-prefix/forced",
+        "local": 4344,
+        "provider": 4602
+      },
+      {
+        "label": "effort-high-to-medium/high",
+        "local": 16438,
+        "provider": 16696
+      },
+      {
+        "label": "effort-high-to-medium/medium",
+        "local": 16438,
+        "provider": 16696
+      },
+      {
+        "label": "effort-configuration-update/high",
+        "local": 16438,
+        "provider": 16696
+      },
+      {
+        "label": "effort-configuration-update/updated",
+        "local": 16438,
+        "provider": 16696
+      }
+    ],
+    "cl100k_base": [
+      {
+        "label": "cold-warm/cold",
+        "local": 16454,
+        "provider": 16694
+      },
+      {
+        "label": "block4-early-change/prime",
+        "local": 16455,
+        "provider": 16695
+      },
+      {
+        "label": "block4-early-change/changed",
+        "local": 16458,
+        "provider": 16698
+      },
+      {
+        "label": "block4-late-change/prime",
+        "local": 16455,
+        "provider": 16695
+      },
+      {
+        "label": "block4-late-change/changed",
+        "local": 16456,
+        "provider": 16695
+      },
+      {
+        "label": "scope-change/prime",
+        "local": 16453,
+        "provider": 16693
+      },
+      {
+        "label": "scope-change/changed",
+        "local": 19515,
+        "provider": 19749
+      },
+      {
+        "label": "representation-change/prime",
+        "local": 16453,
+        "provider": 16693
+      },
+      {
+        "label": "representation-change/changed",
+        "local": 15519,
+        "provider": 15759
+      },
+      {
+        "label": "base-provenance-only/prime",
+        "local": 16455,
+        "provider": 16695
+      },
+      {
+        "label": "base-provenance-only/changed",
+        "local": 16456,
+        "provider": 16696
+      },
+      {
+        "label": "caching-disabled/first",
+        "local": 16453,
+        "provider": 16691
+      },
+      {
+        "label": "short-stable-prefix/unmarked",
+        "local": 4356,
+        "provider": 4602
+      },
+      {
+        "label": "short-stable-prefix/forced",
+        "local": 4356,
+        "provider": 4602
+      },
+      {
+        "label": "effort-high-to-medium/high",
+        "local": 16456,
+        "provider": 16696
+      },
+      {
+        "label": "effort-high-to-medium/medium",
+        "local": 16456,
+        "provider": 16696
+      },
+      {
+        "label": "effort-configuration-update/high",
+        "local": 16456,
+        "provider": 16696
+      },
+      {
+        "label": "effort-configuration-update/updated",
+        "local": 16456,
+        "provider": 16696
+      }
+    ],
+    "utf8-bytes-div-4": [
+      {
+        "label": "cold-warm/cold",
+        "local": 15848,
+        "provider": 16694
+      },
+      {
+        "label": "block4-early-change/prime",
+        "local": 15850,
+        "provider": 16695
+      },
+      {
+        "label": "block4-early-change/changed",
+        "local": 15848,
+        "provider": 16698
+      },
+      {
+        "label": "block4-late-change/prime",
+        "local": 15850,
+        "provider": 16695
+      },
+      {
+        "label": "block4-late-change/changed",
+        "local": 15848,
+        "provider": 16695
+      },
+      {
+        "label": "scope-change/prime",
+        "local": 15849,
+        "provider": 16693
+      },
+      {
+        "label": "scope-change/changed",
+        "local": 18360,
+        "provider": 19749
+      },
+      {
+        "label": "representation-change/prime",
+        "local": 15851,
+        "provider": 16693
+      },
+      {
+        "label": "representation-change/changed",
+        "local": 15207,
+        "provider": 15759
+      },
+      {
+        "label": "base-provenance-only/prime",
+        "local": 15851,
+        "provider": 16695
+      },
+      {
+        "label": "base-provenance-only/changed",
+        "local": 15851,
+        "provider": 16696
+      },
+      {
+        "label": "caching-disabled/first",
+        "local": 15850,
+        "provider": 16691
+      },
+      {
+        "label": "short-stable-prefix/unmarked",
+        "local": 3682,
+        "provider": 4602
+      },
+      {
+        "label": "short-stable-prefix/forced",
+        "local": 3682,
+        "provider": 4602
+      },
+      {
+        "label": "effort-high-to-medium/high",
+        "local": 15851,
+        "provider": 16696
+      },
+      {
+        "label": "effort-high-to-medium/medium",
+        "local": 15851,
+        "provider": 16696
+      },
+      {
+        "label": "effort-configuration-update/high",
+        "local": 15852,
+        "provider": 16696
+      },
+      {
+        "label": "effort-configuration-update/updated",
+        "local": 15852,
+        "provider": 16696
+      }
+    ]
+  },
+  "selectedTokenizer": "o200k_base",
+  "totals": [
+    {
+      "scenario": "cold-warm",
+      "requests": 3,
+      "completed": 3,
+      "unknownUsage": 0,
+      "inputTokens": 50082,
+      "cachedTokens": 31932,
+      "cacheWriteTokens": 15966,
+      "outputTokens": 1681,
+      "reasoningTokens": 1424,
+      "knownCostUsd": 0.06428620000000002,
+      "writePremiumUsd": 0.007983000000000004,
+      "elapsedMs": 42991.60125
+    },
+    {
+      "scenario": "block4-early-change",
+      "requests": 2,
+      "completed": 2,
+      "unknownUsage": 0,
+      "inputTokens": 33393,
+      "cachedTokens": 10157,
+      "cacheWriteTokens": 21780,
+      "outputTokens": 1345,
+      "reasoningTokens": 964,
+      "knownCostUsd": 0.07182770000000001,
+      "writePremiumUsd": 0.010890000000000006,
+      "elapsedMs": 35495.73858299999
+    },
+    {
+      "scenario": "block4-late-change",
+      "requests": 2,
+      "completed": 2,
+      "unknownUsage": 0,
+      "inputTokens": 33390,
+      "cachedTokens": 10157,
+      "cacheWriteTokens": 21777,
+      "outputTokens": 1927,
+      "reasoningTokens": 1546,
+      "knownCostUsd": 0.0776402,
+      "writePremiumUsd": 0.010888500000000006,
+      "elapsedMs": 49257.381624000016
+    },
+    {
+      "scenario": "scope-change",
+      "requests": 2,
+      "completed": 2,
+      "unknownUsage": 0,
+      "inputTokens": 36442,
+      "cachedTokens": 4364,
+      "cacheWriteTokens": 30464,
+      "outputTokens": 1478,
+      "reasoningTokens": 1316,
+      "knownCostUsd": 0.0946044,
+      "writePremiumUsd": 0.01523200000000001,
+      "elapsedMs": 38534.29158300001
+    },
+    {
+      "scenario": "representation-change",
+      "requests": 2,
+      "completed": 2,
+      "unknownUsage": 0,
+      "inputTokens": 32452,
+      "cachedTokens": 4364,
+      "cacheWriteTokens": 26632,
+      "outputTokens": 1394,
+      "reasoningTokens": 1210,
+      "knownCostUsd": 0.08386840000000001,
+      "writePremiumUsd": 0.013316000000000008,
+      "elapsedMs": 40964.341208
+    },
+    {
+      "scenario": "base-provenance-only",
+      "requests": 2,
+      "completed": 2,
+      "unknownUsage": 0,
+      "inputTokens": 33391,
+      "cachedTokens": 15967,
+      "cacheWriteTokens": 15967,
+      "outputTokens": 1242,
+      "reasoningTokens": 1071,
+      "knownCostUsd": 0.0568482,
+      "writePremiumUsd": 0.007983500000000004,
+      "elapsedMs": 34566.356666999956
+    },
+    {
+      "scenario": "caching-disabled",
+      "requests": 2,
+      "completed": 2,
+      "unknownUsage": 0,
+      "inputTokens": 33382,
+      "cachedTokens": 0,
+      "cacheWriteTokens": 0,
+      "outputTokens": 1032,
+      "reasoningTokens": 874,
+      "knownCostUsd": 0.077084,
+      "writePremiumUsd": 0,
+      "elapsedMs": 25342.01675000001
+    },
+    {
+      "scenario": "short-stable-prefix",
+      "requests": 3,
+      "completed": 3,
+      "unknownUsage": 0,
+      "inputTokens": 13806,
+      "cachedTokens": 0,
+      "cacheWriteTokens": 0,
+      "outputTokens": 1029,
+      "reasoningTokens": 740,
+      "knownCostUsd": 0.037902000000000005,
+      "writePremiumUsd": 0,
+      "elapsedMs": 29755.06150099996
+    },
+    {
+      "scenario": "effort-high-to-medium",
+      "requests": 3,
+      "completed": 3,
+      "unknownUsage": 0,
+      "inputTokens": 50088,
+      "cachedTokens": 15968,
+      "cacheWriteTokens": 31936,
+      "outputTokens": 2317,
+      "reasoningTokens": 1586,
+      "knownCostUsd": 0.1089748,
+      "writePremiumUsd": 0.01596800000000001,
+      "elapsedMs": 58984.17999900004
+    },
+    {
+      "scenario": "effort-configuration-update",
+      "requests": 3,
+      "completed": 3,
+      "unknownUsage": 0,
+      "inputTokens": 50088,
+      "cachedTokens": 31936,
+      "cacheWriteTokens": 15968,
+      "outputTokens": 1288,
+      "reasoningTokens": 1017,
+      "knownCostUsd": 0.0603616,
+      "writePremiumUsd": 0.007984000000000005,
+      "elapsedMs": 42221.01883399999
+    },
+    {
+      "scenario": "schema-variants",
+      "requests": 2,
+      "completed": 2,
+      "unknownUsage": 0,
+      "inputTokens": 33384,
+      "cachedTokens": 0,
+      "cacheWriteTokens": 31928,
+      "outputTokens": 278,
+      "reasoningTokens": 184,
+      "knownCostUsd": 0.085512,
+      "writePremiumUsd": 0.01596400000000001,
+      "elapsedMs": 10568.233499999973
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "cold-warm",
+      "criteria": [1, 3],
+      "title": "Cold request, then two identical repeats",
+      "hypothesis": "The cold request writes up to BP4; repeats read through BP4 and write nothing new."
+    },
+    {
+      "id": "block4-early-change",
+      "criteria": [1, 3],
+      "title": "One changed line in the first block 4 file",
+      "hypothesis": "Reuse stops at BP3; BP4 is rewritten."
+    },
+    {
+      "id": "block4-late-change",
+      "criteria": [1, 3],
+      "title": "One changed line in the last block 4 file",
+      "hypothesis": "Reuse still stops at BP3: any changed byte before BP4 invalidates it, however late."
+    },
+    {
+      "id": "scope-change",
+      "criteria": [1, 3],
+      "title": "The discovery scope gains a file and block 3 its neighbor",
+      "hypothesis": "Reuse stops at BP2."
+    },
+    {
+      "id": "representation-change",
+      "criteria": [1, 3],
+      "title": "One block 3 file drops from L0 to L2",
+      "hypothesis": "Reuse stops at BP2."
+    },
+    {
+      "id": "base-provenance-only",
+      "criteria": [1, 3],
+      "title": "Only the base-tip provenance in block 5 changes",
+      "hypothesis": "Reuse reaches BP4, because provenance sits in the uncached suffix."
+    },
+    {
+      "id": "caching-disabled",
+      "criteria": [1, 3],
+      "title": "Explicit mode with no breakpoints, sent twice",
+      "hypothesis": "Neither request reads or writes the cache."
+    },
+    {
+      "id": "short-stable-prefix",
+      "criteria": [1, 3],
+      "title": "A stable prefix under the minimum in a request over it",
+      "hypothesis": "With no breakpoint nothing is cached even though the whole request exceeds the minimum. With breakpoints forced onto the short prefix, the provider ignores them, rejects the request, or writes and reads them; the forced steps show which."
+    },
+    {
+      "id": "effort-high-to-medium",
+      "criteria": [2, 3],
+      "title": "Request-level effort drops from high to medium",
+      "hypothesis": "The medium request misses the high population; a second medium request reads the medium population."
+    },
+    {
+      "id": "effort-configuration-update",
+      "criteria": [2, 3],
+      "title": "Request-level high with a configuration_update to medium after block 4",
+      "hypothesis": "The updated request reuses the high prefix through BP4 and the response reports medium as its effective effort."
+    },
+    {
+      "id": "schema-variants",
+      "criteria": [4],
+      "title": "The incremental and reconcile schema variants under strict mode",
+      "hypothesis": "Both variants are accepted and every completed response validates against its schema."
+    }
+  ],
+  "steps": [
+    {
+      "scenario": "cold-warm",
+      "step": "cold",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2159
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4114
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9905
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15715
+        }
+      ],
+      "localInputTokens": 16436,
+      "reservationUsd": 0.1252,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2409,
+        "2": 4368,
+        "3": 10159,
+        "4": 15969
+      },
+      "providerInputTokens": 16694,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16694,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15966,
+        "outputTokens": 483,
+        "reasoningTokens": 402
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.039915000000000006,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.00483,
+        "writePremiumUsd": 0.007983000000000004,
+        "totalUsd": 0.046201000000000006
+      },
+      "elapsedMs": 12095.100417,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "cold-warm",
+      "step": "warm-1",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2159
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4114
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9905
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15715
+        }
+      ],
+      "localInputTokens": 16436,
+      "reservationUsd": 0.1252,
+      "comparisonResponseId": "resp_0c0bec1acf50f24f016ad616b9f99c87d28004650972e8d722",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2409,
+        "2": 4368,
+        "3": 10159,
+        "4": 15969
+      },
+      "providerInputTokens": 16694,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16694,
+        "cachedTokens": 15966,
+        "cacheWriteTokens": 0,
+        "outputTokens": 582,
+        "reasoningTokens": 506
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0.0015966,
+        "outputUsd": 0.0058200000000000005,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.008872600000000001
+      },
+      "elapsedMs": 14470.064875000004,
+      "sincePreviousMs": 3078.6829580000012,
+      "diagnostics": {
+        "type": "cache_hit"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "cold-warm",
+      "step": "warm-2",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2159
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4114
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9905
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15715
+        }
+      ],
+      "localInputTokens": 16436,
+      "reservationUsd": 0.1252,
+      "comparisonResponseId": "resp_00e4fa4af3589c54016ad616c93cc887d2a0bcc3071ad0ca82",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2409,
+        "2": 4368,
+        "3": 10159,
+        "4": 15969
+      },
+      "providerInputTokens": 16694,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16694,
+        "cachedTokens": 15966,
+        "cacheWriteTokens": 0,
+        "outputTokens": 616,
+        "reasoningTokens": 516
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0.0015966,
+        "outputUsd": 0.0061600000000000005,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.009212600000000001
+      },
+      "elapsedMs": 16426.435957999995,
+      "sincePreviousMs": 3055.986291999994,
+      "diagnostics": {
+        "type": "cache_hit"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "block4-early-change",
+      "step": "prime",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2160
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4115
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9906
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15716
+        }
+      ],
+      "localInputTokens": 16437,
+      "reservationUsd": 0.1252025,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2410,
+        "2": 4369,
+        "3": 10160,
+        "4": 15970
+      },
+      "providerInputTokens": 16695,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16695,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15967,
+        "outputTokens": 565,
+        "reasoningTokens": 485
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.0399175,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.0056500000000000005,
+        "writePremiumUsd": 0.007983500000000004,
+        "totalUsd": 0.0470235
+      },
+      "elapsedMs": 15415.544166,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "block4-early-change",
+      "step": "changed",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2160
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4115
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9906
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15719
+        }
+      ],
+      "localInputTokens": 16440,
+      "reservationUsd": 0.12521000000000002,
+      "comparisonResponseId": "resp_0b42ae4f7c2a4319016ad616ec815087d2bae6ade3a469f73f",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2410,
+        "2": 4369,
+        "3": 10160,
+        "4": 15973
+      },
+      "providerInputTokens": 16698,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16698,
+        "cachedTokens": 10157,
+        "cacheWriteTokens": 5813,
+        "outputTokens": 780,
+        "reasoningTokens": 479
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.014532500000000002,
+        "cachedInputUsd": 0.0010157,
+        "outputUsd": 0.0078000000000000005,
+        "writePremiumUsd": 0.0029065000000000015,
+        "totalUsd": 0.024804200000000005
+      },
+      "elapsedMs": 20080.19441699999,
+      "sincePreviousMs": 3038.8702090000006,
+      "diagnostics": {
+        "type": "unavailable"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "boundary",
+          "afterBlock": 3,
+          "offsetTokens": -3
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "block4-late-change",
+      "step": "prime",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2160
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4115
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9906
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15716
+        }
+      ],
+      "localInputTokens": 16437,
+      "reservationUsd": 0.1252025,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2410,
+        "2": 4369,
+        "3": 10160,
+        "4": 15970
+      },
+      "providerInputTokens": 16695,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16695,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15967,
+        "outputTokens": 925,
+        "reasoningTokens": 818
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.0399175,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.009250000000000001,
+        "writePremiumUsd": 0.007983500000000004,
+        "totalUsd": 0.0506235
+      },
+      "elapsedMs": 24741.690458000012,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "block4-late-change",
+      "step": "changed",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2160
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4115
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9906
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15716
+        }
+      ],
+      "localInputTokens": 16437,
+      "reservationUsd": 0.1252025,
+      "comparisonResponseId": "resp_0dcc49d55c1c4eb7016ad6171576d887d291195950922635fb",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2410,
+        "2": 4369,
+        "3": 10160,
+        "4": 15970
+      },
+      "providerInputTokens": 16695,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16695,
+        "cachedTokens": 10157,
+        "cacheWriteTokens": 5810,
+        "outputTokens": 1002,
+        "reasoningTokens": 728
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.014525000000000001,
+        "cachedInputUsd": 0.0010157,
+        "outputUsd": 0.010020000000000001,
+        "writePremiumUsd": 0.0029050000000000018,
+        "totalUsd": 0.027016700000000005
+      },
+      "elapsedMs": 24515.691166000004,
+      "sincePreviousMs": 3063.5567089999968,
+      "diagnostics": {
+        "type": "cache_miss",
+        "cache_missed_tokens": 5810,
+        "comparison_reusable_tokens": 16109,
+        "reason": "input_changed"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "boundary",
+          "afterBlock": 3,
+          "offsetTokens": -3
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "scope-change",
+      "step": "prime",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2158
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4113
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9904
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15714
+        }
+      ],
+      "localInputTokens": 16435,
+      "reservationUsd": 0.12519750000000002,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2408,
+        "2": 4367,
+        "3": 10158,
+        "4": 15968
+      },
+      "providerInputTokens": 16693,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16693,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15965,
+        "outputTokens": 928,
+        "reasoningTokens": 838
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.039912500000000004,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.00928,
+        "writePremiumUsd": 0.007982500000000005,
+        "totalUsd": 0.0506485
+      },
+      "elapsedMs": 22551.035125000024,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "scope-change",
+      "step": "changed",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2158
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4113
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 11350
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 18612
+        }
+      ],
+      "localInputTokens": 19491,
+      "reservationUsd": 0.1336025,
+      "comparisonResponseId": "resp_08e9c610c7d2734d016ad6174bc6c087d29623024d63130f82",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2408,
+        "2": 4367,
+        "3": 11604,
+        "4": 18866
+      },
+      "providerInputTokens": 19749,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 19749,
+        "cachedTokens": 4364,
+        "cacheWriteTokens": 14499,
+        "outputTokens": 550,
+        "reasoningTokens": 478
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.001772,
+        "cacheWriteUsd": 0.0362475,
+        "cachedInputUsd": 0.00043640000000000004,
+        "outputUsd": 0.0055000000000000005,
+        "writePremiumUsd": 0.007249500000000004,
+        "totalUsd": 0.043955900000000006
+      },
+      "elapsedMs": 15983.256457999989,
+      "sincePreviousMs": 3063.4008329999924,
+      "diagnostics": {
+        "type": "unavailable"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "boundary",
+          "afterBlock": 2,
+          "offsetTokens": -3
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "representation-change",
+      "step": "prime",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2158
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4113
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9904
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15714
+        }
+      ],
+      "localInputTokens": 16435,
+      "reservationUsd": 0.12519750000000002,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2408,
+        "2": 4367,
+        "3": 10158,
+        "4": 15968
+      },
+      "providerInputTokens": 16693,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16693,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15965,
+        "outputTokens": 644,
+        "reasoningTokens": 541
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.039912500000000004,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.00644,
+        "writePremiumUsd": 0.007982500000000005,
+        "totalUsd": 0.047808500000000004
+      },
+      "elapsedMs": 18093.38495800001,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "representation-change",
+      "step": "changed",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2158
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4113
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 8970
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 14780
+        }
+      ],
+      "localInputTokens": 15501,
+      "reservationUsd": 0.12263,
+      "comparisonResponseId": "resp_0d3fcaaafdd5a694016ad617788d8887d29f7492fcfe10c536",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2408,
+        "2": 4367,
+        "3": 9224,
+        "4": 15034
+      },
+      "providerInputTokens": 15759,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 15759,
+        "cachedTokens": 4364,
+        "cacheWriteTokens": 10667,
+        "outputTokens": 750,
+        "reasoningTokens": 669
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.026667500000000004,
+        "cachedInputUsd": 0.00043640000000000004,
+        "outputUsd": 0.007500000000000001,
+        "writePremiumUsd": 0.005333500000000003,
+        "totalUsd": 0.036059900000000006
+      },
+      "elapsedMs": 22870.95624999999,
+      "sincePreviousMs": 3061.795582999999,
+      "diagnostics": {
+        "type": "unavailable"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "boundary",
+          "afterBlock": 2,
+          "offsetTokens": -3
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "base-provenance-only",
+      "step": "prime",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2160
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4115
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9906
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15716
+        }
+      ],
+      "localInputTokens": 16437,
+      "reservationUsd": 0.1252025,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2410,
+        "2": 4369,
+        "3": 10160,
+        "4": 15970
+      },
+      "providerInputTokens": 16695,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16695,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15967,
+        "outputTokens": 736,
+        "reasoningTokens": 650
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.0399175,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.00736,
+        "writePremiumUsd": 0.007983500000000004,
+        "totalUsd": 0.0487335
+      },
+      "elapsedMs": 20661.565333000006,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "base-provenance-only",
+      "step": "changed",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2160
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4115
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9906
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15716
+        }
+      ],
+      "localInputTokens": 16438,
+      "reservationUsd": 0.125205,
+      "comparisonResponseId": "resp_01fa7601e71e20dd016ad617a7837c87d29abaab8dd6f15f22",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2410,
+        "2": 4369,
+        "3": 10160,
+        "4": 15970
+      },
+      "providerInputTokens": 16696,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16696,
+        "cachedTokens": 15967,
+        "cacheWriteTokens": 0,
+        "outputTokens": 506,
+        "reasoningTokens": 421
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014579999999999999,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0.0015967000000000002,
+        "outputUsd": 0.00506,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.0081147
+      },
+      "elapsedMs": 13904.79133399995,
+      "sincePreviousMs": 3039.44862499999,
+      "diagnostics": {
+        "type": "cache_hit"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "caching-disabled",
+      "step": "first",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [],
+      "localInputTokens": 16435,
+      "reservationUsd": 0.12519750000000002,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {},
+      "providerInputTokens": 16691,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16691,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 525,
+        "reasoningTokens": 445
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.033382,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.00525,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.038632
+      },
+      "elapsedMs": 12662.391249999986,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "caching-disabled",
+      "step": "second",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [],
+      "localInputTokens": 16435,
+      "reservationUsd": 0.12519750000000002,
+      "comparisonResponseId": "resp_05064713018956b8016ad617ce3c7487d29177cf79dc162af7",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {},
+      "providerInputTokens": 16691,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16691,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 507,
+        "reasoningTokens": 429
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.033382,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.005070000000000001,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.038452
+      },
+      "elapsedMs": 12679.625500000024,
+      "sincePreviousMs": 3033.1535830000066,
+      "diagnostics": {
+        "type": "unavailable"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "short-stable-prefix",
+      "step": "unmarked",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [],
+      "localInputTokens": 4344,
+      "reservationUsd": 0.0919475,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {},
+      "providerInputTokens": 4602,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 4602,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 348,
+        "reasoningTokens": 254
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.009204,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.0034800000000000005,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.012684
+      },
+      "elapsedMs": 9991.705666999973,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "short-stable-prefix",
+      "step": "forced",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 184
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 383
+        }
+      ],
+      "localInputTokens": 4344,
+      "reservationUsd": 0.0919475,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 434,
+        "4": 637
+      },
+      "providerInputTokens": 4602,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 4602,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 305,
+        "reasoningTokens": 220
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.009204,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.00305,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.012254000000000001
+      },
+      "elapsedMs": 9084.633042000001,
+      "sincePreviousMs": 3018.288540999987,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "short-stable-prefix",
+      "step": "forced-again",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 184
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 383
+        }
+      ],
+      "localInputTokens": 4344,
+      "reservationUsd": 0.0919475,
+      "comparisonResponseId": "resp_0446a990770f0067016ad617f89b1087d298d3fb5389d3abb9",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 434,
+        "4": 637
+      },
+      "providerInputTokens": 4602,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 4602,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 376,
+        "reasoningTokens": 266
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.009204,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.0037600000000000003,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.012964
+      },
+      "elapsedMs": 10678.722791999986,
+      "sincePreviousMs": 3018.815332999977,
+      "diagnostics": {
+        "type": "cache_hit"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "effort-high-to-medium",
+      "step": "high",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2161
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4116
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9907
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15717
+        }
+      ],
+      "localInputTokens": 16438,
+      "reservationUsd": 0.125205,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2411,
+        "2": 4370,
+        "3": 10161,
+        "4": 15971
+      },
+      "providerInputTokens": 16696,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16696,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15968,
+        "outputTokens": 1888,
+        "reasoningTokens": 1342
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.039920000000000004,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.01888,
+        "writePremiumUsd": 0.007984000000000005,
+        "totalUsd": 0.060256000000000004
+      },
+      "elapsedMs": 42210.908125000016,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "effort-high-to-medium",
+      "step": "medium",
+      "settingsIdentity": "4a41bf41946f69cf",
+      "requestEffort": "medium",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2161
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4116
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9907
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15717
+        }
+      ],
+      "localInputTokens": 16438,
+      "reservationUsd": 0.125205,
+      "comparisonResponseId": "resp_0a1cf1a4e8f9ff48016ad61810fb7087d2824fab6e70e9b8d4",
+      "status": "completed",
+      "reportedEffort": "medium",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2411,
+        "2": 4370,
+        "3": 10161,
+        "4": 15971
+      },
+      "providerInputTokens": 16696,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16696,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15968,
+        "outputTokens": 233,
+        "reasoningTokens": 139
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.039920000000000004,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.00233,
+        "writePremiumUsd": 0.007984000000000005,
+        "totalUsd": 0.043706
+      },
+      "elapsedMs": 8914.944916000008,
+      "sincePreviousMs": 3037.3117499999935,
+      "diagnostics": {
+        "type": "cache_miss",
+        "cache_missed_tokens": 16110,
+        "comparison_reusable_tokens": 16110,
+        "reason": "reasoning_effort_changed"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "effort-high-to-medium",
+      "step": "medium-again",
+      "settingsIdentity": "4a41bf41946f69cf",
+      "requestEffort": "medium",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2161
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4116
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9907
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15717
+        }
+      ],
+      "localInputTokens": 16438,
+      "reservationUsd": 0.125205,
+      "comparisonResponseId": "resp_0b6c7ed882225eef016ad6183fbf1c87d289f2304b1a822819",
+      "status": "completed",
+      "reportedEffort": "medium",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2411,
+        "2": 4370,
+        "3": 10161,
+        "4": 15971
+      },
+      "providerInputTokens": 16696,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16696,
+        "cachedTokens": 15968,
+        "cacheWriteTokens": 0,
+        "outputTokens": 196,
+        "reasoningTokens": 105
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0.0015968000000000002,
+        "outputUsd": 0.0019600000000000004,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.0050128
+      },
+      "elapsedMs": 7858.32695800002,
+      "sincePreviousMs": 3027.7704169999924,
+      "diagnostics": {
+        "type": "cache_hit"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "effort-configuration-update",
+      "step": "high",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2161
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4116
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9907
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15717
+        }
+      ],
+      "localInputTokens": 16438,
+      "reservationUsd": 0.125205,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2411,
+        "2": 4370,
+        "3": 10161,
+        "4": 15971
+      },
+      "providerInputTokens": 16696,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16696,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15968,
+        "outputTokens": 605,
+        "reasoningTokens": 502
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.039920000000000004,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.006050000000000001,
+        "writePremiumUsd": 0.007984000000000005,
+        "totalUsd": 0.047426
+      },
+      "elapsedMs": 18026.66208400001,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "effort-configuration-update",
+      "step": "updated",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": "medium",
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2161
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4116
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9907
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15717
+        }
+      ],
+      "localInputTokens": 16438,
+      "reservationUsd": 0.125205,
+      "comparisonResponseId": "resp_0e224199426f9423016ad61855911887d2bcad315aaebc23af",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2411,
+        "2": 4370,
+        "3": 10161,
+        "4": 15971
+      },
+      "providerInputTokens": 16696,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16696,
+        "cachedTokens": 15968,
+        "cacheWriteTokens": 0,
+        "outputTokens": 337,
+        "reasoningTokens": 264
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0.0015968000000000002,
+        "outputUsd": 0.00337,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.0064228
+      },
+      "elapsedMs": 11956.636416999972,
+      "sincePreviousMs": 3040.9814579999656,
+      "diagnostics": {
+        "type": "cache_hit"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "effort-configuration-update",
+      "step": "updated-again",
+      "settingsIdentity": "fb13f5577690aad5",
+      "requestEffort": "high",
+      "updateEffort": "medium",
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2161
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4116
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9907
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15717
+        }
+      ],
+      "localInputTokens": 16438,
+      "reservationUsd": 0.125205,
+      "comparisonResponseId": "resp_0f5ac5bec6116e3c016ad6186b114c87d2bd2617070c502942",
+      "status": "completed",
+      "reportedEffort": "high",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2411,
+        "2": 4370,
+        "3": 10161,
+        "4": 15971
+      },
+      "providerInputTokens": 16696,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16696,
+        "cachedTokens": 15968,
+        "cacheWriteTokens": 0,
+        "outputTokens": 346,
+        "reasoningTokens": 251
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0,
+        "cachedInputUsd": 0.0015968000000000002,
+        "outputUsd": 0.0034600000000000004,
+        "writePremiumUsd": 0,
+        "totalUsd": 0.006512800000000001
+      },
+      "elapsedMs": 12237.720333000005,
+      "sincePreviousMs": 3044.6559579999885,
+      "diagnostics": {
+        "type": "cache_hit"
+      },
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        },
+        "write": {
+          "kind": "none"
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "schema-variants",
+      "step": "incremental",
+      "settingsIdentity": "04431b692f6d2ae3",
+      "requestEffort": "medium",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2158
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4113
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9904
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15714
+        }
+      ],
+      "localInputTokens": 16435,
+      "reservationUsd": 0.12519750000000002,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "medium",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2407,
+        "2": 4366,
+        "3": 10157,
+        "4": 15967
+      },
+      "providerInputTokens": 16692,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16692,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15964,
+        "outputTokens": 177,
+        "reasoningTokens": 130
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.03991,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.00177,
+        "writePremiumUsd": 0.007982000000000005,
+        "totalUsd": 0.043136
+      },
+      "elapsedMs": 6592.3812920000055,
+      "sincePreviousMs": null,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    },
+    {
+      "scenario": "schema-variants",
+      "step": "reconcile",
+      "settingsIdentity": "31e89a58f70c7a32",
+      "requestEffort": "medium",
+      "updateEffort": null,
+      "breakpoints": [
+        {
+          "afterBlock": 1,
+          "prefixTokens": 2158
+        },
+        {
+          "afterBlock": 2,
+          "prefixTokens": 4113
+        },
+        {
+          "afterBlock": 3,
+          "prefixTokens": 9904
+        },
+        {
+          "afterBlock": 4,
+          "prefixTokens": 15714
+        }
+      ],
+      "localInputTokens": 16435,
+      "reservationUsd": 0.12519750000000002,
+      "comparisonResponseId": null,
+      "status": "completed",
+      "reportedEffort": "medium",
+      "configurationUpdates": [],
+      "providerPrefixTokens": {
+        "1": 2407,
+        "2": 4366,
+        "3": 10157,
+        "4": 15967
+      },
+      "providerInputTokens": 16692,
+      "incompleteReason": null,
+      "usage": {
+        "inputTokens": 16692,
+        "cachedTokens": 0,
+        "cacheWriteTokens": 15964,
+        "outputTokens": 101,
+        "reasoningTokens": 54
+      },
+      "usageUnknownReason": null,
+      "cost": {
+        "ordinaryInputUsd": 0.0014559999999999998,
+        "cacheWriteUsd": 0.03991,
+        "cachedInputUsd": 0,
+        "outputUsd": 0.00101,
+        "writePremiumUsd": 0.007982000000000005,
+        "totalUsd": 0.042376
+      },
+      "elapsedMs": 3975.8522079999675,
+      "sincePreviousMs": 3040.2325829999754,
+      "diagnostics": null,
+      "attribution": {
+        "basis": "inferred",
+        "read": {
+          "kind": "none"
+        },
+        "write": {
+          "kind": "boundary",
+          "afterBlock": 4,
+          "offsetTokens": -3
+        }
+      },
+      "schemaErrors": [],
+      "serviceTier": "default",
+      "error": null
+    }
+  ]
+}
