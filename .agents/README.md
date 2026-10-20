@@ -8,6 +8,7 @@ This directory holds the sources of the delivery agents and skills this reposito
 | `roles/*.md` | Source of each agent role (shared text, with `<!-- claude-only -->` and `<!-- codex-only -->` blocks) |
 | `workflows/*.md` | Source of each skill, the user-facing entry points |
 | `workflows/<name>/` | Supporting references copied into both tools' skills, with placeholders resolved and, in Markdown, only that tool's tool-only blocks |
+| `includes/*.md` | Text several roles, skills, and skill references carry word for word, such as the review packet, inserted wherever one of them writes `{{> name}}`; an include cannot contain another |
 | `workflows/implement/references/delivery.md` | The one leaf delivery procedure, for the main thread and an isolated implementer alike |
 | `workflows/implement/references/queue.md` | The container dependency queue the main thread runs |
 | `workflows/stack.md` | The `prism-stack` skill, the one source for branch, link, rebase, push, and sync safety |

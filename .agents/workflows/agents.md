@@ -20,8 +20,9 @@ The Claude Code and Codex definitions are generated. Never edit a generated file
 | An agent's instructions, tools, isolation, color, or Codex permissions | `.agents/roles/<role>.md` (frontmatter `claude:` and `codex:` keys, body shared) |
 | A skill's instructions, description, argument hint, or invocation policy | `.agents/workflows/<name>.md` |
 | A reference a skill ships | `.agents/workflows/<name>/references/*.md` (Markdown references may carry tool-only blocks) |
+| Text that several roles, skills, or skill references carry word for word, such as the review packet | `.agents/includes/<name>.md`, inserted where a role, skill, or reference writes `\{{> name}}`; an include cannot contain another |
 | The leaf delivery procedure or the container queue | `.agents/workflows/implement/references/delivery.md` or `queue.md`; the `implement` skill and the `implementer` role only point to them |
-| A rule several roles and skills share | its one source, which everything else references instead of restating: `AGENTS.md` (authority, worktrees, review rule, handoffs, reports), `.agents/evidence.md` (retrieval), `.agents/issue-creation.md` (filing and independence groups), or `.agents/workflows/stack.md` (stacks) |
+| A rule several roles and skills share | its one source, which everything else references instead of restating: `AGENTS.md` (checks, authority, worktrees, review rule, handoffs, reports), `.agents/evidence.md` (retrieval), `.agents/issue-creation.md` (filing and independence groups), or `.agents/workflows/stack.md` (stacks) |
 | A new role | add `.agents/roles/<role>.md` and a `roles` entry in `policy.json` mapping it to a capability |
 | A new skill | add `.agents/workflows/<name>.md`; add it to the skill list in `scripts/agent-policy.test.mjs` |
 | Remove a role or skill | delete the source (and the `roles` entry); `generate` removes the generated output |

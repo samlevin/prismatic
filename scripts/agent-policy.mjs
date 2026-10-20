@@ -43,6 +43,7 @@ const SOURCES = {
   policy: '.agents/policy.json',
   roles: '.agents/roles',
   workflows: '.agents/workflows',
+  includes: '.agents/includes',
 };
 const OUTPUTS = {
   claude: { agents: '.claude/agents', skills: '.claude/skills' },
@@ -135,6 +136,24 @@ export function substitute(text, policy) {
       return values[name];
     })
     .replaceAll(literal, '{{');
+}
+
+// Includes share text across sources, cannot nest, and stay literal when escaped.
+export function include(text, base = root) {
+  const expanded = text.replace(/(?<!\\)\{\{>([^}]*)\}\}/g, (tag, name) => {
+    const path = join(base, SOURCES.includes, `${name.trim()}.md`);
+    if (!/^ [a-z-]+$/.test(name) || !existsSync(path))
+      throw new Error(`Unknown include: ${tag}`);
+    const content = readFileSync(path, 'utf8').trimEnd();
+    if (/(?<!\\)\{\{>/.test(content))
+      throw new Error(
+        `Nested include in ${SOURCES.includes}/${name.trim()}.md`,
+      );
+    return content;
+  });
+  if (/(?<!\\)\{\{>/.test(expanded))
+    throw new Error('Malformed include in source');
+  return expanded;
 }
 
 function supportedEfforts(policy, tool, model) {
@@ -358,9 +377,9 @@ export function render(base = root) {
   for (const name of roles) {
     if (!policy.roles[name])
       throw new Error(`Role ${name} has no entry in ${SOURCES.policy}`);
-    const source = readFileSync(
-      join(base, SOURCES.roles, `${name}.md`),
-      'utf8',
+    const source = include(
+      readFileSync(join(base, SOURCES.roles, `${name}.md`), 'utf8'),
+      base,
     );
     files.set(
       `${OUTPUTS.claude.agents}/${prefix(policy)}${name}.md`,
@@ -375,9 +394,9 @@ export function render(base = root) {
     if (!roles.includes(name))
       throw new Error(`Role ${name} has no source in ${SOURCES.roles}`);
   for (const name of listSources(join(base, SOURCES.workflows))) {
-    const source = readFileSync(
-      join(base, SOURCES.workflows, `${name}.md`),
-      'utf8',
+    const source = include(
+      readFileSync(join(base, SOURCES.workflows, `${name}.md`), 'utf8'),
+      base,
     );
     const shared = join(base, SOURCES.workflows, name);
     for (const tool of TOOLS) {
@@ -387,10 +406,13 @@ export function render(base = root) {
       ))
         files.set(`${target}/${file}`, content);
       // Supporting references are copied into both skills with the same
-      // placeholders resolved. Markdown references keep only this tool's
-      // tool-only blocks, so one reference can carry both tools' steps.
+      // includes and placeholders resolved. Markdown references keep only this
+      // tool's tool-only blocks, so one reference can carry both tools' steps.
       for (const file of listFiles(shared)) {
-        const text = substitute(readFileSync(file, 'utf8'), policy);
+        const text = substitute(
+          include(readFileSync(file, 'utf8'), base),
+          policy,
+        );
         files.set(
           `${target}/${relative(shared, file)}`,
           file.endsWith('.md') ? renderBody(text, tool) : text,
