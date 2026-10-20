@@ -491,99 +491,67 @@
   "scenarios": [
     {
       "id": "cold-warm",
-      "criteria": [
-        1,
-        3
-      ],
+      "criteria": [1, 3],
       "title": "Cold request, then two identical repeats",
       "hypothesis": "The cold request writes up to BP4; repeats read through BP4 and write nothing new."
     },
     {
       "id": "block4-early-change",
-      "criteria": [
-        1,
-        3
-      ],
+      "criteria": [1, 3],
       "title": "One changed line in the first block 4 file",
       "hypothesis": "Reuse stops at BP3; BP4 is rewritten."
     },
     {
       "id": "block4-late-change",
-      "criteria": [
-        1,
-        3
-      ],
+      "criteria": [1, 3],
       "title": "One changed line in the last block 4 file",
       "hypothesis": "Reuse still stops at BP3: any changed byte before BP4 invalidates it, however late."
     },
     {
       "id": "scope-change",
-      "criteria": [
-        1,
-        3
-      ],
+      "criteria": [1, 3],
       "title": "The discovery scope gains a file and block 3 its neighbor",
       "hypothesis": "Reuse stops at BP2."
     },
     {
       "id": "representation-change",
-      "criteria": [
-        1,
-        3
-      ],
+      "criteria": [1, 3],
       "title": "One block 3 file drops from L0 to L2",
       "hypothesis": "Reuse stops at BP2."
     },
     {
       "id": "base-provenance-only",
-      "criteria": [
-        1,
-        3
-      ],
+      "criteria": [1, 3],
       "title": "Only the base-tip provenance in block 5 changes",
       "hypothesis": "Reuse reaches BP4, because provenance sits in the uncached suffix."
     },
     {
       "id": "caching-disabled",
-      "criteria": [
-        1,
-        3
-      ],
+      "criteria": [1, 3],
       "title": "Explicit mode with no breakpoints, sent twice",
       "hypothesis": "Neither request reads or writes the cache."
     },
     {
       "id": "short-stable-prefix",
-      "criteria": [
-        1,
-        3
-      ],
+      "criteria": [1, 3],
       "title": "A stable prefix under the minimum in a request over it",
       "hypothesis": "With no breakpoint nothing is cached even though the whole request exceeds the minimum. With breakpoints forced onto the short prefix, the provider ignores them, rejects the request, or writes and reads them; the forced steps show which."
     },
     {
       "id": "effort-high-to-medium",
-      "criteria": [
-        2,
-        3
-      ],
+      "criteria": [2, 3],
       "title": "Request-level effort drops from high to medium",
       "hypothesis": "The medium request misses the high population; a second medium request reads the medium population."
     },
     {
       "id": "effort-configuration-update",
-      "criteria": [
-        2,
-        3
-      ],
+      "criteria": [2, 3],
       "title": "Request-level high with a configuration_update to medium after block 4",
       "hypothesis": "The updated request reuses the high prefix through BP4 and the response reports medium as its effective effort."
     },
     {
       "id": "schema-variants",
-      "criteria": [
-        4
-      ],
+      "criteria": [4],
       "title": "The incremental and reconcile schema variants under strict mode",
       "hypothesis": "Both variants are accepted and every completed response validates against its schema."
     }
