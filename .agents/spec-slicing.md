@@ -109,9 +109,9 @@ Every field states something the implementer needs. Leave an optional field out 
 
 ## Root container
 
-The skill files one container above the phase epics, so a single `implement` request on it delivers the whole plan: `prism-orchestrator` plans from one issue's native sub-issue tree and the blocked-by edges on its leaves. Its sub-issues are every phase epic, deferred ones included, and nothing else. It is titled with the specification's title minus a trailing word `specification` in any letter case, followed by `delivery plan`, so `# Notes service specification` becomes `Notes service delivery plan`, and that title must be unique like any other. A title that is only the word `specification` leaves nothing and fails `plan-section`. It is created first, before the epics.
+The skill files one container above the phase epics, so a single `implement` request on it delivers the whole plan: `prism-implement` builds its dependency queue from one issue's native sub-issue tree and the blocked-by edges on its leaves. Its sub-issues are every phase epic, deferred ones included, and nothing else. It is titled with the specification's title minus a trailing word `specification` in any letter case, followed by `delivery plan`, so `# Notes service specification` becomes `Notes service delivery plan`, and that title must be unique like any other. A title that is only the word `specification` leaves nothing and fails `plan-section`. It is created first, before the epics.
 
-Its body follows `container.yml`. What names the specification and says the issue has no work of its own. Why says how the orchestrator plans. How lists the phases in plan order with their epics, marks each deferred phase with the slices it waits for, and states that dispatch order comes from the slice-level blocked-by edges rather than whole phases. The root has no blocked-by edges of its own, and no specification field controls it.
+Its body follows `container.yml`. What names the specification and says the issue has no work of its own. Why says how that queue is built. How lists the phases in plan order with their epics, marks each deferred phase with the slices it waits for, and states that dispatch order comes from the slice-level blocked-by edges rather than whole phases. The root has no blocked-by edges of its own, and no specification field controls it.
 
 ## What the skill files
 
@@ -123,6 +123,8 @@ Its body follows `container.yml`. What names the specification and says the issu
 | One leaf per slice | `enhancement`, one severity, and the slice's `risk:` and `area:` labels | from the slice | from the slice | the container, or else the phase's epic |
 
 `epic` is the only work-category label on an epic, and the root never carries `epic`. Bodies follow `.github/ISSUE_TEMPLATE/epic.yml`, `container.yml`, and `task.yml`. A child of an epic uses the `Parent epic` heading; an epic uses `Parent issue` for the root. The skill never creates labels; every label the plan needs must already exist.
+
+For each epic with two or more direct leaf slices, the skill asks `prism-issue-triager` to sort those leaves into independence groups from their `Files` and blocked-by edges, and records the groups in the epic's body as `.agents/issue-creation.md` defines. Slices whose `Files` overlap never land in different groups, so the delivery queue's parallel exception never runs them together.
 
 ## Pre-flight rules
 
@@ -144,5 +146,5 @@ The skill builds the whole plan offline and checks it before any GitHub call. It
 | `plan-id-reference` | A Plan ID mention names no slice |
 | `no-filler` | A field is empty or holds a placeholder such as `TBD` |
 | `label-exists` | A label is missing from `.github/labels.json`, or from the repository when filing |
-| `body-size` | A rendered body, the root's included, reaches 65,536 characters |
+| `body-size` | A rendered body, the root's included, reaches 65,536 characters; an epic's counts its largest possible independence record |
 | `template-headings` | A rendered body's headings, the root's included, do not match its issue form |

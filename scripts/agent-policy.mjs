@@ -387,12 +387,15 @@ export function render(base = root) {
       ))
         files.set(`${target}/${file}`, content);
       // Supporting references are copied into both skills with the same
-      // placeholders resolved.
-      for (const file of listFiles(shared))
+      // placeholders resolved. Markdown references keep only this tool's
+      // tool-only blocks, so one reference can carry both tools' steps.
+      for (const file of listFiles(shared)) {
+        const text = substitute(readFileSync(file, 'utf8'), policy);
         files.set(
           `${target}/${relative(shared, file)}`,
-          substitute(readFileSync(file, 'utf8'), policy),
+          file.endsWith('.md') ? renderBody(text, tool) : text,
         );
+      }
     }
   }
   return files;

@@ -1,7 +1,7 @@
 # Generated from .agents/workflows/implement.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`.
 interface:
   display_name: 'Prismatic: Implement'
-  short_description: Deliver an Prismatic issue or rework a PR through the repository agents
+  short_description: Deliver an Prismatic issue or rework a PR in this thread
   default_prompt: Use $prism-implement to deliver this Prismatic issue.
 policy:
   allow_implicit_invocation: true

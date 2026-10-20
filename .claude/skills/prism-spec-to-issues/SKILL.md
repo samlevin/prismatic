@@ -17,9 +17,9 @@ This skill pins the main-thread model and effort for the turn from `.agents/poli
 
 ## Authority
 
-The request names the specification path. "Dry run", "plan", or "preview" means build, pre-flight, and print the tree, then stop with no GitHub writes. "File" or "create" authorizes creating the issues in the printed tree after the user confirms it, plus their sub-issue links, dependencies, project Priority and Size, and the two triage scripts. Nothing else: never edit `.github/labels.json`, create or rename labels, change repository or project settings, set project Status, or edit, link, or close any issue that this filing did not create. A missing label, field, option, or permission is a blocker to report, never something to create.
+The request names the specification path. "Dry run", "plan", or "preview" means build, pre-flight, and print the tree, then stop with no GitHub writes. "File" or "create" authorizes creating the issues in the printed tree after the user confirms it, plus their sub-issue links, dependencies, independence records on the epics it files, project Priority and Size, and the two triage scripts. Nothing else: never edit `.github/labels.json`, create or rename labels, change repository or project settings, set project Status, or edit, link, or close any issue that this filing did not create. A missing label, field, option, or permission is a blocker to report, never something to create.
 
-The assignee comes from the request, else from a local instruction file that sets a default assignee for filed issues (such as `CLAUDE.local.md` or `AGENTS.override.md`), else there is none. Metadata comes from the specification, so no triager runs.
+The assignee comes from the request, else from a local instruction file that sets a default assignee for filed issues (such as `CLAUDE.local.md` or `AGENTS.override.md`), else there is none. Metadata comes from the specification. prism-issue-triager runs only to form independence groups.
 
 ## 1. Build the plan offline
 
@@ -35,7 +35,13 @@ Make no GitHub call in this step or the next.
 
 Check the rules in the order of the guide's rule table, against every item including the root: `reserved-text`, `plan-section`, `phase-format`, `slice-format`, `slice-unique`, `title-unique`, `blocked-by-resolves`, `acyclic`, `stack-shape`, `section-owner`, `section-reference`, `plan-id-reference`, `no-filler`, `label-exists` (against `.github/labels.json`), `body-size`, `template-headings`. Stop at the first rule that fails. Report each of its violations as `[rule] message`, naming the slice, phase, or section, and file nothing. Do not repair the specification yourself unless the user asks; a fix belongs in the specification.
 
-## 3. Print the tree and stop
+## 3. Independence groups
+
+Only the triager forms independence groups, by the definition in `.agents/issue-creation.md`. When at least one epic has two or more direct leaf children (layers of a stack container are its children, not the epic's), resolve the triager settings with `node scripts/agent-policy.mjs resolve --tool <tool> --role issue-triager`, adding `--model` or `--effort` only for a `triager` override in the request. If it exits non-zero, stop and report its message. Spawn one `prism-issue-triager` for the plan with the resolved model and effort. Send only those leaves' drafts (Plan ID as ref, title, rendered body), each leaf's parent key and blocker keys, the reason `dependency judgment: independence groups only; metadata comes from the specification`, and the `Policy:` line (`Policy: tool=<tool> role=prism-issue-triager model=<model> effort=<effort> (model: <source>, effort: <source>)`). Apply only its `groups` lines: record each epic's groups in `state.json` as state-file.md describes, and append the epic's independence record to `bodies/<epic>.md` with `@@issue:KEY@@` placeholders, as body-shapes.md describes, so every fill and patch in [File](#5-file) carries it. A dry run spawns it too, so the printed tree shows the groups. On resume, append the recorded groups to the rebuilt epic bodies the same way and never spawn the triager again.
+
+Spawn with the Agent tool: `subagent_type: prism-issue-triager`, passing `model` and `effort` from the resolver explicitly.
+
+## 4. Print the tree and stop
 
 Print one line per item in tree order (the root first, then each epic under it followed by its children, with a container's layers under them), indented two spaces per level:
 
@@ -43,9 +49,9 @@ Print one line per item in tree order (the root first, then each epic under it f
 #n   kind       Plan ID         size  priority  parent  blocked by        labels                                   title
 ```
 
-`#n` is the predicted number when filing (the latest issue or pull request number plus the item's creation position, read as in github-operations.md) and the creation position written `(n)` in a dry run. The root holds position 1, so the first epic is position 2. Parent and blockers use the same notation. The root is kind `container` and counts in the container total. After the tree, print the totals per kind, the assignee or `none`, and the state directory. Then stop. A dry run ends here. A filing request waits for the user to confirm this tree; any change to the specification afterwards means building, checking, and printing again.
+`#n` is the predicted number when filing (the latest issue or pull request number plus the item's creation position, read as in github-operations.md) and the creation position written `(n)` in a dry run. The root holds position 1, so the first epic is position 2. Parent and blockers use the same notation. The root is kind `container` and counts in the container total. After the tree, print each epic's independence groups as Plan IDs, or `none`, then the totals per kind, the assignee or `none`, and the state directory. Then stop. A dry run ends here. A filing request waits for the user to confirm this tree; any change to the specification afterwards means building, checking, and printing again.
 
-## 4. File
+## 5. File
 
 After confirmation, check the live repository before the first write: every label in the plan exists (`label-exists` again), the assignee is assignable, the project has Priority and Size fields with every option the plan uses, and you can read the project. Record the login. Then work through these stages in order, updating `state.json` after every write as state-file.md requires. Pace every write and handle rate limits as github-operations.md says.
 
@@ -58,8 +64,8 @@ After confirmation, check the live repository before the first write: every labe
 
 ## Resume
 
-When `state.json` already exists for this specification, a request to file resumes it: check the recorded `spec` path and `specSha256` as state-file.md says, then rebuild the plan and confirm its `planSha256` matches; a mismatch means the plan changed and needs a new confirmation. Before creating anything, run the resume lookup in github-operations.md and adopt every item that an interrupted run created, the root included. Then continue from the first unfinished stage; finished steps recorded in the state are not repeated, and every linking step checks GitHub before writing, so a rerun never duplicates an issue, link, or dependency.
+When `state.json` already exists for this specification, a request to file resumes it: check the recorded `spec` path and `specSha256` as state-file.md says, then rebuild the plan and confirm its `planSha256` matches, computed before the recorded groups are appended; a mismatch means the plan changed and needs a new confirmation. Before creating anything, run the resume lookup in github-operations.md and adopt every item that an interrupted run created, the root included. Then continue from the first unfinished stage; finished steps recorded in the state are not repeated, and every linking step checks GitHub before writing, so a rerun never duplicates an issue, link, or dependency.
 
 ## Verify and return
 
-Read back a sample of bodies and every item's labels, parent, blockers, and project Priority, Size, and Status. Return the tree with actual numbers and URLs, whether the patch pass ran and how many bodies it changed, the scripts' output lines, the state directory, and any unfinished item with what is missing (not on the project, no Status, no Priority or Size, a link that failed). An item the skill added to the project itself has no Status and `issue-triage.mjs` skips it; report it as needing a person to set Inbox. Say whether the run is complete or can resume.
+Read back a sample of bodies and every item's labels, parent, blockers, and project Priority, Size, and Status. Return the tree with actual numbers and URLs, each epic's independence groups, the triager's `Requested settings:` line verbatim when it ran, whether the patch pass ran and how many bodies it changed, the scripts' output lines, the state directory, and any unfinished item with what is missing (not on the project, no Status, no Priority or Size, a link that failed). An item the skill added to the project itself has no Status and `issue-triage.mjs` skips it; report it as needing a person to set Inbox. Say whether the run is complete or can resume.

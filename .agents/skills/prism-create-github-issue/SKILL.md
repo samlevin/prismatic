@@ -1,6 +1,6 @@
 ---
 name: prism-create-github-issue
-description: "Plan and file Prismatic GitHub issues, native sub-issues, and explicitly requested epics using the repository's issue forms, labels, and Prismatic delivery project fields, with independent prism-issue-triager metadata. Use for create/file/open/draft issue requests in samlevin/prismatic. Does not implement or open PRs."
+description: "Plan and file Prismatic GitHub issues, native sub-issues, and explicitly requested epics using the repository's issue forms, labels, and Prismatic delivery project fields. Classifies inline by default and asks prism-issue-triager for independent triage when a batch needs independent classification, decomposition, or dependency judgment. Use for create/file/open/draft issue requests in samlevin/prismatic. Does not implement or open PRs."
 ---
 <!-- Generated from .agents/workflows/create-github-issue.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
 
@@ -8,7 +8,7 @@ description: "Plan and file Prismatic GitHub issues, native sub-issues, and expl
 
 ## Resolve
 
-Repository `samlevin/prismatic`, project [Prismatic delivery](https://github.com/users/samlevin/projects/2) (number 2, owner `samlevin`). Read `.agents/issue-creation.md` and the matching `.github/ISSUE_TEMPLATE/*.yml`; `AGENTS.md` is already loaded. Read `CONTRIBUTING.md` only for a classification question. Discover labels (`gh api 'repos/samlevin/prismatic/labels?per_page=100' --paginate --jq '.[].name'`), project fields and options (`gh api users/samlevin/projectsV2/2/fields`), and native issue types once per batch, and reuse the results. Repository commands run read-only against the human checkout; do not modify it.
+Repository `samlevin/prismatic`, project [Prismatic delivery](https://github.com/users/samlevin/projects/2) (number 2, owner `samlevin`). Read `.agents/issue-creation.md` and the matching `.github/ISSUE_TEMPLATE/*.yml`; `AGENTS.md` is already loaded. Read `CONTRIBUTING.md` when you classify drafts, which is the default. Discover labels (`gh api 'repos/samlevin/prismatic/labels?per_page=100' --paginate --jq '.[].name'`), project fields and options (`gh api users/samlevin/projectsV2/2/fields`), and native issue types once per batch, and reuse the results. Repository commands run read-only against the human checkout; do not modify it.
 
 Codex skills cannot set the session model, and nothing dispatched this session, so the `issue-creation` policy is advisory: the session keeps whatever model and effort Codex started with. Resolve it with `node scripts/agent-policy.mjs resolve --tool codex --capability issue-creation` and state it in your first message as `Advisory policy: tool=codex capability=issue-creation model=<model> effort=<effort>`. Never present it as `Requested settings:`, because no dispatcher requested it. Start Codex with `codex -m <model> -c model_reasoning_effort=<effort>` to run the session at that policy, or at an explicit override.
 
@@ -23,7 +23,15 @@ Search for duplicates first (`gh api -X GET search/issues -f q='repo:samlevin/pr
 
 ## Triage
 
-Resolve the triager settings with `node scripts/agent-policy.mjs resolve --tool <tool> --role issue-triager`, adding `--model` or `--effort` only for a `triager` override in the request. If it exits non-zero, stop and report its message. Spawn one `prism-issue-triager` for the batch with the resolved model and effort. Send only the drafts (ref, title, body), their planned parent and blocked-by edges, accepted decisions, the discovered label and option lists, and the `Policy:` line (`Policy: tool=<tool> role=prism-issue-triager model=<model> effort=<effort> (model: <source>, effort: <source>)`). Do not send the transcript or your intended verdict. Apply its severity, Priority, Size, labels, and independence groups. On SPLIT_REQUIRED, split and re-triage only the affected drafts, plus every leaf draft under a parent the split adds leaves to, so that parent's groups are computed as a whole. A later `groups` line for a parent replaces the earlier one; never merge them. There is no second pass otherwise. Never triage yourself in place of the triager.
+Classify inline by default: set severity, Priority, Size, labels, and leaf or container scope for each draft by `CONTRIBUTING.md` and `.agents/issue-creation.md`.
+
+Spawn one `prism-issue-triager` for the batch instead when the filing needs independent judgment:
+
+- Classification: the request asks for independent triage, or a draft's severity, Size, or leaf-or-container scope stays uncertain after you read `CONTRIBUTING.md`.
+- Decomposition: a draft may hold more than one logical outcome, or the batch creates a container or epic.
+- Dependency judgment: a new container or epic has two or more leaf drafts, which need independence groups, or the batch adds blocked-by edges among its new issues.
+
+Resolve the triager settings with `node scripts/agent-policy.mjs resolve --tool <tool> --role issue-triager`, adding `--model` or `--effort` only for a `triager` override in the request. If it exits non-zero, stop and report its message. Spawn it with the resolved model and effort. Send only the drafts (ref, title, body), their planned parent and blocked-by edges, accepted decisions, the discovered label and option lists, which reason above applies, and the `Policy:` line (`Policy: tool=<tool> role=prism-issue-triager model=<model> effort=<effort> (model: <source>, effort: <source>)`). Do not send the transcript or your intended verdict. Apply its severity, Priority, Size, labels, and independence groups; once you spawn it, never override its verdict with your own. On SPLIT_REQUIRED, split and re-triage only the affected drafts, plus every leaf draft under a parent the split adds leaves to, so that parent's groups are computed as a whole. A later `groups` line for a parent replaces the earlier one; never merge them. There is no second pass otherwise. Only the triager forms independence groups.
 
 Spawn with `spawn_agent`: `agent_type: prism-issue-triager`, `model` and `reasoning_effort` from the resolver's `spawn` object, `fork_turns: "none"`. Always pass both values; the agent file carries neither. An unknown `agent_type` means the project is not trusted in Codex yet; say so and stop.
 
@@ -33,17 +41,8 @@ Spawn with `spawn_agent`: `agent_type: prism-issue-triager`, `model` and `reason
 
 Order: parents, then children, then native parent links, then blocked-by edges (add the edge on the blocked issue, naming the blocker; reject cycles), then the independence record on each parent the triager returned groups for, then Priority and Size on each issue's project item once repository automation has added it with Status Inbox (wait for both; never add the item or set its Status yourself), then the adapter's post-create commands (`node scripts/issue-triage.mjs --apply --issue N` per new issue and `node scripts/issue-containers.mjs --apply --issue N` per new top-level container, after the batch's relationships are complete). Milestone and assignee only when requested or required by policy. Record each URL as it succeeds. On an ambiguous failure, search before retrying and repair rather than duplicate. REST mechanics: [references/github-operations.md](references/github-operations.md), read only when needed.
 
-Independence record: append this section to the parent's body, with one list item of real issue numbers per group. prism-orchestrator runs leaves the record does not list one at a time.
-
-```markdown
-### Independence groups
-
-<!-- prism-independence-groups -->
-- #12 #14
-- #13
-<!-- /prism-independence-groups -->
-```
+Independence record: append the section that `.agents/issue-creation.md` shows to the parent's body, with one list item of real issue numbers per group the triager returned.
 
 ## Verify and return
 
-Read back bodies and independence records, labels, parent and dependency direction, project membership, and fields. Return URLs, the hierarchy, dependencies, the triager's `Requested settings:` line verbatim, and any partial result or uncertainty, compactly. An issue whose project item never appeared is unfinished; say so.
+Read back bodies and independence records, labels, parent and dependency direction, project membership, and fields. Return URLs, the hierarchy, dependencies, independence groups, either `Triage: inline` or the triager's `Requested settings:` line verbatim with the reason you spawned it, and any partial result or uncertainty, compactly. An issue whose project item never appeared is unfinished; say so.

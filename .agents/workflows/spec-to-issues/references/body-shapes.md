@@ -22,7 +22,7 @@ One per specification, keyed `Plan`. The specification title is its first `# ` h
 The <specification title> delivery plan: the <count> <phase epic|phase epics> listed under How and every container and slice under them. This issue groups them and has no work of its own. It closes when the epics close.
 
 ### Why
-`{{prefix}}orchestrator` plans from one issue's native sub-issue tree and the blocked-by edges on its leaves. Without a common parent, `implement` could target only one phase at a time; with this issue as the parent of every phase epic, `implement` on it delivers the whole plan in dependency order.
+`{{prefix}}implement` builds its dependency queue from one issue's native sub-issue tree and the blocked-by edges on its leaves. Without a common parent, `implement` could target only one phase at a time; with this issue as the parent of every phase epic, `implement` on it delivers the whole plan in dependency order.
 
 ### How
 Phases in plan order:
@@ -72,6 +72,8 @@ Definition of done for every slice: §<n> (@@issue:<owner>@@).
 ```
 
 In the epic that owns the definition-of-done section, its pointer stays bare: `Definition of done for every slice: §<n>.` Every other epic and every leaf gets `§<n> (@@issue:<owner>@@)`, by the same rule as any carried reference. The `Deferred:` paragraph appears only for a deferred phase. It lists every `Deferred until` Plan ID, comma-separated in `Deferred until` order, and ends in `closes` for one and `close` for several (`blocked until P1.2 (#11), P1.3 (#12) close`). The container lines appear only when the phase has a stack. Leave out the Contracts heading when the phase claims no sections. Slices are listed in specification order.
+
+When the triager returned groups for the epic, the skill's independence-groups step appends the section that `.agents/issue-creation.md` shows to the end of `bodies/<epic>.md`, one list item per group, with `@@issue:<Plan ID>@@` for each leaf in place of an issue number. The record then goes through every fill and patch like the rest of the body.
 
 ## Container
 
@@ -137,8 +139,8 @@ Blocked by: <Pn.m> (@@issue:<Pn.m>@@), ...
 
 ## Heading check (rule `template-headings`)
 
-Read the `label` of every non-markdown field in `.github/ISSUE_TEMPLATE/epic.yml`, `container.yml`, and `task.yml`, with its `validations.required` flag. List the body's `### ` headings outside fenced code. They must be the form's labels in form order: every required label present, optional ones (Implementation notes, Dependencies, Milestone) present or left out. The root uses `container.yml`. The field with `id: parent` may read either `Parent issue` or `Parent epic`; an epic's parent is the root container, so it reads `Parent issue`. The only other heading allowed is `Contracts`, last, on an epic. Carried text shifted two levels never produces a `###` heading unless the specification has a `#` heading inside a numbered section, which this check catches.
+Read the `label` of every non-markdown field in `.github/ISSUE_TEMPLATE/epic.yml`, `container.yml`, and `task.yml`, with its `validations.required` flag. List the body's `### ` headings outside fenced code. They must be the form's labels in form order: every required label present, optional ones (Implementation notes, Dependencies, Milestone) present or left out. The root uses `container.yml`. The field with `id: parent` may read either `Parent issue` or `Parent epic`; an epic's parent is the root container, so it reads `Parent issue`. The only other headings allowed are on an epic: `Contracts`, then `Independence groups`, which the groups step appends after pre-flight and which always comes last. Carried text shifted two levels never produces a `###` heading unless the specification has a `#` heading inside a numbered section, which this check catches.
 
 ## Size check (rule `body-size`)
 
-Fill every placeholder with `#9999999` and count characters. The result must be under 65,536.
+Fill every placeholder with `#9999999` and count characters. The result must be under 65,536. Pre-flight runs before the groups step, so an epic with two or more direct leaf children also counts the largest record that step can append: the section `.agents/issue-creation.md` shows, with each of those leaves as `#9999999` in a group of its own.
