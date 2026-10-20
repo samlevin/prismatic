@@ -81,11 +81,33 @@ describe('normalizeError', () => {
     expect(normalized.message).toBe('bad key [REDACTED:private-key]');
   });
 
+  it.each([
+    ['password:\n', 'password: [REDACTED:secret-assignment]'],
+    [
+      'Authorization:\n token ',
+      'Authorization:  [REDACTED:authorization-header]',
+    ],
+    ['sent Bearer\n', 'sent Bearer [REDACTED:bearer-token]'],
+  ])('masks a credential split across lines after %j', (prefix, expected) => {
+    const value = randomText(24, 43);
+    expect(normalizeError(new Error(`${prefix}${value}`)).message).toBe(
+      expected,
+    );
+  });
+
   it('masks the secrets a seeded redactor knows', () => {
     const secret = randomText(24, 41);
     const redactor = createSecretRedactor([secret]);
     expect(normalizeError(new Error(`value ${secret}`), redactor).message).toBe(
       'value [REDACTED:secret]',
+    );
+  });
+
+  it('masks a seeded secret that spans lines', () => {
+    const secret = `${randomText(12, 44)}\n${randomText(12, 45)}`;
+    const redactor = createSecretRedactor([secret]);
+    expect(normalizeError(new Error(`key ${secret}`), redactor).message).toBe(
+      'key [REDACTED:secret]',
     );
   });
 

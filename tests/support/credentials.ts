@@ -22,8 +22,8 @@ export function randomText(
 
 const upperAlphanumeric = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0234567';
 
-// One example of each credential pattern redaction recognizes, keyed by the
-// kind its marker names.
+// One example of each token-shaped credential redaction recognizes, keyed by
+// the shape it exercises. Both GitHub shapes are masked as `github-token`.
 export const credentialExamples: Readonly<Record<string, string>> = {
   'github-token': ['ghp', randomText(36, 2)].join('_'),
   'github-fine-grained-token': ['github', 'pat', randomText(82, 3)].join('_'),

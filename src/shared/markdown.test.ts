@@ -13,7 +13,7 @@ describe('escapeMarkdown', () => {
     ['a code span', '`code`', '\\`code\\`'],
     ['a link', '[x](https://e.test)', '\\[x\\]\\(https\\://e\\.test\\)'],
     ['an image', '![i](u)', '\\!\\[i\\]\\(u\\)'],
-    ['a heading', '# Title', '\\# Title'],
+    ['a heading', '# Title', '\\#&#8203; Title'],
     ['a list item', '- item', '\\- item'],
     ['a table cell break', 'a | b', 'a \\| b'],
     ['strikethrough', '~~x~~', '\\~\\~x\\~\\~'],
@@ -34,6 +34,12 @@ describe('escapeMarkdown', () => {
   it('breaks mentions with a zero-width space', () => {
     expect(escapeMarkdown('@octocat and @org/team')).toBe(
       '@&#8203;octocat and @&#8203;org/team',
+    );
+  });
+
+  it('breaks issue references with a zero-width space', () => {
+    expect(escapeMarkdown('fix-#12 owner/repo#12 GH-12 gh-7')).toBe(
+      'fix\\-\\#&#8203;12 owner/repo\\#&#8203;12 GH\\-&#8203;12 gh\\-&#8203;7',
     );
   });
 

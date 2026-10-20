@@ -106,7 +106,7 @@ describe('hostile text', () => {
     expect(rendered).not.toMatch(/[<>\n]/);
     expect(rendered).not.toContain('](');
     expect(rendered).not.toMatch(/@(?!&#8203;)/);
-    expect(rendered).toContain('\\# Approved');
+    expect(rendered).toContain('\\#&#8203; Approved');
   });
 });
 

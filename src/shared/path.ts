@@ -88,7 +88,7 @@ export function findNormalizationCollisions(
   for (const names of namesByKey.values()) {
     if (names.size > 1) groups.push([...names].sort());
   }
-  return groups.sort((a, b) => compareCodeUnits(a[0] ?? '', b[0] ?? ''));
+  return groups.sort(([a = ''], [b = '']) => Number(a > b) - Number(a < b));
 }
 
 export function assertNoNormalizationCollisions(paths: Iterable<string>): void {
@@ -99,9 +99,4 @@ export function assertNoNormalizationCollisions(paths: Iterable<string>): void {
       `${groups.length} group(s) of repository paths differ only by Unicode normalization.`,
     );
   }
-}
-
-function compareCodeUnits(a: string, b: string): number {
-  if (a === b) return 0;
-  return a < b ? -1 : 1;
 }

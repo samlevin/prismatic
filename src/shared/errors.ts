@@ -63,16 +63,18 @@ function normalize(
   return { ...normalized, cause: normalize(cause, redactor, depth + 1) };
 }
 
-// Masks secrets first, while a private key block is still whole, then drops
-// stack frame lines, joins the rest into one line, and truncates it.
+// Masks secrets before the join, which would break a seeded secret that
+// spans lines, and after it, which reunites a credential split across lines.
 function cleanMessage(raw: string, redactor: SecretRedactor): string {
-  const message = redactor
-    .redactText(stripAnsi(raw))
-    .split(lineBreak)
-    .filter((line) => !stackFrame.test(line))
-    .join(' ')
-    .replace(controlCharacters, ' ')
-    .trim();
+  const message = redactor.redactText(
+    redactor
+      .redactText(stripAnsi(raw))
+      .split(lineBreak)
+      .filter((line) => !stackFrame.test(line))
+      .join(' ')
+      .replace(controlCharacters, ' ')
+      .trim(),
+  );
   return message.length > maxNormalizedMessageLength
     ? `${message.slice(0, maxNormalizedMessageLength - 3)}...`
     : message;

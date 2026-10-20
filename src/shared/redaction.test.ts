@@ -105,12 +105,31 @@ describe('credential patterns', () => {
     );
   });
 
+  it.each([
+    'SECRET_KEY',
+    'AWS_SECRET_ACCESS_KEY',
+    'aws_access_key',
+    'secretKey',
+    'secretAccessKey',
+  ])('masks values assigned to %s, a name with a key suffix', (name) => {
+    const value = randomText(20, 34);
+    expect(redactText(`${name}=${value} next`)).toBe(
+      `${name}=[REDACTED:secret-assignment] next`,
+    );
+    expect(redactText(`{"${name}": "${value}"}`)).toBe(
+      `{"${name}": "[REDACTED:secret-assignment]"}`,
+    );
+  });
+
   it('masks a quoted secret value up to its closing quote', () => {
     expect(redactText('{"password": "ab cd ef", "user": "x"}')).toBe(
       '{"password": "[REDACTED:secret-assignment]", "user": "x"}',
     );
     expect(redactText(`token='it"s a, secret'`)).toBe(
       `token='[REDACTED:secret-assignment]'`,
+    );
+    expect(redactText('{"password": "ab\\"cd ef", "user": "x"}')).toBe(
+      '{"password": "[REDACTED:secret-assignment]", "user": "x"}',
     );
     const once = redactText('password="a b"');
     expect(once).toBe('password="[REDACTED:secret-assignment]"');
@@ -200,10 +219,10 @@ describe('seeded secrets', () => {
     );
   });
 
-  it('redactSecrets accepts the secrets directly', () => {
-    expect(
-      redactSecrets({ note: `id ${seededSecret}` }, [seededSecret]),
-    ).toEqual({ note: 'id [REDACTED:secret]' });
+  it('masks the secret in nested values', () => {
+    expect(redactor.redact({ note: [`id ${seededSecret}`] })).toEqual({
+      note: ['id [REDACTED:secret]'],
+    });
   });
 });
 
@@ -261,6 +280,9 @@ describe('nested values', () => {
         apiKey: 'plain',
         GITHUB_TOKEN: 'x',
         privateKey: 'k',
+        SECRET_KEY: 's',
+        secretAccessKey: 's',
+        accessKeyId: 'kept',
         maxTokens: 'kept',
         tokenCount: 3,
         token: '',
@@ -271,6 +293,9 @@ describe('nested values', () => {
       apiKey: '[REDACTED:secret-field]',
       GITHUB_TOKEN: '[REDACTED:secret-field]',
       privateKey: '[REDACTED:secret-field]',
+      SECRET_KEY: '[REDACTED:secret-field]',
+      secretAccessKey: '[REDACTED:secret-field]',
+      accessKeyId: 'kept',
       maxTokens: 'kept',
       tokenCount: 3,
       token: '',
@@ -391,6 +416,17 @@ describe('errors', () => {
     expect((masked.failure.errors[0] as Error).message).toBe(
       '[REDACTED:openai-key]',
     );
+  });
+
+  it('copies a DOMException so that its name and message stay readable', () => {
+    const error = new DOMException(`aborted ${token}`, 'AbortError');
+    const masked = redactSecrets(error) as DOMException;
+    expect(masked).toBeInstanceOf(DOMException);
+    expect(masked.message).toBe('aborted [REDACTED:openai-key]');
+    expect(masked.name).toBe('AbortError');
+    expect(masked.code).toBe(DOMException.ABORT_ERR);
+    expect(String(masked)).toBe('AbortError: aborted [REDACTED:openai-key]');
+    expect(Object.keys(masked)).toEqual([]);
   });
 
   it('keeps an error that is its own cause', () => {

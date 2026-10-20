@@ -16,6 +16,10 @@ export const maxRedactionDepth = 64;
 
 const marker = (kind: string): string => `[REDACTED:${kind}]`;
 
+// A secret-like word at the end of a name, optionally followed by a key
+// suffix, as in `SECRET_KEY`, `AWS_SECRET_ACCESS_KEY`, and `secretAccessKey`.
+const secretName = String.raw`(?:secret|password|passwd|pwd|token|api[_-]?key|access[_-]?key)(?:[_-]?(?:access[_-]?)?key)?`;
+
 // The look-ahead `(?!\[REDACTED:)` keeps already masked text stable, so
 // redacting twice gives the same result as redacting once.
 interface CredentialPattern {
@@ -74,25 +78,32 @@ const credentialPatterns: readonly CredentialPattern[] = [
   },
   {
     // A quoted value assigned to a name that ends in a secret-like word, such
-    // as `"password": "..."`, masked up to its closing quote.
+    // as `"password": "..."`, masked up to its closing quote. A backslash
+    // escape, such as `\"` in JSON, is part of the value.
     kind: 'secret-assignment',
-    pattern:
-      /\b([A-Za-z0-9_.-]{0,40}(?:secret|password|passwd|pwd|token|api[_-]?key)["']?[ \t]{0,5}[:=][ \t]{0,5}(["']))(?!\[REDACTED:)(?:(?!\2)[^\r\n])+(?=\2)/gi,
+    pattern: new RegExp(
+      String.raw`\b([A-Za-z0-9_.-]{0,40}${secretName}["']?[ \t]{0,5}[:=][ \t]{0,5}(["']))(?!\[REDACTED:)(?:\\.|(?!\2)[^\r\n\\])+(?=\2)`,
+      'gi',
+    ),
     keep: 1,
   },
   {
     // An unquoted value assigned to such a name, such as `GITHUB_TOKEN=...`.
     kind: 'secret-assignment',
-    pattern:
-      /\b([A-Za-z0-9_.-]{0,40}(?:secret|password|passwd|pwd|token|api[_-]?key)["']?[ \t]{0,5}[:=][ \t]{0,5}["']?)(?!\[REDACTED:)[^\s"'&,;]{3,}/gi,
+    pattern: new RegExp(
+      String.raw`\b([A-Za-z0-9_.-]{0,40}${secretName}["']?[ \t]{0,5}[:=][ \t]{0,5}["']?)(?!\[REDACTED:)[^\s"'&,;]{3,}`,
+      'gi',
+    ),
     keep: 1,
   },
 ];
 
 // String values under a key that ends in one of these words are masked
 // whatever they look like. `maxTokens` and `tokenCount` do not match.
-const secretKey =
-  /(?:secret|password|passwd|pwd|token|api[_-]?key|authorization|credentials?|private[_-]?key)$/i;
+const secretKey = new RegExp(
+  String.raw`(?:${secretName}|authorization|credentials?|private[_-]?key)$`,
+  'i',
+);
 
 export interface SecretRedactor {
   // Returns a copy of the value with every string masked. Arrays, plain
@@ -142,11 +153,8 @@ export function createSecretRedactor(
 // A redactor that knows only the credential patterns.
 export const patternSecretRedactor: SecretRedactor = createSecretRedactor();
 
-export function redactSecrets(
-  value: unknown,
-  secrets: Iterable<string> = [],
-): unknown {
-  return createSecretRedactor(secrets).redact(value);
+export function redactSecrets(value: unknown): unknown {
+  return patternSecretRedactor.redact(value);
 }
 
 // The base64 and base64url text that encodes the secret when it starts at
@@ -244,9 +252,9 @@ function redactMember(
   return next(item);
 }
 
-// Copies an error with the same prototype, so instanceof and name still
-// hold, and every own property, including the non-enumerable message, stack,
-// and cause, redacted. The stack is kept because it repeats the message;
+// Copies an error with the same prototype, so instanceof still holds, and
+// every own property, including the non-enumerable message, stack, and
+// cause, redacted. The stack is kept because it repeats the message;
 // normalizeError, not this function, drops stacks.
 function redactError(
   error: Error,
@@ -256,7 +264,13 @@ function redactError(
 ): Error {
   const copy = Object.create(Object.getPrototypeOf(error) as object) as Error;
   copies.set(error, copy);
-  for (const key of Object.getOwnPropertyNames(error)) {
+  // Name, message, and code become own properties too, because a built-in
+  // such as DOMException reads them through prototype getters that throw on
+  // anything but the original.
+  const keys = new Set(['name', 'message']);
+  if ('code' in error) keys.add('code');
+  for (const key of Object.getOwnPropertyNames(error)) keys.add(key);
+  for (const key of keys) {
     const descriptor = Object.getOwnPropertyDescriptor(error, key);
     Object.defineProperty(copy, redactText(key), {
       value: redactMember(key, readProperty(error, key), next),
