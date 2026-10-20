@@ -23,9 +23,10 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       // Experiment libraries are measured too. Each spike driver is left out:
-      // experiments/fetch/spike/ drives Git inside the pinned image and
-      // experiments/cache/spike/ calls the provider, and their recorded
-      // results are their evidence.
+      // experiments/fetch/spike/ drives Git inside the pinned image,
+      // experiments/cache/spike/ calls the provider, and
+      // experiments/state/spike/ writes to a live pull request; their
+      // recorded results are their evidence.
       include: [
         'src/**/*.ts',
         'apps/**/*.ts',
@@ -37,6 +38,7 @@ export default defineConfig({
         'tooling/eslint/fixtures/**',
         'experiments/fetch/spike/**',
         'experiments/cache/spike/**',
+        'experiments/state/spike/**',
       ],
       reporter: ['text', 'json-summary'],
       reportsDirectory: 'coverage',
