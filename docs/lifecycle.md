@@ -28,7 +28,7 @@ A run decides whose comments it trusts before it reads any marker. The expected 
 
 An Actions run may also name a machine user that owns a personal token stored as a secret. That login resolves to a `User` account and is accepted.
 
-The tests in `lib/protocol.test.ts` cover the forged cases. A snapshot posted by another account, whose API author matches the login the snapshot claims for itself, is ignored, together with the journal shard and effect marker in the same comment. A byte-for-byte copy of the publisher's own status comment posted by another account is ignored. After the publisher renames, another account can take the old login; its comments do not pass, and the publisher's earlier comments still do. A publisher-authored snapshot naming another pull request is ignored. Under a publisher resolved as the forger, the same comments would be trusted, which shows the account id is the only thing that decides.
+The tests in `lib/protocol.test.ts` cover the forged cases. A snapshot posted by another account, whose API author matches the login the snapshot claims for itself, is ignored, together with the journal shard and effect marker in the same comment. A byte-for-byte copy of the publisher's own status comment posted by another account is ignored. A comment from another account full of compression bombs is counted as ignored, and none of its markers is decoded. A publisher-authored snapshot naming another pull request is ignored. `lib/publisher.test.ts` covers renames: after the publisher renames, another account can take the old login; its comments do not pass, and the publisher's earlier comments still do. Under a publisher resolved as the forger, the same comments would be trusted, which shows the account id is the only thing that decides.
 
 Live, read-only, on 2026-10-19: with a personal token, `GET /user` succeeded and returned a `User`. `GET /users/github-actions%5Bbot%5D` and the same lookup for another App's bot login returned `Bot` accounts.
 
@@ -36,7 +36,7 @@ Live, with writes, on 2026-10-20: a `workflow_dispatch` job in a sandbox reposit
 
 ## Markers
 
-Every marker is `<!-- prra:<kind>:v2:<payload>:<sha256> -->`, where the payload is base64url of raw-deflated canonical JSON and the digest is SHA-256 of that JSON. Any version other than `v2` is refused. The reader checks the limits in the order that avoids allocating before the check:
+Every marker is `<!-- prra:<kind>:v2:<payload>:<sha256> -->`, where the payload is base64url of raw-deflated canonical JSON and the digest is SHA-256 of that JSON. Any version other than `v2` is refused. The reader checks the author first. In a comment from any other account it only counts markers by pattern, to report them as ignored, and decodes none. A publisher comment with more than one marker of a kind is refused before any of them is decoded: a shard is then corrupt, and a status comment is unreadable. The reader checks the limits in the order that avoids allocating before the check:
 
 | Check | State snapshot | Journal shard |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ A shard is an issue comment with a short warning and one journal marker. Its pay
 
 The snapshot pins a journal cursor: a shard's comment id, how many of its records the snapshot had seen, and a digest of those records. The cursor shard can grow after the snapshot is written, but its first records cannot change. A record key appears once. A repeated key with identical content is a retried write and is kept once; with different content it is corruption.
 
-Only sequence 0 or a reset may start a chain. Without that rule, an edit that rewrote a later shard as a new genesis would hide every shard before it. The spike found this case.
+Only sequence 0 or a reset may start a chain. Without that rule, an edit that rewrote a later shard as a new genesis would hide every shard before it.
 
 ## Publication record
 
@@ -65,10 +65,10 @@ Keys hash the canonical JSON array of their parts instead of the parts joined wi
 
 ## Interruption and replay
 
-A run checks the head and loads authenticated state. It then marks as abandoned any complete record for another head that still has effects without receipts, since those effects would publish stale conclusions. After that it does the first of these that applies:
+A run checks the head and loads authenticated state. It then retires any complete record for another head that still has effects without receipts, since those effects would publish stale conclusions. First it reads the publisher's comments for those effects' markers and records a receipt for each one it finds, such as a status write whose receipt was lost. It marks the round as abandoned only when effects are still missing after that. Then it does the first of these that applies:
 
-1. A complete record for its round with every receipt and a status snapshot: `duplicate`, nothing written.
-2. A complete record with every receipt but no readable snapshot: rebuild the status comment from the journal (`status-restored`), with no inference.
+1. A complete record for its round with every receipt, and a status snapshot for that round: `duplicate`, nothing written.
+2. A complete record with every receipt, but no readable snapshot or one for another round, as after a force-push back to an earlier head: rebuild the status comment from the journal (`status-restored`), with no inference.
 3. A complete record with missing receipts: publish the missing effects in order (`published`, `resumed: true`), with no inference. Before each effect it reads; a comment already carrying that effect's marker gets its receipt without a second write. Before each effect it also rechecks the head, and on a new head it records the round as abandoned and publishes nothing more.
 4. A reservation with no record and no settlement: `inference-uncertain`. Nothing is spent again until an authorized manual attempt, which has its own attempt id.
 5. A reservation with a settlement and no record, or a round a reset acknowledged: `attempt-closed`.
@@ -84,7 +84,8 @@ A run checks the head and loads authenticated state. It then marks as abandoned 
 | After the record, or before or after any effect | Resumes and publishes each effect exactly once | 1 |
 | Lost response on an effect or on the manifest write | Reads the marker or the record and resumes | 1 |
 | Head moved mid-publication | `abandoned`; later runs of that attempt write nothing | 1, then 1 more on the new head |
-| Crash mid-publication, then a push | The first run on the new head abandons the old record and reviews the new head | 2 |
+| Crash mid-publication, then a push | The first run on the new head records receipts for effects whose markers it finds, abandons the old record, and reviews the new head | 2 |
+| Crash after the status write, then a push | The first run on the new head records the status receipt from its marker, so the old round stays complete, and reviews the new head | 2 |
 
 A crash after the reservation but before the request cannot be told apart from a crash during it, so both hold the reservation. That costs at most one reservation and never repeats paid inference silently.
 
@@ -113,8 +114,8 @@ Repository admins and maintainers can edit any comment, and an edit keeps the or
 A reset is how a maintainer lets automatic reviews continue after `recovery-required`.
 
 1. Read the status comment and the run log for the reported issues.
-2. Post the reset command on the pull request. Only an account with `maintain` or `admin` permission can authorize it; a `write` user is refused.
-3. The run writes a reset record in a new shard, linked to the newest authentic shard for reference. The record names the authorizer by login and id, the command comment id, the reason, the acknowledged issues, and the comment ids of unreadable shards. It carries forward every verified reservation, settlement and suppression, every round key known from records or from markers on comments, and the reset count.
+2. Post the reset command as a comment on the pull request. The run is given only the command comment's id. It reads that comment from the pull request's comments and refuses an id it does not find there. The comment's author is the authorizer. The run looks up that author's permission by login and refuses unless the account GitHub reports has the author's id and `maintain` or `admin` permission. A `write` user is refused, and so is a login that has passed to another account since the command was posted.
+3. The run writes a reset record in a new shard, linked to the newest authentic shard for reference. The record names the authorizer by the command comment's author login and id, the command comment id, the reason, the acknowledged issues, and the comment ids of unreadable shards. It carries forward every verified reservation, settlement and suppression, every round key known from records or from markers on comments, and the reset count.
 4. The run rewrites the status comment to say who reset the baseline and why, with no current round and the carried spend.
 
 Readers stop at the newest reset, so history before it is acknowledged and not read. Corruption that appears after the reset stops the run again. A round published before the reset is `attempt-closed`, not reviewed again; a new head reviews normally. The reset never treats missing history as an empty pull request: the status comment says history was not fully recoverable, and charges and dismissals survive.
@@ -125,6 +126,11 @@ Readers stop at the newest reset, so history before it is acknowledged and not r
 - Pin the snapshot's journal cursor as comment id, seen record count and a digest of those records.
 - Refuse a shard with no previous link unless it is sequence 0 or starts with a reset record.
 - Write publication chunks first and the manifest with the settlement last.
+- Check a comment's author before reading its markers. Count markers in other accounts' comments without decoding them, and refuse a publisher comment with more than one marker of a kind without decoding any.
+- Before abandoning a record for another head, record receipts for effects whose markers are on the publisher's comments.
+- Return `duplicate` only when the snapshot is for the same round; otherwise rebuild the status comment.
+- Take a reset's authorizer from the command comment's author id, and check that the account whose permission was read has that id.
+- Refuse an account payload without a positive id, a login and a type when resolving the publisher or checking permission.
 - Carry the acknowledged unreadable shard ids and the known round keys in the reset record.
 - Validate every journal record type against its schema. The spike checks record envelopes and the publication record, and trusts the rest of each authenticated record's content.
 - Not covered by the spike: thread follow-up effects (they use the same read-then-write receipts as inline comments), compaction, persisting the findings of an abandoned record, and naming the interrupted head in the status comment after an abandonment.

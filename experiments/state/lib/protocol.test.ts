@@ -1,13 +1,14 @@
 // The spike's evidence for #143. Each describe block is one acceptance
 // criterion, run against the fake pull request, where every comment can be
 // edited or deleted after it is written.
-import { describe, expect, test } from 'vitest';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import { describe, expect, test, vi } from 'vitest';
 import { sha256 } from '../../../src/shared/digest.ts';
 import type { FakeGitHub } from './github.ts';
 import { LostResponseError } from './github.ts';
 import { JournalWriter, shardBody } from './journal.ts';
 import { attemptId, reviewKey, roundKey } from './keys.ts';
-import { effectMarker, encodeMarker, findMarkers } from './marker.ts';
+import { countMarkers, effectMarker, encodeMarker } from './marker.ts';
 import {
   loadState,
   resetBaseline,
@@ -33,6 +34,12 @@ import {
   usage,
 } from './testing.ts';
 
+// Counts inflations, to show which markers a run decoded.
+vi.mock('node:zlib', async (importOriginal) => {
+  const zlib = await importOriginal<typeof import('node:zlib')>();
+  return { ...zlib, inflateRawSync: vi.fn(zlib.inflateRawSync) };
+});
+
 const reservationMicroUsd = 50_000;
 
 function attempt(headSha = headA, manualId?: number): AttemptInput {
@@ -56,13 +63,13 @@ function crashAt(point: string): (reached: string) => void {
 function statusComments(github: FakeGitHub) {
   return github
     .comments('issue')
-    .filter((comment) => findMarkers(comment.body, 'state').length > 0);
+    .filter((comment) => countMarkers(comment.body, 'state') > 0);
 }
 
 function shardComments(github: FakeGitHub) {
   return github
     .comments('issue')
-    .filter((comment) => findMarkers(comment.body, 'journal').length > 0);
+    .filter((comment) => countMarkers(comment.body, 'journal') > 0);
 }
 
 // Every planned effect is on GitHub exactly once.
@@ -145,6 +152,36 @@ describe('publisher identity (criterion 1)', () => {
     const state = await loadState(h.context());
     expect(state.snapshot?.commentId).toBe(status?.id);
     expect(state.ignored).toBe(1);
+  });
+
+  test('decodes no marker the publisher did not write, and no publisher body with two', async () => {
+    const h = harness(allOn, new FakeModel(completed(2)));
+    await runAttempt(h.context(), attempt());
+    const shards = shardComments(h.github);
+    // Each one inflates past the journal cap.
+    const bomb = deflateRawSync(Buffer.alloc(1024 * 1024)).toString(
+      'base64url',
+    );
+    const marker = (kind: string): string =>
+      `<!-- prra:${kind}:v2:${bomb}:${'0'.repeat(64)} -->`;
+    const hostile = Array.from({ length: 30 }, (_, index) =>
+      marker(index % 2 === 0 ? 'state' : 'journal'),
+    ).join('\n');
+    expect(hostile.length).toBeLessThan(65_536);
+    await h.github
+      .client('mallory', 'personal')
+      .createComment('issue', hostile);
+    // A maintainer's edit leaves a second marker in the newest shard.
+    const tip = shards.at(-1);
+    if (tip === undefined) throw new Error('No shard.');
+    h.github.edit(tip.id, `${tip.body}\n${marker('journal')}`);
+
+    vi.mocked(inflateRawSync).mockClear();
+    const state = await loadState(h.context());
+    expect(state.ignored).toBe(2);
+    expect(state.view.corrupt).toEqual([tip.id]);
+    // The status snapshot and every other shard, nothing else.
+    expect(vi.mocked(inflateRawSync)).toHaveBeenCalledTimes(shards.length);
   });
 
   test('ignores a publisher snapshot that names another pull request', async () => {
@@ -522,6 +559,8 @@ describe('interruptions (criterion 3)', () => {
     ).resolves.toMatchObject({ kind: 'published', resumed: false });
     const { ledger, snapshot } = await loadState(h.context());
     expect(ledger.abandoned.size).toBe(1);
+    // The inline comment that landed before the crash got its receipt.
+    expect(ledger.receipts.size).toBe(1 + 3);
     expect(snapshot?.value.round?.headSha).toBe(headB);
     // One inline comment from the abandoned record, one from the new round.
     expect(h.github.comments('review')).toHaveLength(2);
@@ -555,6 +594,49 @@ describe('interruptions (criterion 3)', () => {
     ).resolves.toMatchObject({
       kind: 'published',
       resumed: false,
+    });
+    expect(h.model.calls).toBe(2);
+  });
+
+  test('a new head records the receipt of a status that landed instead of abandoning it', async () => {
+    const h = harness(allOn, new FakeModel(completed(2), completed(1)));
+    await expect(
+      runAttempt(
+        h.context({ interrupt: crashAt('after-effect:status:0') }),
+        attempt(),
+      ),
+    ).rejects.toThrow(Crash);
+    h.github.setHead(headB);
+    await expect(
+      runAttempt(h.context(), attempt(headB)),
+    ).resolves.toMatchObject({ kind: 'published', resumed: false });
+    const { ledger } = await loadState(h.context());
+    expect(ledger.abandoned.size).toBe(0);
+    const first = ledger.record(
+      roundKey(reviewKey(review()), attemptId(reviewKey(review()))),
+    );
+    if (first?.status !== 'complete') throw new Error('No record.');
+    expect(first.record.effects.every((e) => ledger.receipts.has(e.id))).toBe(
+      true,
+    );
+    expect(statusComments(h.github)).toHaveLength(1);
+  });
+
+  test('a force-push back to a reviewed head restores that head’s status', async () => {
+    const h = harness(allOn, new FakeModel(completed(2), completed(1)));
+    await runAttempt(h.context(), attempt());
+    h.github.setHead(headB);
+    await runAttempt(h.context(), attempt(headB));
+    h.github.setHead(headA);
+    await expect(runAttempt(h.context(), attempt())).resolves.toMatchObject({
+      kind: 'status-restored',
+    });
+    const { snapshot } = await loadState(h.context());
+    expect(snapshot?.value.round?.headSha).toBe(headA);
+    expect(snapshot?.value.openFindingIds).toHaveLength(2);
+    expect(statusComments(h.github)).toHaveLength(1);
+    await expect(runAttempt(h.context(), attempt())).resolves.toMatchObject({
+      kind: 'duplicate',
     });
     expect(h.model.calls).toBe(2);
   });
@@ -721,18 +803,24 @@ describe('deletion and corruption limits (criterion 4)', () => {
     const stopped = await expectStopped(h, 'missing-shard');
     expect(stopped.suppressions).toEqual([finding]);
 
-    const request = {
-      authorizerLogin: 'wes',
-      commandCommentId: 77,
-      reason: 'Journal shard deleted',
-    };
-    await expect(resetBaseline(h.context(), request)).rejects.toThrow(
-      ResetRefusedError,
-    );
-    await resetBaseline(h.context(), { ...request, authorizerLogin: 'maya' });
+    const reason = 'Journal shard deleted';
+    const byWriter = await h.github
+      .client('wes', 'personal')
+      .createComment('issue', 'Reset the baseline.');
+    await expect(
+      resetBaseline(h.context(), { commandCommentId: byWriter.id, reason }),
+    ).rejects.toThrow(ResetRefusedError);
+    const command = await h.github
+      .client('maya', 'personal')
+      .createComment('issue', 'Reset the baseline.');
+    await resetBaseline(h.context(), { commandCommentId: command.id, reason });
 
     const after = await loadState(h.context());
     expect(after.issues).toEqual([]);
+    expect(after.view.chain[0]?.records[0]?.data).toMatchObject({
+      authorizedBy: { login: 'maya', id: accounts.maintainer.id },
+      commandCommentId: command.id,
+    });
     expect(after.ledger.spend).toEqual(stopped.spend);
     expect([...after.ledger.suppressions.keys()]).toEqual([finding]);
     expect(after.snapshot?.value).toMatchObject({ resets: 1, round: null });
@@ -769,12 +857,37 @@ describe('deletion and corruption limits (criterion 4)', () => {
     await expect(runAttempt(h.context(), attempt())).resolves.toMatchObject({
       kind: 'inference-uncertain',
     });
+    const command = await h.github
+      .client('maya', 'personal')
+      .createComment('issue', 'Reset the baseline.');
     await resetBaseline(h.context(), {
-      authorizerLogin: 'maya',
-      commandCommentId: 78,
+      commandCommentId: command.id,
       reason: 'x',
     });
     expect(statusComments(h.github)).toHaveLength(1);
     expect((await loadState(h.context())).issues).toEqual([]);
+  });
+
+  test('a reset is authorized by the account that posted the command', async () => {
+    const h = harness(allOn, new FakeModel(completed(1)));
+    await runAttempt(h.context(), attempt());
+    const writes = h.github.writes;
+    const reason = 'x';
+    const [inline] = h.github.comments('review');
+    for (const commandCommentId of [4_242, inline?.id as number]) {
+      await expect(
+        resetBaseline(h.context(), { commandCommentId, reason }),
+      ).rejects.toThrow('not a comment on this pull request');
+    }
+    const command = await h.github
+      .client('wes', 'personal')
+      .createComment('issue', 'Reset the baseline.');
+    // The writer renames, and a maintainer takes the freed login.
+    h.github.rename(accounts.writer.id, 'wes-old');
+    h.github.rename(accounts.maintainer.id, 'wes');
+    await expect(
+      resetBaseline(h.context(), { commandCommentId: command.id, reason }),
+    ).rejects.toThrow(ResetRefusedError);
+    expect(h.github.writes).toBe(writes + 1);
   });
 });

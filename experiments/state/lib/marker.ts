@@ -40,6 +40,7 @@ export const markerLimits: Readonly<Record<MarkerKind, MarkerLimits>> = {
 };
 
 export type DecodeFailure =
+  | 'multiple-markers'
   | 'unsupported-version'
   | 'too-large'
   | 'invalid-encoding'
@@ -92,24 +93,36 @@ export function encodeMarker(
   return { marker: `<!-- prra:${kind}:v2:${payload}:${digest} -->`, digest };
 }
 
-// Every marker of this kind in a body, in order, decoded or with the reason it
-// was refused. Older or newer versions are refused, never read.
-export function findMarkers(
+function markerPattern(kind: MarkerKind, flags: string): RegExp {
+  return new RegExp(
+    `<!-- prra:${kind}:v([0-9]{1,4}):([A-Za-z0-9_-]*):([0-9a-f]{64}) -->`,
+    flags,
+  );
+}
+
+// Counts by pattern alone, so a comment nobody trusts costs no decoding.
+export function countMarkers(body: string, kind: MarkerKind): number {
+  if (body.length > maxCommentChars) return 0;
+  return body.match(markerPattern(kind, 'g'))?.length ?? 0;
+}
+
+// The one marker of this kind in a body, decoded or with the reason it was
+// refused; undefined when there is none. A body with more than one is refused
+// without decoding any of them. Older or newer versions are refused, never
+// read.
+export function decodeMarker(
   body: string,
   kind: MarkerKind,
   limits: MarkerLimits = markerLimits[kind],
-): readonly Decoded[] {
-  if (body.length > maxCommentChars) return [];
-  const pattern = new RegExp(
-    `<!-- prra:${kind}:v([0-9]{1,4}):([A-Za-z0-9_-]*):([0-9a-f]{64}) -->`,
-    'g',
-  );
+): Decoded | undefined {
+  const count = countMarkers(body, kind);
+  if (count === 0) return undefined;
+  if (count > 1) return { ok: false, reason: 'multiple-markers' };
   // Every group is non-optional, so a match always has all three.
-  return [...body.matchAll(pattern)].map((match) =>
-    match[1] === '2'
-      ? decodePayload(match[2] as string, match[3] as string, limits)
-      : { ok: false, reason: 'unsupported-version' },
-  );
+  const match = markerPattern(kind, '').exec(body) as RegExpExecArray;
+  return match[1] === '2'
+    ? decodePayload(match[2] as string, match[3] as string, limits)
+    : { ok: false, reason: 'unsupported-version' };
 }
 
 export function decodePayload(

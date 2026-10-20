@@ -23,10 +23,11 @@ import type { ReviewKeyInput } from './keys.ts';
 import { Ledger } from './ledger.ts';
 import type { Spend } from './ledger.ts';
 import {
+  countMarkers,
+  decodeMarker,
   effectMarker,
   encodeMarker,
   findEffectMarkers,
-  findMarkers,
   maxCommentChars,
 } from './marker.ts';
 import { isAuthentic, requireAuthentic } from './publisher.ts';
@@ -157,12 +158,12 @@ export async function loadState(context: RunContext): Promise<LoadedState> {
   let ignored = 0;
   let snapshot: LoadedState['snapshot'];
   for (const comment of issueComments) {
-    const [decoded] = findMarkers(comment.body, 'state');
-    if (decoded === undefined) continue;
     if (!isAuthentic(comment, publisher)) {
-      ignored += 1;
+      if (countMarkers(comment.body, 'state') > 0) ignored += 1;
       continue;
     }
+    const decoded = decodeMarker(comment.body, 'state');
+    if (decoded === undefined) continue;
     const value = decoded.ok ? toSnapshot(decoded.value, identity) : undefined;
     // An unreadable snapshot is treated as deleted: the journal rebuilds it.
     if (value === undefined) continue;
@@ -262,17 +263,36 @@ export async function runAttempt(
   );
 
   // A pending record for another head can never be resumed: its remaining
-  // effects would publish stale conclusions. Retire them before going on.
+  // effects would publish stale conclusions. Effects whose markers are already
+  // on GitHub get their receipts; the rest are retired.
   for (const key of state.ledger.manifests.keys()) {
     const pending = state.ledger.record(key);
     if (
-      pending?.status === 'complete' &&
-      pending.record.headSha !== attempt.review.headSha &&
-      !state.ledger.abandoned.has(key) &&
-      pending.record.effects.some((e) => !state.ledger.receipts.has(e.id))
+      pending?.status !== 'complete' ||
+      pending.record.headSha === attempt.review.headSha ||
+      state.ledger.abandoned.has(key)
     ) {
-      await abandon(writer, pending.record, state.ledger.receipts);
+      continue;
     }
+    const missing = new Set(
+      pending.record.effects
+        .filter((e) => !state.ledger.receipts.has(e.id))
+        .map((e) => e.id),
+    );
+    if (missing.size === 0) continue;
+    const receipts = new Map(state.ledger.receipts);
+    const landed: JournalRecord[] = [];
+    for (const comment of [...state.comments.issue, ...state.comments.review]) {
+      for (const marker of findEffectMarkers(comment.body)) {
+        if (marker.roundKey !== key || !missing.delete(marker.effectId)) {
+          continue;
+        }
+        receipts.set(marker.effectId, comment.id);
+        landed.push(receipt(key, marker.effectId, comment.id));
+      }
+    }
+    await writer.append(landed);
+    if (missing.size > 0) await abandon(writer, pending.record, receipts);
   }
 
   // A validated record resumes without inference.
@@ -386,11 +406,12 @@ async function resume(
     state.ledger.receipts.has(effect.id),
   );
   if (!done) return publish(context, state, writer, record, interrupt, true);
-  if (state.snapshot !== undefined) {
+  if (state.snapshot?.value.round?.roundKey === record.roundKey) {
     return { kind: 'duplicate', roundKey: record.roundKey };
   }
-  // Every effect happened, but the status snapshot is gone: rebuild it from
-  // the journal. This is not a round effect and spends nothing.
+  // Every effect happened, but the status snapshot is gone or shows another
+  // round, as after a force-push back to this head: rebuild it from the
+  // journal. This is not a round effect and spends nothing.
   await writeStatus(context, state, writer, record, '');
   return { kind: 'status-restored', roundKey: record.roundKey };
 }
@@ -434,20 +455,22 @@ async function publish(
       );
       interrupt(`after-effect:${label}`);
     }
-    await writer.append([
-      {
-        key: `receipt:${effect.id}`,
-        type: 'receipt',
-        data: {
-          effectId: effect.id,
-          roundKey: record.roundKey,
-          commentId: comment.id,
-        },
-      },
-    ]);
+    await writer.append([receipt(record.roundKey, effect.id, comment.id)]);
     receipts.set(effect.id, comment.id);
   }
   return { kind: 'published', resumed, roundKey: record.roundKey };
+}
+
+function receipt(
+  roundKey: string,
+  effectId: string,
+  commentId: number,
+): JournalRecord {
+  return {
+    key: `receipt:${effectId}`,
+    type: 'receipt',
+    data: { effectId, roundKey, commentId },
+  };
 }
 
 async function sendEffect(
@@ -556,8 +579,8 @@ async function writeStatus(
 }
 
 export interface ResetRequest {
-  readonly authorizerLogin: string;
-  // The immutable id of the maintainer's reset command comment.
+  // The maintainer's reset command, an issue comment on this pull request.
+  // Its author authorizes the reset.
   readonly commandCommentId: number;
   readonly reason: string;
 }
@@ -578,13 +601,27 @@ export async function resetBaseline(
   context: RunContext,
   request: ResetRequest,
 ): Promise<void> {
-  const permission = await context.github.permissionOf(request.authorizerLogin);
-  if (permission !== 'admin' && permission !== 'maintain') {
+  const command = (await context.github.listComments('issue')).find(
+    (comment) => comment.id === request.commandCommentId,
+  );
+  if (command === undefined) {
+    throw new ResetRefusedError(
+      'The reset command is not a comment on this pull request.',
+    );
+  }
+  const authorizer = command.author;
+  const { account, permission } = await context.github.permissionOf(
+    authorizer.login,
+  );
+  // The login may have changed hands since the command was posted.
+  if (
+    account.id !== authorizer.id ||
+    (permission !== 'admin' && permission !== 'maintain')
+  ) {
     throw new ResetRefusedError(
       'A baseline reset needs maintain or admin permission.',
     );
   }
-  const authorizer = await context.github.userByLogin(request.authorizerLogin);
   const state = await loadState(context);
   const verified = new Ledger(
     state.view.authentic.flatMap((shard) => shard.records),

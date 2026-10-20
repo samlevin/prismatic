@@ -13,7 +13,7 @@ import { parseArgs } from 'node:util';
 import { normalizeError } from '../../../src/shared/errors.ts';
 import { createSecretRedactor } from '../../../src/shared/redaction.ts';
 import { GitHubError } from '../lib/github.ts';
-import { findEffectMarkers, findMarkers } from '../lib/marker.ts';
+import { countMarkers, findEffectMarkers } from '../lib/marker.ts';
 import { isAuthentic, resolveExpectedPublisher } from '../lib/publisher.ts';
 import type { PublisherSource } from '../lib/publisher.ts';
 import { RestGitHub } from '../lib/restGitHub.ts';
@@ -76,8 +76,8 @@ async function main(): Promise<Record<string, unknown>> {
   for (const channel of ['issue', 'review'] as const) {
     for (const comment of await github.listComments(channel)) {
       const marked =
-        findMarkers(comment.body, 'state').length +
-          findMarkers(comment.body, 'journal').length +
+        countMarkers(comment.body, 'state') +
+          countMarkers(comment.body, 'journal') +
           findEffectMarkers(comment.body).length >
         0;
       if (!marked) continue;

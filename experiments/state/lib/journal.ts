@@ -10,7 +10,12 @@
 import { canonicalJson } from '../../../src/shared/canonical.ts';
 import { sha256 } from '../../../src/shared/digest.ts';
 import type { Comment, GitHubPort } from './github.ts';
-import { encodeMarker, findMarkers, maxCommentChars } from './marker.ts';
+import {
+  countMarkers,
+  decodeMarker,
+  encodeMarker,
+  maxCommentChars,
+} from './marker.ts';
 import { isAuthentic, requireAuthentic } from './publisher.ts';
 import type { ExpectedPublisher } from './publisher.ts';
 
@@ -138,16 +143,15 @@ export function readJournal(
   const corrupt: number[] = [];
   let ignored = 0;
   for (const comment of comments) {
-    const [decoded, ...extra] = findMarkers(comment.body, 'journal');
-    if (decoded === undefined) continue;
     if (!isAuthentic(comment, publisher)) {
-      ignored += 1;
+      if (countMarkers(comment.body, 'journal') > 0) ignored += 1;
       continue;
     }
-    const shard =
-      decoded.ok && extra.length === 0
-        ? toShard(comment.id, decoded.value, decoded.digest, identity)
-        : undefined;
+    const decoded = decodeMarker(comment.body, 'journal');
+    if (decoded === undefined) continue;
+    const shard = decoded.ok
+      ? toShard(comment.id, decoded.value, decoded.digest, identity)
+      : undefined;
     if (shard === undefined) corrupt.push(comment.id);
     else authentic.push(shard);
   }

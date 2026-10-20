@@ -56,24 +56,29 @@ export class RestGitHub implements GitHubPort {
   }
 
   async authenticatedUser(): Promise<Account> {
-    return toAccount(await this.#request('GET', '/user'));
+    return requireAccount(await this.#request('GET', '/user'));
   }
 
   async userByLogin(login: string): Promise<Account> {
-    return toAccount(
+    return requireAccount(
       await this.#request('GET', `/users/${encodeURIComponent(login)}`),
     );
   }
 
-  async permissionOf(login: string): Promise<Permission> {
+  async permissionOf(
+    login: string,
+  ): Promise<{ readonly account: Account; readonly permission: Permission }> {
     const body = (await this.#request(
       'GET',
       `${this.#repo}/collaborators/${encodeURIComponent(login)}/permission`,
-    )) as { role_name?: unknown; permission?: unknown };
+    )) as { role_name?: unknown; permission?: unknown; user?: unknown };
     const role = [body.role_name, body.permission].find((value) =>
       permissions.includes(value as string),
     );
-    return (role as Permission | undefined) ?? 'read';
+    return {
+      account: requireAccount(body.user),
+      permission: (role as Permission | undefined) ?? 'read',
+    };
   }
 
   async listComments(channel: CommentChannel): Promise<readonly Comment[]> {
@@ -179,25 +184,36 @@ export class RestGitHub implements GitHubPort {
   }
 }
 
-function toAccount(value: unknown): Account {
+function toAccount(value: unknown): Account | undefined {
   const user = value as {
     login?: unknown;
     id?: unknown;
     type?: unknown;
   } | null;
   if (
+    typeof user !== 'object' ||
     user === null ||
     typeof user.login !== 'string' ||
     !Number.isSafeInteger(user.id) ||
+    (user.id as number) <= 0 ||
     typeof user.type !== 'string'
   ) {
-    return ghost;
+    return undefined;
   }
   return {
     login: user.login,
     id: user.id as number,
     type: user.type as AccountType,
   };
+}
+
+// An account the protocol will trust or authorize must be one GitHub named.
+function requireAccount(value: unknown): Account {
+  const account = toAccount(value);
+  if (account === undefined) {
+    throw new GitHubError(0, 'GitHub returned a malformed account.');
+  }
+  return account;
 }
 
 function toComment(value: unknown): Comment {
@@ -210,7 +226,7 @@ function toComment(value: unknown): Comment {
   };
   const comment = {
     id: item.id,
-    author: toAccount(item.user),
+    author: toAccount(item.user) ?? ghost,
     body: typeof item.body === 'string' ? item.body : '',
   };
   return typeof item.path === 'string' && typeof item.line === 'number'

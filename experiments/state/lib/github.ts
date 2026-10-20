@@ -39,7 +39,10 @@ export interface GitHubPort {
   // The account a login names today. Logins can be renamed and reused; ids
   // cannot.
   userByLogin(login: string): Promise<Account>;
-  permissionOf(login: string): Promise<Permission>;
+  // The permission of the account the login names now, with that account.
+  permissionOf(
+    login: string,
+  ): Promise<{ readonly account: Account; readonly permission: Permission }>;
   // Every page, oldest first.
   listComments(channel: CommentChannel): Promise<readonly Comment[]>;
   createComment(
@@ -228,9 +231,11 @@ class FakeClient implements GitHubPort {
     return account;
   }
 
-  async permissionOf(login: string): Promise<Permission> {
+  async permissionOf(
+    login: string,
+  ): Promise<{ readonly account: Account; readonly permission: Permission }> {
     const account = await this.userByLogin(login);
-    return this.#github.permission(account.id);
+    return { account, permission: this.#github.permission(account.id) };
   }
 
   async listComments(channel: CommentChannel): Promise<readonly Comment[]> {

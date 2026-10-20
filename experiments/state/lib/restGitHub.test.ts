@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { resolveExpectedPublisher } from './publisher.ts';
 import { RestGitHub } from './restGitHub.ts';
 
 interface Call {
@@ -88,23 +89,60 @@ describe('RestGitHub', () => {
     });
   });
 
+  test('refuses a malformed account instead of resolving a publisher from it', async () => {
+    const nonJson = new RestGitHub({
+      token: 't',
+      repository: 'octo/sandbox',
+      prNumber: 5,
+      fetch: (async () =>
+        new Response('<html>', { status: 200 })) as typeof fetch,
+    });
+    await expect(
+      resolveExpectedPublisher({ kind: 'cli-personal-token' }, nonJson),
+    ).rejects.toThrow('malformed account');
+    for (const body of [
+      {},
+      null,
+      'oops',
+      { login: 'cli-user', id: -1, type: 'User' },
+      { login: 'cli-user', id: '3', type: 'User' },
+    ]) {
+      const { github } = client({
+        'GET /user': [200, body],
+        'GET /users/github-actions%5Bbot%5D': [200, body],
+      });
+      await expect(github.authenticatedUser()).rejects.toThrow(
+        'malformed account',
+      );
+      await expect(github.userByLogin('github-actions[bot]')).rejects.toThrow(
+        'malformed account',
+      );
+    }
+  });
+
   test('reads the role name, then the permission, then defaults to read', async () => {
     const path = `GET ${repo}/collaborators/maya/permission`;
+    const user = { login: 'maya', id: 5, type: 'User' };
     await expect(
       client({
-        [path]: [200, { role_name: 'maintain', permission: 'write' }],
+        [path]: [200, { role_name: 'maintain', permission: 'write', user }],
       }).github.permissionOf('maya'),
-    ).resolves.toBe('maintain');
+    ).resolves.toEqual({ account: user, permission: 'maintain' });
     await expect(
       client({
-        [path]: [200, { role_name: 'custom', permission: 'admin' }],
+        [path]: [200, { role_name: 'custom', permission: 'admin', user }],
       }).github.permissionOf('maya'),
-    ).resolves.toBe('admin');
+    ).resolves.toMatchObject({ permission: 'admin' });
     await expect(
-      client({ [path]: [200, { permission: 'none' }] }).github.permissionOf(
-        'maya',
-      ),
-    ).resolves.toBe('read');
+      client({
+        [path]: [200, { permission: 'none', user }],
+      }).github.permissionOf('maya'),
+    ).resolves.toMatchObject({ permission: 'read' });
+    await expect(
+      client({
+        [path]: [200, { permission: 'admin' }],
+      }).github.permissionOf('maya'),
+    ).rejects.toThrow('malformed account');
   });
 
   test('pages through comments and keeps GitHub’s author id', async () => {

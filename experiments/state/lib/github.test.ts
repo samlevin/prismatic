@@ -49,8 +49,13 @@ describe('FakeGitHub', () => {
     github.addAccount(accounts.maintainer, 'maintain');
     github.addAccount(accounts.mallory);
     const client = github.client('maya', 'personal');
-    await expect(client.permissionOf('maya')).resolves.toBe('maintain');
-    await expect(client.permissionOf('mallory')).resolves.toBe('read');
+    await expect(client.permissionOf('maya')).resolves.toEqual({
+      account: accounts.maintainer,
+      permission: 'maintain',
+    });
+    await expect(client.permissionOf('mallory')).resolves.toMatchObject({
+      permission: 'read',
+    });
     await expect(client.permissionOf('nobody')).rejects.toMatchObject({
       status: 404,
     });

@@ -3,11 +3,12 @@ import { describe, expect, test } from 'vitest';
 import { sha256 } from '../../../src/shared/digest.ts';
 import {
   checkStructure,
+  countMarkers,
+  decodeMarker,
   decodePayload,
   effectMarker,
   encodeMarker,
   findEffectMarkers,
-  findMarkers,
   markerLimits,
   MarkerTooLargeError,
 } from './marker.ts';
@@ -22,13 +23,13 @@ function raw(bytes: Buffer | string, digest?: string): string {
   return `<!-- prra:state:v2:${payload}:${digest ?? sha256(buffer)} -->`;
 }
 
-function decodeOne(body: string): ReturnType<typeof findMarkers>[number] {
-  const [decoded] = findMarkers(body, 'state');
+function decodeOne(body: string): NonNullable<ReturnType<typeof decodeMarker>> {
+  const decoded = decodeMarker(body, 'state');
   if (decoded === undefined) throw new Error('No marker.');
   return decoded;
 }
 
-describe('encodeMarker and findMarkers', () => {
+describe('encodeMarker and decodeMarker', () => {
   test('round-trips one canonical value with one digest', () => {
     const a = encodeMarker('state', { b: [1, 'two'], a: { c: null } });
     const b = encodeMarker('state', { a: { c: null }, b: [1, 'two'] });
@@ -36,13 +37,33 @@ describe('encodeMarker and findMarkers', () => {
     expect(a.marker).toMatch(
       /^<!-- prra:state:v2:[A-Za-z0-9_-]+:[0-9a-f]{64} -->$/,
     );
-    expect(findMarkers(`text\n${a.marker}\nmore`, 'state')).toEqual([
-      { ok: true, value: { a: { c: null }, b: [1, 'two'] }, digest: a.digest },
-    ]);
-    expect(findMarkers(a.marker, 'journal')).toEqual([]);
-    const journal = encodeMarker('journal', { records: [] });
-    expect(findMarkers(journal.marker, 'journal')[0]).toMatchObject({
+    expect(decodeMarker(`text\n${a.marker}\nmore`, 'state')).toEqual({
       ok: true,
+      value: { a: { c: null }, b: [1, 'two'] },
+      digest: a.digest,
+    });
+    expect(decodeMarker(a.marker, 'journal')).toBeUndefined();
+    const journal = encodeMarker('journal', { records: [] });
+    expect(decodeMarker(journal.marker, 'journal')).toMatchObject({
+      ok: true,
+    });
+  });
+
+  test('refuses a body with more than one marker of a kind without decoding it', () => {
+    const { marker } = encodeMarker('state', { a: 1 });
+    const bomb = raw(Buffer.alloc(limits.maxDecompressedBytes * 8, 0x20));
+    const body = `${marker}\n${bomb}\n${bomb}`;
+    expect(countMarkers(body, 'state')).toBe(3);
+    expect(countMarkers(body, 'journal')).toBe(0);
+    expect(decodeMarker(body, 'state')).toEqual({
+      ok: false,
+      reason: 'multiple-markers',
+    });
+    const journal = encodeMarker('journal', { records: [] });
+    expect(decodeMarker(`${marker}\n${journal.marker}`, 'state')).toEqual({
+      ok: true,
+      value: { a: 1 },
+      digest: encodeMarker('state', { a: 1 }).digest,
     });
   });
 
@@ -133,7 +154,9 @@ describe('encodeMarker and findMarkers', () => {
 
   test('ignores a body over GitHub’s comment limit', () => {
     const { marker } = encodeMarker('state', { a: 1 });
-    expect(findMarkers(`${marker}${' '.repeat(65_536)}`, 'state')).toEqual([]);
+    const long = `${marker}${' '.repeat(65_536)}`;
+    expect(decodeMarker(long, 'state')).toBeUndefined();
+    expect(countMarkers(long, 'state')).toBe(0);
     expect(findEffectMarkers(' '.repeat(65_537))).toEqual([]);
   });
 });

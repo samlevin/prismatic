@@ -97,7 +97,6 @@ const digest = /^[0-9a-f]{64}$/;
 const outcomes: readonly string[] = ['approve', 'revise', 'rework'];
 const kindOrder: readonly EffectKind[] = ['inline', 'progress', 'status'];
 
-// Returns the reason a value is not a valid record, or undefined.
 export function recordProblem(value: unknown): string | undefined {
   if (!isObject(value) || value.kind !== 'publication-record') return 'kind';
   for (const key of ['reviewKey', 'attemptId', 'roundKey'] as const) {
