@@ -1971,17 +1971,39 @@ test('specification filing asks the triager for independence groups only', () =>
       path,
     );
     assert.match(groups, /Apply only its `groups` lines/, path);
+    // The record lives in the epic's rendered body, so every fill and patch,
+    // including a resumed run's refill, carries it.
     assert.match(
       groups,
-      /On resume, reuse the recorded groups and never spawn the triager again\./,
+      /append the epic's independence record to `bodies\/<epic>\.md` with `@@issue:KEY@@` placeholders, as body-shapes\.md describes, so every fill and patch in \[File\]\(#5-file\) carries it\./,
       path,
     );
     assert.match(
-      section(skill, '5. File'),
-      /^5\. Record groups\. [^\n]*`\.agents\/issue-creation\.md`[^\n]*set `groupsRecorded`\./m,
+      groups,
+      /On resume, append the recorded groups to the rebuilt epic bodies the same way and never spawn the triager again\./,
       path,
     );
-    assert.doesNotMatch(skill, /so no triager runs/, path);
+    assert.match(
+      section(skill, 'Resume'),
+      /confirm its `planSha256` matches, computed before the recorded groups are appended/,
+      path,
+    );
+    assert.doesNotMatch(
+      skill,
+      /Record groups|groupsRecorded|so no triager runs/,
+      path,
+    );
+  }
+  for (const path of inBoth('spec-to-issues/references/body-shapes.md'))
+    assert.match(
+      section(files.get(path), 'Epic'),
+      /appends the section that `\.agents\/issue-creation\.md` shows to the end of `bodies\/<epic>\.md`, one list item per group, with `@@issue:<Plan ID>@@` for each leaf in place of an issue number\. The record then goes through every fill and patch like the rest of the body\./,
+      path,
+    );
+  for (const path of inBoth('spec-to-issues/references/state-file.md')) {
+    const state = files.get(path);
+    assert.match(state, /before the independence records are appended/, path);
+    assert.doesNotMatch(state, /groupsRecorded/, path);
   }
   assert.match(
     files.get(`.agents/skills/${PREFIX}spec-to-issues/SKILL.md`),

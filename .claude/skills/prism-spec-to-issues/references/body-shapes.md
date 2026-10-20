@@ -73,6 +73,8 @@ Definition of done for every slice: §<n> (@@issue:<owner>@@).
 
 In the epic that owns the definition-of-done section, its pointer stays bare: `Definition of done for every slice: §<n>.` Every other epic and every leaf gets `§<n> (@@issue:<owner>@@)`, by the same rule as any carried reference. The `Deferred:` paragraph appears only for a deferred phase. It lists every `Deferred until` Plan ID, comma-separated in `Deferred until` order, and ends in `closes` for one and `close` for several (`blocked until P1.2 (#11), P1.3 (#12) close`). The container lines appear only when the phase has a stack. Leave out the Contracts heading when the phase claims no sections. Slices are listed in specification order.
 
+When the triager returned groups for the epic, the skill's independence-groups step appends the section that `.agents/issue-creation.md` shows to the end of `bodies/<epic>.md`, one list item per group, with `@@issue:<Plan ID>@@` for each leaf in place of an issue number. The record then goes through every fill and patch like the rest of the body.
+
 ## Container
 
 One per stack, titled with the `Stack` value. Labels `enhancement` and the first layer's severity.
