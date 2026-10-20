@@ -18,7 +18,7 @@ Results are JSON on stdout and progress goes to stderr. The exit status is 1 whe
 
 - `lib/` holds the tested parts: seeded synthetic source, the five-block layout and breakpoint planner, the SDK-typed request builder, the strict probe schema with its linter and validator, the price catalog and §9.5 cost formula, the evaluation budget, tokenizer candidates and margin math, inferred boundary attribution, response reading, the scenario matrix, the runner, and the SDK provider. Unit tests sit beside each file and count toward the coverage gate. No test touches the network; the provider tests check the SDK's wire format through a fake `fetch`.
 - `spike/main.ts` is the command-line driver. The coverage gate leaves it out.
-- `results/` is where the live run's JSON goes once someone with an API key runs the spike; `docs/caching.md` cites it.
+- `results/` holds each live run's JSON; `docs/caching.md` cites `2026-10-19.json`.
 
 ## Scenarios
 

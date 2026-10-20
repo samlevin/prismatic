@@ -103,7 +103,7 @@ What each scenario showed:
 - A scope change or a representation change in block 3 dropped the read to BP2 and rewrote blocks 3 and 4.
 - Changing only the base-tip provenance in block 5 read the whole prefix, so provenance belongs in the uncached suffix where §9.3 places it.
 - Explicit mode with no breakpoints neither read nor wrote on either request, and the input was billed at the ordinary rate. This is the disabled-caching contract.
-- A stable prefix of 434 provider-counted tokens inside a 4,602-token request was never cached: not without breakpoints, and not when two breakpoints were forced onto it. The provider accepted the forced requests and ignored the breakpoints. The third request's diagnostics said `cache_hit` while its usage reported 0 cached tokens, so diagnostics are advisory and the usage counters decide.
+- A stable prefix of 637 provider-counted tokens (434 through block 1) inside a 4,602-token request was never cached: not without breakpoints, and not when two breakpoints were forced onto it. The provider accepted the forced requests and ignored the breakpoints. The third request's diagnostics said `cache_hit` while its usage reported 0 cached tokens, so diagnostics are advisory and the usage counters decide.
 
 Diagnostics through `comparison_response_id` worked with `store: false`. Of 13 comparisons, 7 returned `cache_hit`, 2 returned `cache_miss` with a reason, and 4 returned `unavailable`.
 
@@ -122,7 +122,7 @@ Across the run the provider read 124,845 cached tokens against 212,418 written, 
 
 A request-level change from high to medium missed the whole prefix. The provider named `reasoning_effort_changed` and counted all 16,110 reusable tokens as missed, so the effort is part of the cache key. The medium population warmed on its own: the next medium request read all 15,968 tokens.
 
-The `configuration_update` item was accepted, and the updated request read the high prefix through BP4 on both tries. But the response reported `high` as its effort, echoed no `configuration_update` item, and gave no other sign of the effort it ran at. Its reasoning tokens, 264 and 251, sit between the high requests of this run (402 to 1,342) and the medium ones (105 and 139). That is suggestive, not evidence. The spike cannot show that the update changed the effective effort of the response it was sent in.
+The `configuration_update` item was accepted, and the updated request read the high prefix through BP4 on both tries. But the response reported `high` as its effort, echoed no `configuration_update` item, and gave no other sign of the effort it ran at. Its reasoning tokens, 264 and 251, sit below the full-prefix high requests of this run (402 to 1,342) and above the medium ones (105 and 139), but the three short-prefix high requests used 220 to 266, so reasoning-token counts do not tell which effort ran. The spike cannot show that the update changed the effective effort of the response it was sent in.
 
 ### Tokenizer and request margin
 
@@ -132,7 +132,7 @@ The `configuration_update` item was accepted, and the updated request read the h
 | `cl100k_base` | 0.99942 | 249.0 | 0.0033% | 0.019% | 0.0050% |
 | Bytes divided by 4 | 1.00082 | 855.1 | 2.63% | 2.63% | 0.52% |
 
-Eighteen distinct full-schema requests gave the samples. `o200k_base` is selected: its worst residual is under two tokens on a 16,700-token request. The provider's count exceeded the local block text by 258 tokens on every full-schema request and by 257 on the incremental and reconcile variants, whether the request held 4,344 or 19,491 local tokens. That constant is the message framing plus the response-format schema. It is the fit's intercept, not a tokenizer error. The 1.1 planning margin the spike used is far larger than the measurements call for: the worst under-prediction of the fit is 0.0008%, under one token.
+Eighteen distinct full-schema requests gave the samples. `o200k_base` is selected: its worst residual is under two tokens on a 16,700-token request. The provider's count exceeded the local block text by 258 tokens on every full-schema request that carried breakpoints, by 256 on the two caching-disabled requests, and by 257 on the incremental and reconcile variants, whether the request held 4,344 or 19,491 local tokens. That constant is the message framing plus the response-format schema. It is the fit's intercept, not a tokenizer error. The 1.1 planning margin the spike used is far larger than the measurements call for: the worst under-prediction of the fit is 0.0008%, under one token.
 
 ### Strict schema
 

@@ -126,8 +126,6 @@ export interface CachingOptions {
   readonly minimumPrefixTokens: number;
 }
 
-export const maxBreakpoints = 4;
-
 export type SkipReason =
   'caching-disabled' | 'boundary-disabled' | 'coincident' | 'below-minimum';
 
