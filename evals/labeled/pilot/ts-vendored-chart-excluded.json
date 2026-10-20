@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "id": "ts-vendored-chart-excluded",
+  "title": "Changed vendored file is excluded from review",
+  "language": "typescript",
+  "provenance": {
+    "origin": "synthetic",
+    "author": "agent:prism-implementer",
+    "createdOn": "2026-10-19",
+    "license": "MIT",
+    "notes": "Synthetic code written for the pilot; no third-party or private source."
+  },
+  "scenarios": ["unreviewable-change"],
+  "pullRequest": {
+    "title": "Upgrade chart-lite and label the revenue chart",
+    "body": "Updates the vendored chart-lite copy and passes a unit label."
+  },
+  "source": {
+    "base": {
+      "src/report/chart.ts": [
+        "import { renderChart } from '../../vendor/chart-lite/index.js';",
+        "",
+        "export function revenueChart(points: readonly number[]): string {",
+        "  return renderChart({ title: 'Revenue', points });",
+        "}"
+      ],
+      "vendor/chart-lite/index.js": [
+        "// chart-lite 2.3.1, vendored. Do not edit by hand.",
+        "function escapeLabel(text) {",
+        "  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;');",
+        "}",
+        "",
+        "export function renderChart(options) {",
+        "  const title = escapeLabel(options.title);",
+        "  const bars = options.points.map((p) => `<rect height=\"${p}\"/>`).join('');",
+        "  return `<svg><title>${title}</title>${bars}</svg>`;",
+        "}"
+      ]
+    },
+    "rounds": [
+      {
+        "number": 1,
+        "trigger": "opened",
+        "message": "Upgrade chart-lite and add a unit label",
+        "actions": [],
+        "changes": {
+          "vendor/chart-lite/index.js": [
+            "// chart-lite 2.3.1, vendored. Do not edit by hand.",
+            "function escapeLabel(text) {",
+            "  return text.replace(/&/g, '&amp;');",
+            "}",
+            "",
+            "export function renderChart(options) {",
+            "  const title = escapeLabel(options.title);",
+            "  const bars = options.points.map((p) => `<rect height=\"${p}\"/>`).join('');",
+            "  return `<svg><title>${title}</title>${bars}</svg>`;",
+            "}"
+          ],
+          "src/report/chart.ts": [
+            "import { renderChart } from '../../vendor/chart-lite/index.js';",
+            "",
+            "export function revenueChart(points: readonly number[], unit: string): string {",
+            "  return renderChart({ title: `Revenue (${unit})`, points });",
+            "}"
+          ]
+        }
+      }
+    ]
+  },
+  "labels": {
+    "labeledBy": "agent:prism-implementer",
+    "labeledOn": "2026-10-19",
+    "check": {
+      "status": "confirmed",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "Vendor line 3 no longer escapes <, and chart.ts line 4 interpolates a caller-supplied unit. The evidence sits in the excluded vendor path, so the defect is ineligible and coverage is partial. A finding on chart.ts line 4 that names the vendored escape should adjudicate to vendor-escape-dropped, not count as false."
+    },
+    "defects": [
+      {
+        "id": "vendor-escape-dropped",
+        "severity": "high",
+        "category": "security",
+        "failureMode": "injection",
+        "introducedRound": 1,
+        "fixedRound": null,
+        "location": {
+          "path": "vendor/chart-lite/index.js",
+          "round": 1,
+          "startLine": 3,
+          "endLine": 3,
+          "marker": "return text.replace"
+        },
+        "requiredEvidence": [
+          {
+            "path": "vendor/chart-lite/index.js",
+            "round": 1,
+            "startLine": 3,
+            "endLine": 3,
+            "marker": "return text.replace"
+          },
+          {
+            "path": "src/report/chart.ts",
+            "round": 1,
+            "startLine": 4,
+            "endLine": 4,
+            "marker": "Revenue (${unit})"
+          }
+        ],
+        "eligible": false,
+        "available": false,
+        "summary": "The vendored escapeLabel no longer escapes <, so a caller-supplied unit can inject markup. The file is vendored and excluded by policy, so this defect is ineligible and never counts toward severe recall, only toward end-to-end recall."
+      }
+    ],
+    "decoys": []
+  },
+  "expected": [
+    {
+      "round": 1,
+      "coverage": "partial",
+      "excludedPaths": ["vendor/chart-lite/index.js"],
+      "inference": true,
+      "publish": [],
+      "transitions": []
+    }
+  ]
+}

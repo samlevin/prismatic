@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "id": "go-display-name-nil-profile",
+  "title": "Nil profile dereference, a false fix, then the fix",
+  "language": "go",
+  "provenance": {
+    "origin": "synthetic",
+    "author": "agent:prism-implementer",
+    "createdOn": "2026-10-19",
+    "license": "MIT",
+    "notes": "Synthetic code written for the pilot; no third-party or private source."
+  },
+  "scenarios": ["correct-high-severity", "incremental-fix", "partial-fix"],
+  "pullRequest": {
+    "title": "Show display names in the member list",
+    "body": "Adds users.DisplayName, which falls back to the user id."
+  },
+  "source": {
+    "base": {},
+    "rounds": [
+      {
+        "number": 1,
+        "trigger": "opened",
+        "message": "Add DisplayName",
+        "actions": [],
+        "changes": {
+          "internal/users/display.go": [
+            "package users",
+            "",
+            "import \"errors\"",
+            "",
+            "// ErrNotFound is returned when no user has the given id.",
+            "var ErrNotFound = errors.New(\"user not found\")",
+            "",
+            "type Profile struct {",
+            "\tName  string",
+            "\tEmail string",
+            "}",
+            "",
+            "type User struct {",
+            "\tID string",
+            "\t// Profile is nil until the user completes onboarding.",
+            "\tProfile *Profile",
+            "}",
+            "",
+            "type Store interface {",
+            "\t// Find returns ErrNotFound when no user has the id.",
+            "\tFind(id string) (*User, error)",
+            "}",
+            "",
+            "// DisplayName returns the user's profile name, or their id when there is",
+            "// no profile name.",
+            "func DisplayName(store Store, id string) (string, error) {",
+            "\tuser, err := store.Find(id)",
+            "\tif err != nil {",
+            "\t\treturn \"\", err",
+            "\t}",
+            "\tif user.Profile.Name == \"\" {",
+            "\t\treturn user.ID, nil",
+            "\t}",
+            "\treturn user.Profile.Name, nil",
+            "}"
+          ]
+        }
+      },
+      {
+        "number": 2,
+        "trigger": "synchronize",
+        "message": "Guard against a missing user",
+        "actions": [],
+        "changes": {
+          "internal/users/display.go": [
+            "package users",
+            "",
+            "import \"errors\"",
+            "",
+            "// ErrNotFound is returned when no user has the given id.",
+            "var ErrNotFound = errors.New(\"user not found\")",
+            "",
+            "type Profile struct {",
+            "\tName  string",
+            "\tEmail string",
+            "}",
+            "",
+            "type User struct {",
+            "\tID string",
+            "\t// Profile is nil until the user completes onboarding.",
+            "\tProfile *Profile",
+            "}",
+            "",
+            "type Store interface {",
+            "\t// Find returns ErrNotFound when no user has the id.",
+            "\tFind(id string) (*User, error)",
+            "}",
+            "",
+            "// DisplayName returns the user's profile name, or their id when there is",
+            "// no profile name.",
+            "func DisplayName(store Store, id string) (string, error) {",
+            "\tuser, err := store.Find(id)",
+            "\tif err != nil {",
+            "\t\treturn \"\", err",
+            "\t}",
+            "\tif user == nil {",
+            "\t\treturn \"\", ErrNotFound",
+            "\t}",
+            "\tif user.Profile.Name == \"\" {",
+            "\t\treturn user.ID, nil",
+            "\t}",
+            "\treturn user.Profile.Name, nil",
+            "}"
+          ]
+        }
+      },
+      {
+        "number": 3,
+        "trigger": "synchronize",
+        "message": "Fall back to the id without a profile",
+        "actions": [],
+        "changes": {
+          "internal/users/display.go": [
+            "package users",
+            "",
+            "import \"errors\"",
+            "",
+            "// ErrNotFound is returned when no user has the given id.",
+            "var ErrNotFound = errors.New(\"user not found\")",
+            "",
+            "type Profile struct {",
+            "\tName  string",
+            "\tEmail string",
+            "}",
+            "",
+            "type User struct {",
+            "\tID string",
+            "\t// Profile is nil until the user completes onboarding.",
+            "\tProfile *Profile",
+            "}",
+            "",
+            "type Store interface {",
+            "\t// Find returns ErrNotFound when no user has the id.",
+            "\tFind(id string) (*User, error)",
+            "}",
+            "",
+            "// DisplayName returns the user's profile name, or their id when there is",
+            "// no profile name.",
+            "func DisplayName(store Store, id string) (string, error) {",
+            "\tuser, err := store.Find(id)",
+            "\tif err != nil {",
+            "\t\treturn \"\", err",
+            "\t}",
+            "\tif user.Profile == nil || user.Profile.Name == \"\" {",
+            "\t\treturn user.ID, nil",
+            "\t}",
+            "\treturn user.Profile.Name, nil",
+            "}"
+          ]
+        }
+      }
+    ]
+  },
+  "labels": {
+    "labeledBy": "agent:prism-implementer",
+    "labeledOn": "2026-10-19",
+    "check": {
+      "status": "confirmed",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "Lines 31 and 15 match their markers. The round 2 nil check on the user leaves the Profile dereference in place, so persists is right, and round 3 fixes it. Dropping the user nil check in round 3 is fine because the Store contract returns ErrNotFound. The partial-fix tag here covers a fix attempt that missed its target rather than a partial repair."
+    },
+    "defects": [
+      {
+        "id": "nil-profile",
+        "severity": "high",
+        "category": "correctness",
+        "failureMode": "null-or-undefined-access",
+        "introducedRound": 1,
+        "fixedRound": 3,
+        "location": {
+          "path": "internal/users/display.go",
+          "round": 1,
+          "startLine": 31,
+          "endLine": 31,
+          "marker": "if user.Profile.Name == \"\""
+        },
+        "requiredEvidence": [
+          {
+            "path": "internal/users/display.go",
+            "round": 1,
+            "startLine": 31,
+            "endLine": 31,
+            "marker": "if user.Profile.Name == \"\""
+          },
+          {
+            "path": "internal/users/display.go",
+            "round": 1,
+            "startLine": 15,
+            "endLine": 15,
+            "marker": "Profile is nil until"
+          }
+        ],
+        "eligible": true,
+        "available": true,
+        "summary": "Profile is nil until onboarding completes, and DisplayName reads user.Profile.Name without a nil check, so it panics for new users. The round 2 nil check on user does not fix it."
+      }
+    ],
+    "decoys": []
+  },
+  "expected": [
+    {
+      "round": 1,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": ["nil-profile"],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": [],
+      "transitions": [
+        {
+          "defect": "nil-profile",
+          "status": "persists"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": [],
+      "transitions": [
+        {
+          "defect": "nil-profile",
+          "status": "fixed"
+        }
+      ]
+    }
+  ]
+}

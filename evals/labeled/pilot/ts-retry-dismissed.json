@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "id": "ts-retry-dismissed",
+  "title": "Dismissed validation finding survives unrelated pushes",
+  "language": "typescript",
+  "provenance": {
+    "origin": "synthetic",
+    "author": "agent:prism-implementer",
+    "createdOn": "2026-10-19",
+    "license": "MIT",
+    "notes": "Synthetic code written for the pilot; no third-party or private source."
+  },
+  "scenarios": ["dismissed-finding"],
+  "pullRequest": {
+    "title": "Add a retry helper for jobs",
+    "body": "Adds retry() for background jobs and uses it in the scheduler."
+  },
+  "source": {
+    "base": {},
+    "rounds": [
+      {
+        "number": 1,
+        "trigger": "opened",
+        "message": "Add retry helper",
+        "actions": [],
+        "changes": {
+          "src/jobs/retry.ts": [
+            "export interface RetryOptions {",
+            "  attempts: number;",
+            "  delayMs: number;",
+            "}",
+            "",
+            "// Runs the task until it succeeds or the attempts run out.",
+            "export async function retry<T>(",
+            "  task: () => Promise<T>,",
+            "  options: RetryOptions,",
+            "): Promise<T> {",
+            "  let lastError: unknown;",
+            "  for (let attempt = 0; attempt < options.attempts; attempt += 1) {",
+            "    try {",
+            "      return await task();",
+            "    } catch (error) {",
+            "      lastError = error;",
+            "      if (attempt + 1 < options.attempts) {",
+            "        await new Promise((resolve) => setTimeout(resolve, options.delayMs));",
+            "      }",
+            "    }",
+            "  }",
+            "  throw lastError;",
+            "}"
+          ]
+        }
+      },
+      {
+        "number": 2,
+        "trigger": "synchronize",
+        "message": "Use retry in the scheduler",
+        "actions": [
+          {
+            "kind": "dismiss",
+            "defect": "zero-attempts",
+            "reason": "Every caller passes a constant attempt count."
+          }
+        ],
+        "changes": {
+          "src/jobs/schedule.ts": [
+            "import { retry } from './retry.ts';",
+            "",
+            "export async function runNightly(job: () => Promise<void>): Promise<void> {",
+            "  await retry(job, { attempts: 3, delayMs: 1000 });",
+            "}"
+          ]
+        }
+      },
+      {
+        "number": 3,
+        "trigger": "synchronize",
+        "message": "Export a default retry policy",
+        "actions": [],
+        "changes": {
+          "src/jobs/retry.ts": [
+            "export interface RetryOptions {",
+            "  attempts: number;",
+            "  delayMs: number;",
+            "}",
+            "",
+            "export const defaultRetry: RetryOptions = { attempts: 3, delayMs: 250 };",
+            "",
+            "// Runs the task until it succeeds or the attempts run out.",
+            "export async function retry<T>(",
+            "  task: () => Promise<T>,",
+            "  options: RetryOptions,",
+            "): Promise<T> {",
+            "  let lastError: unknown;",
+            "  for (let attempt = 0; attempt < options.attempts; attempt += 1) {",
+            "    try {",
+            "      return await task();",
+            "    } catch (error) {",
+            "      lastError = error;",
+            "      if (attempt + 1 < options.attempts) {",
+            "        await new Promise((resolve) => setTimeout(resolve, options.delayMs));",
+            "      }",
+            "    }",
+            "  }",
+            "  throw lastError;",
+            "}"
+          ]
+        }
+      }
+    ]
+  },
+  "labels": {
+    "labeledBy": "agent:prism-implementer",
+    "labeledOn": "2026-10-19",
+    "check": {
+      "status": "confirmed",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "Line 12 never runs the task when attempts <= 0, so line 22 throws undefined. Medium severity is right. The dismissal before round 2 and the 2-line shift in round 3 are as labeled."
+    },
+    "defects": [
+      {
+        "id": "zero-attempts",
+        "severity": "medium",
+        "category": "quality",
+        "failureMode": "missing-input-validation",
+        "introducedRound": 1,
+        "fixedRound": null,
+        "location": {
+          "path": "src/jobs/retry.ts",
+          "round": 1,
+          "startLine": 12,
+          "endLine": 12,
+          "marker": "attempt < options.attempts"
+        },
+        "requiredEvidence": [
+          {
+            "path": "src/jobs/retry.ts",
+            "round": 1,
+            "startLine": 22,
+            "endLine": 22,
+            "marker": "throw lastError"
+          }
+        ],
+        "eligible": true,
+        "available": true,
+        "summary": "With attempts of zero or less the task never runs and retry throws undefined; the options are not validated."
+      }
+    ],
+    "decoys": []
+  },
+  "expected": [
+    {
+      "round": 1,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": ["zero-attempts"],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": [],
+      "transitions": [
+        {
+          "defect": "zero-attempts",
+          "status": "dismissed"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": [],
+      "transitions": []
+    }
+  ]
+}

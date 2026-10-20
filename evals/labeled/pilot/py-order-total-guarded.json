@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "id": "py-order-total-guarded",
+  "title": "Order total with the None check in the caller",
+  "language": "python",
+  "provenance": {
+    "origin": "synthetic",
+    "author": "agent:prism-implementer",
+    "createdOn": "2026-10-19",
+    "license": "MIT",
+    "notes": "Synthetic code written for the pilot; no third-party or private source."
+  },
+  "scenarios": ["clean-pr", "false-positive"],
+  "pullRequest": {
+    "title": "Add order totals",
+    "body": "Adds order_total_cents, which raises OrderNotFound for an unknown order."
+  },
+  "source": {
+    "base": {
+      "app/orders.py": [
+        "from dataclasses import dataclass",
+        "from typing import Optional",
+        "",
+        "",
+        "class OrderNotFound(Exception):",
+        "    pass",
+        "",
+        "",
+        "@dataclass(frozen=True)",
+        "class Line:",
+        "    quantity: int",
+        "    unit_price_cents: int",
+        "",
+        "",
+        "@dataclass(frozen=True)",
+        "class Order:",
+        "    id: str",
+        "    lines: tuple[Line, ...]",
+        "",
+        "",
+        "_ORDERS: dict[str, Order] = {}",
+        "",
+        "",
+        "def find_order(order_id: str) -> Optional[Order]:",
+        "    return _ORDERS.get(order_id)"
+      ]
+    },
+    "rounds": [
+      {
+        "number": 1,
+        "trigger": "opened",
+        "message": "Add order_total_cents",
+        "actions": [],
+        "changes": {
+          "app/orders.py": [
+            "from dataclasses import dataclass",
+            "from typing import Optional",
+            "",
+            "",
+            "class OrderNotFound(Exception):",
+            "    pass",
+            "",
+            "",
+            "@dataclass(frozen=True)",
+            "class Line:",
+            "    quantity: int",
+            "    unit_price_cents: int",
+            "",
+            "",
+            "@dataclass(frozen=True)",
+            "class Order:",
+            "    id: str",
+            "    lines: tuple[Line, ...]",
+            "",
+            "",
+            "_ORDERS: dict[str, Order] = {}",
+            "",
+            "",
+            "def find_order(order_id: str) -> Optional[Order]:",
+            "    return _ORDERS.get(order_id)",
+            "",
+            "",
+            "def _order_total(order: Order) -> int:",
+            "    return sum(line.quantity * line.unit_price_cents for line in order.lines)",
+            "",
+            "",
+            "def order_total_cents(order_id: str) -> int:",
+            "    order = find_order(order_id)",
+            "    if order is None:",
+            "        raise OrderNotFound(order_id)",
+            "    return _order_total(order)"
+          ]
+        }
+      }
+    ]
+  },
+  "labels": {
+    "labeledBy": "agent:prism-implementer",
+    "labeledOn": "2026-10-19",
+    "check": {
+      "status": "amended",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "The helper was named _line_total although it sums every line of the order, and misleading-name-or-comment is a failure mode in the quality taxonomy, so a reviewer that flagged the name would have been scored as a false finding on a clean history. Renamed it to _order_total on lines 28 and 36; no label or decoy line moves. The line-total-none decoy on line 29 is a true decoy because the only caller raises OrderNotFound on None first."
+    },
+    "defects": [],
+    "decoys": [
+      {
+        "id": "line-total-none",
+        "location": {
+          "path": "app/orders.py",
+          "round": 1,
+          "startLine": 29,
+          "endLine": 29,
+          "marker": "for line in order.lines"
+        },
+        "summary": "_order_total reads order.lines without a None check, but its parameter is typed Order and its only caller raises OrderNotFound first. A finding here is false."
+      }
+    ]
+  },
+  "expected": [
+    {
+      "round": 1,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": [],
+      "transitions": []
+    }
+  ]
+}

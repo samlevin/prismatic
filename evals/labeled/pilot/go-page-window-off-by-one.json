@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "id": "go-page-window-off-by-one",
+  "title": "Pagination skips the first page until the next push",
+  "language": "go",
+  "provenance": {
+    "origin": "synthetic",
+    "author": "agent:prism-implementer",
+    "createdOn": "2026-10-19",
+    "license": "MIT",
+    "notes": "Synthetic code written for the pilot; no third-party or private source."
+  },
+  "scenarios": ["correct-high-severity", "incremental-fix"],
+  "pullRequest": {
+    "title": "Add page windows for list endpoints",
+    "body": "Adds page.Window for 1-based pagination."
+  },
+  "source": {
+    "base": {},
+    "rounds": [
+      {
+        "number": 1,
+        "trigger": "opened",
+        "message": "Add page.Window",
+        "actions": [],
+        "changes": {
+          "internal/page/page.go": [
+            "package page",
+            "",
+            "// Window returns the items on a 1-based page of the given size. A page",
+            "// past the end is empty.",
+            "func Window(items []string, page, size int) []string {",
+            "\tif page < 1 || size < 1 {",
+            "\t\treturn nil",
+            "\t}",
+            "\tstart := page * size",
+            "\tif start >= len(items) {",
+            "\t\treturn nil",
+            "\t}",
+            "\tend := start + size",
+            "\tif end > len(items) {",
+            "\t\tend = len(items)",
+            "\t}",
+            "\treturn items[start:end]",
+            "}"
+          ]
+        }
+      },
+      {
+        "number": 2,
+        "trigger": "synchronize",
+        "message": "Fix the page offset",
+        "actions": [],
+        "changes": {
+          "internal/page/page.go": [
+            "package page",
+            "",
+            "// Window returns the items on a 1-based page of the given size. A page",
+            "// past the end is empty.",
+            "func Window(items []string, page, size int) []string {",
+            "\tif page < 1 || size < 1 {",
+            "\t\treturn nil",
+            "\t}",
+            "\tstart := (page - 1) * size",
+            "\tif start >= len(items) {",
+            "\t\treturn nil",
+            "\t}",
+            "\tend := start + size",
+            "\tif end > len(items) {",
+            "\t\tend = len(items)",
+            "\t}",
+            "\treturn items[start:end]",
+            "}"
+          ]
+        }
+      }
+    ]
+  },
+  "labels": {
+    "labeledBy": "agent:prism-implementer",
+    "labeledOn": "2026-10-19",
+    "check": {
+      "status": "confirmed",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "Line 9 page*size against the 1-based contract on line 3 is the off-by-one, and round 2 (page-1)*size fixes it. Very large page or size values could overflow the multiplication and panic on the slice; that is unlabeled and accepted as outside this history's scenarios."
+    },
+    "defects": [
+      {
+        "id": "first-page-skipped",
+        "severity": "high",
+        "category": "correctness",
+        "failureMode": "off-by-one-or-bounds",
+        "introducedRound": 1,
+        "fixedRound": 2,
+        "location": {
+          "path": "internal/page/page.go",
+          "round": 1,
+          "startLine": 9,
+          "endLine": 9,
+          "marker": "start := page * size"
+        },
+        "requiredEvidence": [
+          {
+            "path": "internal/page/page.go",
+            "round": 1,
+            "startLine": 3,
+            "endLine": 3,
+            "marker": "1-based page"
+          }
+        ],
+        "eligible": true,
+        "available": true,
+        "summary": "Pages are 1-based but the offset is page * size, so page 1 returns the second page and the first page is unreachable."
+      }
+    ],
+    "decoys": []
+  },
+  "expected": [
+    {
+      "round": 1,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": ["first-page-skipped"],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "coverage": "complete",
+      "excludedPaths": [],
+      "inference": true,
+      "publish": [],
+      "transitions": [
+        {
+          "defect": "first-page-skipped",
+          "status": "fixed"
+        }
+      ]
+    }
+  ]
+}
