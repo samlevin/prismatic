@@ -9,6 +9,7 @@ import {
   binding,
   check,
   generate,
+  include,
   loadPolicy,
   parseSource,
   placeholders,
@@ -479,7 +480,7 @@ function sources() {
   const list = [];
   const read = (path) =>
     substitute(
-      readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'),
+      include(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')),
       policy,
     );
   for (const role of Object.keys(policy.roles))
@@ -558,7 +559,14 @@ test('the review-code skill resolves #N as a pull request in both tools', () => 
       /fails because `<baseRefName>` no longer exists[^\n]*`git fetch origin <baseRefOid>`[^\n]*`git merge-base origin\/main <headRefOid>`[^\n]*`origin\/main` fallback/,
     );
     assert.match(skill, /combine their acceptance criteria, labeled by issue/);
-    assert.match(skill, /issue URLs \(every closing issue, or `none`/);
+    assert.match(
+      skill,
+      /Send the review packet with `review_mode=requested`, every closing issue, and the decisions from their comments\./,
+    );
+    assert.match(
+      skill,
+      /one or more issue URLs \(or `none` when the criteria come from the request\)/,
+    );
     assert.doesNotMatch(skill, /its issue's acceptance criteria/);
     assert.match(
       skill,
@@ -771,7 +779,7 @@ test("the delivery owner sends each handoff that handoff's own Policy line", () 
     const implementer = files.get(path);
     assert.ok(
       implementer.includes(
-        `\`review_mode=pre_pr\`, and the reviewer's own \`Policy:\` line composed from that resolver output (\`Policy: tool=<tool> role=${PREFIX}code-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)\`), never your own.`,
+        `\`review_mode=pre_pr\`, your branch as the remote ref, your worktree path, and the reviewer's own \`Policy:\` line composed from that resolver output (\`Policy: tool=<tool> role=${PREFIX}code-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)\`), never your own.`,
       ),
       path,
     );
@@ -782,7 +790,7 @@ test("the delivery owner sends each handoff that handoff's own Policy line", () 
     );
     assert.match(
       implementer,
-      /You need APPROVE for that exact base\/head pair\. On REQUEST CHANGES: fix, rerun the affected gates, push, and re-review with the same packet plus the previous head SHA and that round's findings verbatim\. After two rejected rounds, return BLOCKED with the open findings instead of looping\. Any base\/head change before the PR opens invalidates the approval\. Never self-approve/,
+      /You need APPROVE for that exact base\/head pair\. On REQUEST CHANGES: fix, rerun the affected checks, push, and re-review with the same packet, updated to the new head and check results, plus the previous head SHA and that round's findings verbatim\. After two rejected rounds, return BLOCKED with the open findings instead of looping\. Any base\/head change before the PR opens invalidates the approval\. Never self-approve/,
       path,
     );
   }
@@ -935,7 +943,7 @@ test('AGENTS.md holds the code-and-comments rules and the reviewer enforces them
     assert.doesNotMatch(files.get(path), /describe the current state/, path);
 });
 
-test('the code reviewer finds everything in one pass and scopes re-reviews to the fixes', () => {
+test('the code reviewer finds everything in one pass and widens a re-review as far as the changes reach', () => {
   const files = render();
   for (const path of [
     `.claude/agents/${PREFIX}code-reviewer.md`,
@@ -944,20 +952,29 @@ test('the code reviewer finds everything in one pass and scopes re-reviews to th
     const reviewer = files.get(path);
     assert.ok(
       reviewer.includes(
-        "Make one complete pass before writing the verdict: read the full diff, every changed file's callers, every acceptance criterion, and every test file for what it asserts and misses. Report every evidenced finding in this report; never hold one back for a later round.",
+        "Make one complete pass before writing the verdict: read the full diff, every changed file's callers, every acceptance criterion, and every test file for what it asserts and misses. Do this reading yourself; the changed-file summary and check results orient you and never replace it. Report every evidenced finding in this report; never hold one back for a later round.",
       ),
       path,
     );
     assert.ok(
       reviewer.includes(
-        "A re-review packet also carries the previous round's head SHA and findings.",
+        "The packet's acceptance criteria, accepted decisions, changed-file summary, check results, and verified prerequisites are supplied facts under that rule: read an issue and its comments only when the packet lacks its criteria or decisions, and a prerequisite PR only when `git ls-remote` shows its head is no longer the verified SHA.",
       ),
       path,
     );
+    assert.doesNotMatch(reviewer, /Read each listed issue/, path);
     assert.ok(
       reviewer.includes(
-        'On a re-review, confirm each previous finding is fixed or carry it forward as open, and read `git diff <previous head>..<head>` for defects the fix introduced. Raise no new finding on code that is unchanged since the previous head and was already in scope, unless the earlier round missed a defect that blocks acceptance.',
+        'On a re-review, confirm each previous finding is fixed or carry it forward as open, and read `git diff <previous head>..<head>` for defects the changes introduced. Widen when the changes reach further: when they alter other behavior or invalidate evidence an earlier round relied on, such as a caller, a shared contract, or a test, review everything they affect as on a first pass, and when the base changed, make a full first pass. Raise no new finding on code that the earlier round reviewed and these changes do not affect, unless the earlier round missed a defect that blocks acceptance.',
       ),
+      path,
+    );
+    // A narrower rule barred findings on unchanged code even when a fix
+    // changed how that code behaves.
+    assert.doesNotMatch(reviewer, /code that is unchanged since/, path);
+    assert.match(
+      reviewer,
+      /The `Base\/Head:` line carries the full base and head SHAs from the packet, and the verdict is valid only for that exact pair\./,
       path,
     );
     assert.match(
@@ -967,6 +984,192 @@ test('the code reviewer finds everything in one pass and scopes re-reviews to th
     );
     assert.match(reviewer, /Never: run tests,/, path);
   }
+});
+
+test('include inserts a shared source and rejects an unknown one', () => {
+  const base = mkdtempSync(join(tmpdir(), 'agent-policy-'));
+  mkdirSync(join(base, '.agents/includes'), { recursive: true });
+  writeFileSync(join(base, '.agents/includes/shared-rule.md'), 'Rule.\n');
+  assert.equal(include('A {{> shared-rule}} B', base), 'A Rule. B');
+  assert.equal(
+    substitute(include('A \\{{> shared-rule}} B', base), policy),
+    'A {{> shared-rule}} B',
+  );
+  for (const tag of [
+    '{{> missing}}',
+    '{{>shared-rule}}',
+    '{{> shared_rule}}',
+    '{{> ../roles/x}}',
+  ])
+    assert.throws(
+      () => include(`A ${tag} B`, base),
+      (error) => error.message === `Unknown include: ${tag}`,
+      tag,
+    );
+  writeFileSync(
+    join(base, '.agents/includes/nested.md'),
+    '{{> shared-rule}}\n',
+  );
+  assert.throws(
+    () => include('A {{> nested}} B', base),
+    (error) => error.message === 'Nested include in .agents/includes/nested.md',
+  );
+});
+
+test('render expands includes in skill references and leaves no tag behind', () => {
+  const base = mkdtempSync(join(tmpdir(), 'agent-policy-'));
+  mkdirSync(join(base, '.agents/roles'), { recursive: true });
+  mkdirSync(join(base, '.agents/includes'), { recursive: true });
+  mkdirSync(join(base, '.agents/workflows/flow/references'), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(base, '.agents/policy.json'),
+    JSON.stringify({ ...policy, roles: {} }),
+  );
+  writeFileSync(
+    join(base, '.agents/includes/shared-rule.md'),
+    'Rule for {{label}}.\n',
+  );
+  writeFileSync(
+    join(base, '.agents/workflows/flow.md'),
+    '---\nname: flow\ndescription: Flow.\n---\nBody.\n',
+  );
+  writeFileSync(
+    join(base, '.agents/workflows/flow/references/guide.md'),
+    'A {{> shared-rule}} B \\{{> shared-rule}}\n',
+  );
+  const files = render(base);
+  for (const target of [
+    `.claude/skills/${PREFIX}flow`,
+    `.agents/skills/${PREFIX}flow`,
+  ])
+    assert.equal(
+      files.get(`${target}/references/guide.md`),
+      `A Rule for ${policy.binding.label}. B {{> shared-rule}}\n`,
+      target,
+    );
+  writeFileSync(
+    join(base, '.agents/workflows/flow/references/guide.md'),
+    'A {{> missing}} B\n',
+  );
+  assert.throws(() => render(base), /Unknown include: \{\{> missing\}\}/);
+});
+
+test('the review packet has one source that the reviewer, the delivery procedure, and review-code carry', () => {
+  const files = render();
+  const packet = substitute(
+    readFileSync(
+      new URL('../.agents/includes/review-packet.md', import.meta.url),
+      'utf8',
+    ),
+    policy,
+  ).trimEnd();
+  for (const field of [
+    '`review_mode=pre_pr|requested`',
+    'the acceptance criteria',
+    'the immediate base SHA, the pushed head SHA',
+    "the reviewer's own `Policy:` line",
+    'the accepted decisions',
+    'a changed-file summary from `git diff --stat <base>..<head>`',
+    'the local check results with the SHA they ran at',
+    'for a branch stacked on another PR, that PR with the head SHA it was verified at',
+    "A re-review packet adds the previous round's head SHA and its findings verbatim.",
+  ])
+    assert.ok(packet.includes(field), field);
+  for (const path of [
+    `.claude/agents/${PREFIX}code-reviewer.md`,
+    `.codex/agents/${PREFIX}code-reviewer.toml`,
+    ...inBoth('implement/references/delivery.md'),
+    ...inBoth('review-code/SKILL.md'),
+  ])
+    assert.ok(files.get(path).includes(packet), path);
+  // No source restates the fields, so the copies cannot drift apart.
+  for (const source of [
+    'roles/code-reviewer.md',
+    'workflows/implement/references/delivery.md',
+    'workflows/review-code.md',
+  ]) {
+    const text = readFileSync(
+      new URL(`../.agents/${source}`, import.meta.url),
+      'utf8',
+    );
+    assert.match(text, /\{\{> review-packet\}\}/, source);
+    assert.doesNotMatch(
+      text,
+      /changed-file summary from|remote branch, immediate base SHA|head SHA, the worktree path/,
+      source,
+    );
+  }
+  assert.match(
+    readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8'),
+    /A review handoff after the final push sends the review packet in `\.agents\/includes\/review-packet\.md`/,
+  );
+});
+
+test('AGENTS.md is the one home of the check rules', () => {
+  const files = render();
+  const agentsMd = readFileSync(
+    new URL('../AGENTS.md', import.meta.url),
+    'utf8',
+  );
+  const [, body] = agentsMd.split(/^## Checks$/m);
+  assert.ok(body, 'AGENTS.md: Checks section');
+  const [checks] = body.split(/^## /m);
+  for (const rule of [
+    'While editing, run only the focused tests for what you touched.',
+    'Before the first push, run the narrowest set below that covers your change, once.',
+    'After a fix, rerun the checks that cover what the fix touched, and run more when the fix or a failure shows the change reaches further.',
+    'Never skip a required check, weaken an assertion, or drop a meaningful behavior test',
+  ])
+    assert.ok(checks.includes(rule), rule);
+  for (const path of inBoth('implement/references/delivery.md')) {
+    const delivery = files.get(path);
+    assert.match(
+      section(delivery, 'Build'),
+      /Run checks as the Checks section of `AGENTS\.md` says, and fix failures before you push\./,
+      path,
+    );
+    // The procedure used to restate these; the first conflicted with running
+    // more checks when a fix reaches further.
+    for (const copy of [
+      /rerun only the affected/,
+      /affected gates/,
+      /run only the focused tests/,
+      /Never skip tests/,
+    ])
+      assert.doesNotMatch(delivery, copy, path);
+  }
+});
+
+test('delivery reuses verified facts and keeps issue administration proportional', () => {
+  const files = render();
+  for (const path of inBoth('implement/references/delivery.md')) {
+    const delivery = files.get(path);
+    assert.match(
+      section(delivery, 'Inputs'),
+      /verified prerequisites with their SHAs, the project item ID,/,
+      path,
+    );
+    const claim = section(delivery, 'Claim');
+    assert.match(claim, /Post one claim comment/, path);
+    assert.match(
+      claim,
+      /take the item ID from the inputs or else find the item/,
+      path,
+    );
+    assert.match(
+      claim,
+      /Keep issue administration proportional to the change: read each piece of metadata once, write no plan beyond the claim's approach, and post no other issue comment unless you release the claim\. The PR body carries the final validation evidence\./,
+      path,
+    );
+  }
+  for (const path of inBoth('implement/SKILL.md'))
+    assert.match(
+      section(files.get(path), 'Isolated implementer exception'),
+      /verified prerequisites and their SHAs, the project item ID,/,
+      path,
+    );
 });
 
 test('the agents skill lints Markdown when it verifies', () => {
@@ -1963,6 +2166,20 @@ test('delivery owners and reviewers share one retrieval rule', () => {
     /fetch the missing part with a narrower query, a line range, or the next page/,
   );
   assert.match(evidence, /never to meet a size or a count/);
+  assert.match(
+    evidence,
+    /^- Start with targeted searches and the relevant callers/m,
+  );
+  // Read-only roles cannot write a temporary file, so they narrow the query.
+  assert.ok(
+    evidence.includes(
+      'An agent that can write saves output too large to read at once to a file from `mktemp` and inspects it there in later steps. A read-only role, such as a code reviewer, never writes that file: it reruns the query in narrower bounded pieces until it has seen every part it needs.',
+    ),
+  );
+  assert.doesNotMatch(
+    readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8'),
+    /^## Evidence$|mktemp/m,
+  );
   for (const path of [
     ...inBoth('implement/references/delivery.md'),
     ...inBoth('implement/references/queue.md'),

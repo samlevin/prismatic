@@ -29,7 +29,7 @@ The target is a pull request or a pushed branch in `{{repository}}`, never an is
 
 Run `node scripts/agent-policy.mjs resolve --tool <tool> --role code-reviewer`, adding `--model` or `--effort` only for an override. If it exits non-zero, stop and report its message verbatim. Compose `Policy: tool=<tool> role={{prefix}}code-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)`.
 
-Packet: `review_mode=requested`, repo, the PR URL when the target is a PR, issue URLs (every closing issue, or `none` and the source of the criteria), acceptance criteria, remote ref, base SHA (and whether it is an `origin/main` fallback), head SHA, the worktree path, and the `Policy:` line. Leave out your own opinion of the change.
+Send the review packet with `review_mode=requested`, every closing issue, and the decisions from their comments. {{> review-packet}} Add the PR URL when the target is a PR, the source of the criteria when the issue is `none`, and whether the base SHA is an `origin/main` fallback. Leave out your own opinion of the change.
 
 <!-- claude-only -->
 Use the Agent tool with `subagent_type: {{prefix}}code-reviewer` and the resolver's `model` and `effort` passed explicitly.
