@@ -1,20 +1,6 @@
-// The Docker Action entrypoint. GitHub starts container actions as root, so
-// this file does the few things that need root, then gives root up for good
-// before any child process starts (docker/runtime-policy.md):
-//
-// 1. It reads the Action inputs from the environment.
-// 2. It opens GITHUB_OUTPUT and GITHUB_STEP_SUMMARY for appending. They live
-//    on a runner-owned mount that the unprivileged user may not be allowed to
-//    write, so the run keeps these descriptors and never reopens the paths.
-// 3. It drops to the image's unprivileged user and checks that root cannot be
-//    restored.
-//
-// The review pipeline does not exist yet. Until ActionBootstrap replaces it,
-// a stub creates the run's private workspace under the container's /tmp,
-// starts the first git process there, and reports the run as skipped.
-//
-// eslint.config.mjs allows this file, and no other outside the adapters, to
-// import node:fs for the descriptor work and node:child_process for the stub.
+// GitHub starts container actions as root. Only the descriptor work here may
+// run as root; the drop that follows is irreversible, and the Action files stay
+// open because the unprivileged user may not reopen them (docker/runtime-policy.md).
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
@@ -28,7 +14,10 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { normalizeError } from '../../src/shared/errors.ts';
+import {
+  normalizeError,
+  type NormalizedError,
+} from '../../src/shared/errors.ts';
 import {
   createSecretRedactor,
   patternSecretRedactor,
@@ -50,9 +39,9 @@ export const workspaceParent = '/tmp';
 export const secretInputs = ['github-token', 'openai-api-key'] as const;
 
 // The environment and options every git process gets, as
-// docker/runtime-policy.md lists them: no system or global configuration, no prompts, no lazy fetches, and no
-// hooks, external diff programs, credential helpers, submodules, or
-// transports other than HTTPS.
+// docker/runtime-policy.md lists them: no system or global configuration, no
+// prompts, no lazy fetches, and no hooks, external diff programs, credential
+// helpers, submodules, or transports other than HTTPS.
 export function gitEnvironment(home: string): Record<string, string> {
   return {
     GIT_CONFIG_NOSYSTEM: '1',
@@ -115,11 +104,8 @@ export interface ProcessIdentity {
 export interface FileSystem {
   open(target: string, flags: number): number;
   isRegularFile(descriptor: number): boolean;
-  // Writes bytes from `offset` to the end and returns how many were written.
   write(descriptor: number, bytes: Uint8Array, offset: number): number;
   close(descriptor: number): void;
-  // Creates a new directory, readable only by its owner, whose name starts
-  // with `prefix`, and returns its path.
   makeTempDirectory(prefix: string): string;
   makeDirectory(target: string, mode: number): void;
 }
@@ -309,9 +295,7 @@ export function escapeCommandData(text: string): string {
     .replaceAll('\n', '%0A');
 }
 
-// The placeholder bootstrap. It runs after the privilege drop: it creates
-// the run's workspace, starts git there with the normative environment, and
-// reports the run as skipped, because no event is supported yet.
+// Placeholder until ActionBootstrap exists: no event is supported yet.
 export const runStub: Bootstrap = ({ channels }, { files, run }) => {
   const workspace = files.makeTempDirectory(
     path.join(workspaceParent, 'prismatic-'),
@@ -331,24 +315,20 @@ export const runStub: Bootstrap = ({ channels }, { files, run }) => {
     gitEnvironment(home),
   );
   if (result.error !== undefined)
-    throw new Error('git could not start.', { cause: result.error });
+    throw new Error('git did not run to completion.', { cause: result.error });
   if (result.status !== 0)
     throw new Error(
       `git init exited with status ${String(result.status)}: ${result.stderr}`,
     );
-  writeOutput(files, channels, 'result', 'skipped');
-  writeOutput(files, channels, 'skip-reason', 'unsupported-event');
   writeSummary(
     files,
     channels,
     'Prismatic skipped this run: the review pipeline is not built yet.\n',
   );
+  writeOutput(files, channels, 'result', 'skipped');
+  writeOutput(files, channels, 'skip-reason', 'unsupported-event');
 };
 
-// Runs the entrypoint and returns the process exit code: 0 after the
-// bootstrap finishes, 1 after any failure. A failure is reported as one
-// `::error::` line with secrets masked and, when GITHUB_OUTPUT is open, as
-// `result: failed`.
 export function runEntrypoint(
   system: EntrypointSystem,
   bootstrap: Bootstrap = runStub,
@@ -366,7 +346,14 @@ export function runEntrypoint(
     return 0;
   } catch (error) {
     const failure = normalizeError(error, redactor);
-    system.log(`::error::${escapeCommandData(failure.message)}`);
+    const messages: string[] = [];
+    for (
+      let level: NormalizedError | undefined = failure;
+      level;
+      level = level.cause
+    )
+      messages.push(level.message);
+    system.log(`::error::${escapeCommandData(messages.join(' Caused by: '))}`);
     try {
       writeOutput(system.files, channels, 'result', 'failed');
       writeOutput(system.files, channels, 'failure-reason', 'internal');

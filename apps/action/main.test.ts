@@ -531,7 +531,10 @@ describe('runStub', () => {
           { ...system({ identity }), run },
         ),
       ),
-    ).toMatchObject({ message: 'git could not start.', cause: error });
+    ).toMatchObject({
+      message: 'git did not run to completion.',
+      cause: error,
+    });
   });
 
   it('fails when git exits with an error', () => {
@@ -646,6 +649,19 @@ describe('runEntrypoint', () => {
     expect(code).toBe(1);
     expect(base.lines.join('\n')).not.toContain(token);
     expect(base.lines[0]).toMatch(/^::error::request failed with /);
+  });
+
+  it('names every cause in the error line', () => {
+    const base = system();
+    const code = runEntrypoint(base, () => {
+      throw new Error('git did not run to completion.', {
+        cause: Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' }),
+      });
+    });
+    expect(code).toBe(1);
+    expect(base.lines).toEqual([
+      '::error::git did not run to completion. Caused by: spawn git ENOENT',
+    ]);
   });
 
   it('still exits with 1 when the failure outputs cannot be written', () => {

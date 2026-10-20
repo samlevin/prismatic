@@ -71,9 +71,9 @@ COPY apps ./apps
 RUN npm run build
 
 # The runtime image. It keeps the shared libraries Git links against and the
-# CA certificates for HTTPS, removes npm, npx, corepack, and yarn so nothing
-# can install packages at run time, and adds the unprivileged user the
-# entrypoint drops to. Everything copied here belongs to root, so that user
+# CA certificates for HTTPS, removes npm, npx, corepack, and yarn so no
+# Node.js package manager is left at run time, and adds the unprivileged user
+# the entrypoint drops to. Everything copied here belongs to root, so that user
 # cannot change the code or the binaries.
 FROM base AS runtime
 RUN apt-get update \

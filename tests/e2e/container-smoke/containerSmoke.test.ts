@@ -134,7 +134,7 @@ describe('the Action image', () => {
     expect(https.status).toBe(0);
   });
 
-  it('has no package manager to install anything at run time', () => {
+  it('has no Node.js package manager at run time', () => {
     const found = inImage('/bin/sh', [
       '-c',
       'for tool in npm npx corepack yarn; do command -v "$tool"; done; true',
