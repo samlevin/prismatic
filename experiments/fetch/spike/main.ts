@@ -15,12 +15,12 @@ import {
   inventoryScenario,
   lazyFetchScenario,
   negotiationScenario,
-  noFullFetchScenario,
 } from './scenarios.ts';
 import { historyScenario } from './history.ts';
 import { largeScenario } from './large.ts';
 import { githubScenario } from './github.ts';
-import type { ScenarioRecord } from './record.ts';
+import { noFullFetchScenario } from '../lib/noFullFetch.ts';
+import type { ScenarioRecord } from '../lib/scenarioRecord.ts';
 
 const gitPath = '/usr/local/bin/git';
 
@@ -73,14 +73,14 @@ async function main(argv: readonly string[]): Promise<number> {
       records.push(await githubScenario(githubLab, github));
       records.push(
         noFullFetchScenario(
-          githubLab,
+          githubLab.git.log,
           records.filter((r) => r.id === 'github-sandbox'),
         ),
       );
     }
     records.push(
       noFullFetchScenario(
-        lab,
+        lab.git.log,
         records.filter(
           (r) => r.id !== 'github-sandbox' && r.id !== 'no-full-fetch',
         ),

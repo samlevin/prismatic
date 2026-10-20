@@ -1,6 +1,6 @@
 // Stage B as §5.4 describes it, built from the spike's primitives: blobless
 // commits, raw changed paths, the union manifest, ignore rules, metadata
-// admission, exact blob acquisition, the content probe, and the patches.
+// admission, blob acquisition by ID, the content probe, and the patches.
 // Each step's acquired objects are recorded. `scope: narrowed` is the
 // pipeline reorder P0.8 is asked to evaluate: it plans acquisition from the
 // incremental delta and the open findings' evidence paths only.
@@ -13,21 +13,30 @@ import {
   manifestCandidates,
   selectManifest,
 } from '../lib/plan.ts';
-import { unionManifest } from '../lib/inventory.ts';
+import {
+  ignoreFileMaxBytes,
+  parseCheckIgnore,
+  selectIgnoreFiles,
+} from '../lib/ignoreRules.ts';
+import { parseLsTree, unionManifest } from '../lib/inventory.ts';
 import type {
   ChangedPath,
   ManifestEntry,
   RejectedName,
 } from '../lib/inventory.ts';
-import { compareBlobSets, summarizeObjects } from '../lib/objectStore.ts';
-import type { SetComparison, StoredObject } from '../lib/objectStore.ts';
+import {
+  absentFrom,
+  summarizeObjects,
+  verifyAcquisition,
+} from '../lib/objectStore.ts';
+import type { AcquisitionCheck, StoredObject } from '../lib/objectStore.ts';
 import { probeContent } from '../lib/probe.ts';
 import { literalPathspec } from '../lib/sparsePattern.ts';
 import { nodeSpawner } from '../lib/processRunner.ts';
-import type { Client, Lab, StepRecord } from './lab.ts';
+import type { StepRecord } from '../lib/scenarioRecord.ts';
+import type { Client, Lab } from './lab.ts';
 
-export const ignoreFileMaxBytes = 64 * 1024;
-export const acquisitionBatchSize = 5000;
+const acquisitionBatchSize = 5000;
 const astGrepPath = '/usr/local/bin/ast-grep';
 
 export interface Revisions {
@@ -70,7 +79,7 @@ export interface Preparation {
   readonly rejectedNames: readonly RejectedName[];
   readonly manifest: readonly ManifestEntry[];
   readonly planned: AdmissionPlan;
-  readonly acquisition: SetComparison;
+  readonly acquisition: AcquisitionCheck;
   readonly acquiredBlobs: readonly StoredObject[];
   readonly eligible: readonly string[];
   readonly probeRejected: readonly { path: string; contentClass: string }[];
@@ -82,6 +91,37 @@ export interface Preparation {
   readonly patchBytes: number;
   readonly patchMs: number;
   readonly wallClockMs: number;
+}
+
+// ADR 0004, decision 3: fetch only the planned blobs the store lacks, then
+// check the store against the whole plan.
+async function acquirePlanned(
+  lab: Lab,
+  client: Client,
+  label: string,
+  planned: readonly string[],
+  steps: StepRecord[],
+): Promise<{ check: AcquisitionCheck; blobs: StoredObject[] }> {
+  const requested = absentFrom(await lab.inventory(client.dir), planned);
+  const blobs: StoredObject[] = [];
+  for (let index = 0; index < requested.length; index += acquisitionBatchSize) {
+    const acquired = await lab.acquireBlobs(
+      client,
+      `${label}, batch ${index / acquisitionBatchSize + 1}`,
+      requested.slice(index, index + acquisitionBatchSize),
+    );
+    steps.push(acquired.record);
+    if (acquired.value.status !== 0) throw new Error(acquired.record.stderr);
+    blobs.push(
+      ...acquired.record.acquired.objects.filter((o) => o.type === 'blob'),
+    );
+  }
+  const check = verifyAcquisition(
+    planned,
+    await lab.inventory(client.dir),
+    summarizeObjects(blobs),
+  );
+  return { check, blobs };
 }
 
 // Materializes only the bounded `.gitignore` blobs of one revision as
@@ -101,36 +141,29 @@ export async function evaluateIgnores(
   let ignoreFiles = 0;
   for (const revision of new Set(revisions)) {
     const listing = await lab.lsTree(client.dir, revision);
-    const rules = listing.entries.filter(
-      (entry) =>
-        entry.type === 'blob' &&
-        (entry.path === '.gitignore' || entry.path.endsWith('/.gitignore')),
+    const rules = selectIgnoreFiles(listing.entries, sizeOf);
+    for (const entry of rules.refused)
+      refused.push(`${revision.slice(0, 12)}:${entry.path}`);
+    const oids = [...new Set(rules.admitted.map((entry) => entry.oid))];
+    const { check } = await acquirePlanned(
+      lab,
+      client,
+      `ignore rules at ${revision.slice(0, 12)}`,
+      oids,
+      steps,
     );
-    const admitted = rules.filter((entry) => {
-      const size = sizeOf(entry.oid);
-      const ok =
-        entry.mode === '100644' &&
-        size !== undefined &&
-        size <= ignoreFileMaxBytes;
-      if (!ok) refused.push(`${revision.slice(0, 12)}:${entry.path}`);
-      return ok;
-    });
-    if (admitted.length > 0) {
-      const acquired = await lab.acquireBlobs(
-        client,
-        `ignore rules at ${revision.slice(0, 12)}`,
-        [...new Set(admitted.map((entry) => entry.oid))],
+    if (!check.exact)
+      throw new Error(
+        `Ignore rules at ${revision} were not acquired as planned: ${JSON.stringify(check)}`,
       );
-      steps.push(acquired.record);
-    }
     const blobs = await lab.readBlobs(
       client.dir,
-      admitted.map((entry) => entry.oid),
-      admitted.length * ignoreFileMaxBytes,
+      oids,
+      oids.length * ignoreFileMaxBytes,
     );
     const scratch = lab.scratchDir(`ignore-${revision.slice(0, 12)}`);
     await lab.git.ok(lab.root, ['init', '--quiet', scratch]);
-    for (const entry of admitted) {
+    for (const entry of rules.admitted) {
       const target = path.join(scratch, ...entry.path.split('/'));
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, blobs.get(entry.oid) ?? Buffer.alloc(0), {
@@ -147,10 +180,8 @@ export async function evaluateIgnores(
     );
     if (result.status !== 0 && result.status !== 1)
       throw new Error(`check-ignore failed: ${result.stderr}`);
-    for (const ignored of result.stdout.toString('utf8').split('\0')) {
-      if (ignored === '') continue;
+    for (const ignored of parseCheckIgnore(result.stdout))
       ignoredAt.set(ignored, [...(ignoredAt.get(ignored) ?? []), revision]);
-    }
   }
   return { ignoredAt, ignoreFiles, refusedIgnoreFiles: refused };
 }
@@ -164,12 +195,9 @@ async function blobAt(lab: Lab, repo: string, revision: string, file: string) {
     '--',
     literalPathspec(file),
   ]);
-  const match = /^(\d{6}) blob ([0-9a-f]{40})\t/.exec(
-    listing.stdout.toString('utf8'),
+  return parseLsTree(listing.stdout).entries.find(
+    (entry) => entry.type === 'blob',
   );
-  return match === null
-    ? undefined
-    : { mode: match[1] as string, oid: match[2] as string };
 }
 
 export async function prepare(
@@ -259,27 +287,12 @@ export async function prepare(
   }
   const planned = planAdmission(candidates, ignoredPaths);
 
-  const acquiredBlobs: StoredObject[] = [];
-  for (
-    let index = 0;
-    index < planned.oids.length;
-    index += acquisitionBatchSize
-  ) {
-    const batch = planned.oids.slice(index, index + acquisitionBatchSize);
-    const acquired = await lab.acquireBlobs(
-      client,
-      `admitted blobs ${index / acquisitionBatchSize + 1}`,
-      batch,
-    );
-    steps.push(acquired.record);
-    if (acquired.value.status !== 0) throw new Error(acquired.record.stderr);
-    acquiredBlobs.push(
-      ...acquired.record.acquired.objects.filter((o) => o.type === 'blob'),
-    );
-  }
-  const acquisition = compareBlobSets(
+  const { check: acquisition, blobs: acquiredBlobs } = await acquirePlanned(
+    lab,
+    client,
+    'admitted blobs',
     planned.oids,
-    summarizeObjects(acquiredBlobs),
+    steps,
   );
 
   // Probe the head side; a binary or LFS pointer never becomes eligible.

@@ -82,7 +82,7 @@ describe('planAdmission', () => {
     expect(plan.plannedBytes).toBe(100);
   });
 
-  it('stops at the aggregate budget without dropping already planned blobs', () => {
+  it('skips any blob that would exceed the aggregate cap and keeps admitting smaller ones', () => {
     const policy = { ...defaultPolicy, maxAggregateBytes: 250 };
     const plan = planAdmission(
       [

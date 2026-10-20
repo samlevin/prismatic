@@ -5,13 +5,14 @@
 // even when the delta does not. The narrowed plan acquires only the delta
 // and the findings' evidence paths (no obligations are pending in this
 // fixture, because every earlier round was fully reviewed).
+import { costRow, medianRows } from '../lib/costTable.ts';
+import type { CostRow } from '../lib/costTable.ts';
 import { sourceText } from '../lib/fixtures.ts';
 import type { FixtureChange, FixtureCommit } from '../lib/fixtures.ts';
+import { ScenarioBuilder } from '../lib/scenarioRecord.ts';
+import type { ScenarioRecord } from '../lib/scenarioRecord.ts';
 import type { Lab, Server } from './lab.ts';
 import { prepare } from './prepare.ts';
-import type { Preparation } from './prepare.ts';
-import { ScenarioBuilder } from './record.ts';
-import type { ScenarioRecord } from './record.ts';
 
 const moduleCount = 600;
 const moduleBytes = 6000;
@@ -100,29 +101,6 @@ function historyFixture(): {
   return { commits, branches };
 }
 
-function summarize(level: Level, scope: Scope, prep: Preparation) {
-  const sum = (pick: (step: Preparation['steps'][number]) => number): number =>
-    prep.steps.reduce((total, step) => total + pick(step), 0);
-  return {
-    history: level,
-    scope,
-    cumulativePaths: prep.cumulative.length,
-    incrementalPaths: prep.incremental.length,
-    manifestPaths: prep.manifest.length,
-    acquiredBlobs: sum((step) => step.acquired.byType.blob.count),
-    acquiredBlobBytes: sum((step) => step.acquired.byType.blob.bytes),
-    packBytes: sum((step) => step.packBytesAdded),
-    filesParsed: prep.filesReadForIndex,
-    bytesParsed: prep.bytesReadForIndex,
-    parseMs: prep.parseMs ?? 0,
-    patchBytes: prep.patchBytes,
-    patchMs: prep.patchMs,
-    wallClockMs: prep.wallClockMs,
-  };
-}
-
-type Row = ReturnType<typeof summarize>;
-
 async function measure(
   lab: Lab,
   server: Server,
@@ -130,7 +108,7 @@ async function measure(
   level: Level,
   scope: Scope,
   sizes: ReadonlyMap<string, number>,
-): Promise<Row> {
+): Promise<CostRow> {
   const commit = (mark: number): string => server.commits.get(mark) as string;
   const frontier = commit(branch.frontier);
   const client = await lab.createClient(
@@ -152,11 +130,8 @@ async function measure(
     sizeOf: (oid) => sizes.get(oid),
     parse: true,
   });
-  return summarize(level, scope, prep);
+  return costRow(level, scope, prep);
 }
-
-const median = (values: readonly number[]): number =>
-  [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
 
 export async function historyScenario(
   lab: Lab,
@@ -173,7 +148,7 @@ export async function historyScenario(
   for (const sha of server.commits.values())
     for (const [oid, size] of await lab.advertisedSizes(server, sha))
       sizes.set(oid, size);
-  const runs: Row[] = [];
+  const runs: CostRow[] = [];
   for (let repeat = 0; repeat < repeats; repeat += 1)
     for (const level of levelNames)
       for (const scope of scopes)
@@ -188,20 +163,9 @@ export async function historyScenario(
           ),
         );
   // Counts are identical across repeats; times are medians.
-  const table = levelNames.flatMap((level) =>
-    scopes.map((scope) => {
-      const same = runs.filter((r) => r.history === level && r.scope === scope);
-      const first = same[0] as Row;
-      return {
-        ...first,
-        parseMs: median(same.map((r) => r.parseMs)),
-        patchMs: median(same.map((r) => r.patchMs)),
-        wallClockMs: median(same.map((r) => r.wallClockMs)),
-      };
-    }),
-  );
-  const row = (level: Level, scope: Scope): Row =>
-    table.find((r) => r.history === level && r.scope === scope) as Row;
+  const table = medianRows(runs);
+  const row = (level: Level, scope: Scope): CostRow =>
+    table.find((r) => r.history === level && r.scope === scope) as CostRow;
   s.check(
     'the incremental delta is the same single path at every history level',
     levelNames.every((level) => row(level, 'union').incrementalPaths === 1),

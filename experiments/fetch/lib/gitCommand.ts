@@ -61,14 +61,11 @@ export interface GitRunnerOptions {
   readonly spawner: Spawner;
   readonly allowFileProtocol: boolean;
   readonly redactText: (text: string) => string;
-  readonly timeoutMs?: number;
-  readonly maxOutputBytes?: number;
 }
 
 export interface GitRunOptions {
   readonly input?: SpawnInput;
   readonly lazyFetch?: LazyFetch;
-  readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
 }
 
@@ -126,12 +123,8 @@ export class GitRunner {
       {
         cwd,
         env: gitEnvironment({ home: this.#options.home, lazyFetch }),
-        timeoutMs:
-          options.timeoutMs ?? this.#options.timeoutMs ?? defaultGitTimeoutMs,
-        maxOutputBytes:
-          options.maxOutputBytes ??
-          this.#options.maxOutputBytes ??
-          defaultGitMaxOutputBytes,
+        timeoutMs: defaultGitTimeoutMs,
+        maxOutputBytes: options.maxOutputBytes ?? defaultGitMaxOutputBytes,
         ...(options.input === undefined ? {} : { input: options.input }),
       },
     );
@@ -149,7 +142,6 @@ export class GitRunner {
     return redacted;
   }
 
-  // Runs git and throws GitCommandError unless it exits with status 0.
   async ok(
     cwd: string,
     args: readonly string[],

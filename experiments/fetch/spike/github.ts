@@ -4,10 +4,11 @@
 // Only public, read-only endpoints are used, and nothing is checked out.
 import { classifyAncestry } from '../lib/ancestry.ts';
 import type { AncestryProbe } from '../lib/ancestry.ts';
-import type { Client, Lab, StepRecord } from './lab.ts';
+import { addTreeSizes, field, sha } from '../lib/githubPayload.ts';
+import { ScenarioBuilder } from '../lib/scenarioRecord.ts';
+import type { ScenarioRecord, StepRecord } from '../lib/scenarioRecord.ts';
+import type { Client, Lab } from './lab.ts';
 import { prepare } from './prepare.ts';
-import { ScenarioBuilder } from './record.ts';
-import type { ScenarioRecord } from './record.ts';
 
 export interface GitHubTarget {
   readonly repository: string;
@@ -28,46 +29,6 @@ async function getJson(url: string): Promise<unknown> {
   });
   if (!response.ok) throw new Error(`GET ${url} returned ${response.status}`);
   return response.json();
-}
-
-function field(value: unknown, ...keys: string[]): unknown {
-  let current = value;
-  for (const key of keys) {
-    if (typeof current !== 'object' || current === null) return undefined;
-    current = (current as Record<string, unknown>)[key];
-  }
-  return current;
-}
-
-function sha(value: unknown, label: string): string {
-  if (typeof value !== 'string' || !/^[0-9a-f]{40}$/.test(value))
-    throw new Error(`GitHub returned no valid ${label}.`);
-  return value;
-}
-
-// Advertised blob sizes from the recursive tree API. A truncated response is
-// recorded; its missing entries stay unsized and cannot be admitted.
-async function treeSizes(
-  repository: string,
-  commit: string,
-  sizes: Map<string, number>,
-): Promise<boolean> {
-  const tree = await getJson(
-    `${api}/repos/${repository}/git/trees/${commit}?recursive=1`,
-  );
-  const entries = field(tree, 'tree');
-  if (Array.isArray(entries))
-    for (const entry of entries) {
-      const oid = field(entry, 'sha');
-      const size = field(entry, 'size');
-      if (
-        field(entry, 'type') === 'blob' &&
-        typeof oid === 'string' &&
-        typeof size === 'number'
-      )
-        sizes.set(oid, size);
-    }
-  return field(tree, 'truncated') === true;
 }
 
 function probe(
@@ -142,7 +103,14 @@ export async function githubScenario(
   const sizes = new Map<string, number>();
   const truncated: string[] = [];
   for (const commit of new Set([baseTip, mergeBase, head]))
-    if (await treeSizes(target.repository, commit, sizes))
+    if (
+      addTreeSizes(
+        await getJson(
+          `${api}/repos/${target.repository}/git/trees/${commit}?recursive=1`,
+        ),
+        sizes,
+      )
+    )
       truncated.push(commit);
 
   const client = await lab.createClient(
@@ -208,7 +176,7 @@ export async function githubScenario(
   });
   for (const step of prep.steps) s.step({ record: step });
   s.check(
-    'acquired blobs equal the planned blob IDs exactly',
+    'every planned blob is in the store and no unplanned blob arrived',
     prep.acquisition.exact,
     prep.acquisition,
   );
@@ -230,13 +198,9 @@ export async function githubScenario(
   );
 
   const headTree = await lab.lsTree(client.dir, head);
-  const acquired = new Set(prep.acquiredBlobs.map((o) => o.oid));
+  const store = await lab.inventory(client.dir);
   const outside = headTree.entries.find(
-    (e) =>
-      e.type === 'blob' &&
-      !acquired.has(e.oid) &&
-      !prep.ignored.ignoredAt.has(e.path) &&
-      e.path !== '.gitignore',
+    (e) => e.type === 'blob' && !store.has(e.oid),
   );
   if (outside) {
     const read = s.step(

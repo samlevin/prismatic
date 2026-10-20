@@ -109,26 +109,36 @@ export function acquiredBetween(
   );
 }
 
-export interface SetComparison {
+// The planned blob IDs the store does not hold yet. Only these are fetched:
+// a blob already present, such as an ignore file read earlier or the same
+// content at another path, is never requested again.
+export function absentFrom(
+  store: ObjectInventory,
+  planned: Iterable<string>,
+): string[] {
+  return [...new Set(planned)].filter((oid) => !store.has(oid));
+}
+
+export interface AcquisitionCheck {
   readonly exact: boolean;
+  // Planned blob IDs the store still lacks after acquisition.
   readonly missing: readonly string[];
+  // Blobs the acquisition added that the plan did not name.
   readonly unexpected: readonly string[];
 }
 
-// Compares the blobs a step acquired with the blob IDs it planned.
-export function compareBlobSets(
+export function verifyAcquisition(
   planned: Iterable<string>,
+  store: ObjectInventory,
   acquired: AcquiredObjects,
-): SetComparison {
+): AcquisitionCheck {
   const plannedSet = new Set(planned);
-  const acquiredSet = new Set(
-    acquired.objects
-      .filter((object) => object.type === 'blob')
-      .map((object) => object.oid),
-  );
-  const missing = [...plannedSet].filter((oid) => !acquiredSet.has(oid)).sort();
-  const unexpected = [...acquiredSet]
-    .filter((oid) => !plannedSet.has(oid))
+  const missing = [...plannedSet]
+    .filter((oid) => store.get(oid)?.type !== 'blob')
+    .sort();
+  const unexpected = acquired.objects
+    .filter((object) => object.type === 'blob' && !plannedSet.has(object.oid))
+    .map((object) => object.oid)
     .sort();
   return {
     exact: missing.length === 0 && unexpected.length === 0,

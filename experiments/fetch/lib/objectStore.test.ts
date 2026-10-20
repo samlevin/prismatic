@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  absentFrom,
   acquiredBetween,
-  compareBlobSets,
   parseObjectInventory,
   summarizeObjects,
+  verifyAcquisition,
 } from './objectStore.ts';
 
 const oid = (digit: string): string => digit.repeat(40);
@@ -76,27 +77,47 @@ describe('acquiredBetween', () => {
   });
 });
 
-describe('compareBlobSets', () => {
-  it('reports an exact match', () => {
-    const acquired = summarizeObjects([
-      { oid: oid('a'), type: 'blob', size: 1, diskSize: 1 },
-      { oid: oid('t'), type: 'tree', size: 1, diskSize: 1 },
+describe('absentFrom', () => {
+  it('keeps only planned blobs the store lacks, once each', () => {
+    const store = parseObjectInventory(`${oid('a')} blob 1 1\n`);
+    expect(absentFrom(store, [oid('a'), oid('b'), oid('b')])).toEqual([
+      oid('b'),
     ]);
-    expect(compareBlobSets([oid('a')], acquired)).toEqual({
+  });
+});
+
+describe('verifyAcquisition', () => {
+  const blob = (digit: string) => ({
+    oid: oid(digit),
+    type: 'blob' as const,
+    size: 1,
+    diskSize: 1,
+  });
+
+  it('accepts a planned blob that was already in the store', () => {
+    const store = parseObjectInventory(
+      `${oid('a')} blob 1 1\n${oid('b')} blob 1 1\n${oid('f')} tree 1 1\n`,
+    );
+    const acquired = summarizeObjects([
+      blob('b'),
+      { oid: oid('f'), type: 'tree', size: 1, diskSize: 1 },
+    ]);
+    expect(verifyAcquisition([oid('a'), oid('b')], store, acquired)).toEqual({
       exact: true,
       missing: [],
       unexpected: [],
     });
   });
 
-  it('names missing and unexpected blobs', () => {
-    const acquired = summarizeObjects([
-      { oid: oid('b'), type: 'blob', size: 1, diskSize: 1 },
-    ]);
-    expect(compareBlobSets([oid('a')], acquired)).toEqual({
+  it('names planned blobs still absent and blobs nobody planned', () => {
+    const store = parseObjectInventory(
+      `${oid('c')} blob 1 1\n${oid('d')} tree 1 1\n`,
+    );
+    const acquired = summarizeObjects([blob('c')]);
+    expect(verifyAcquisition([oid('a'), oid('d')], store, acquired)).toEqual({
       exact: false,
-      missing: [oid('a')],
-      unexpected: [oid('b')],
+      missing: [oid('a'), oid('d')],
+      unexpected: [oid('c')],
     });
   });
 });

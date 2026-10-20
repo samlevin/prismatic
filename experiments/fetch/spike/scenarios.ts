@@ -1,14 +1,14 @@
 // Scenarios on the review fixture: blobless inventory, admission and
-// probes, exact acquisition, the backfill alternative, lazy-fetch refusal,
-// ancestry, and the rule that no failure widens the scope.
+// probes, acquisition by blob ID, the backfill alternative, lazy-fetch
+// refusal, and ancestry.
 import path from 'node:path';
 import { classifyAncestry } from '../lib/ancestry.ts';
 import type { AncestryProbe } from '../lib/ancestry.ts';
 import { sparseFileFor, literalPathspec } from '../lib/sparsePattern.ts';
-import type { Client, Lab, Server, StepRecord } from './lab.ts';
+import { ScenarioBuilder } from '../lib/scenarioRecord.ts';
+import type { ScenarioRecord, StepRecord } from '../lib/scenarioRecord.ts';
+import type { Client, Lab, Server } from './lab.ts';
 import { prepare } from './prepare.ts';
-import { ScenarioBuilder } from './record.ts';
-import type { ScenarioRecord } from './record.ts';
 import {
   marks,
   newlineName,
@@ -168,7 +168,7 @@ export async function admissionScenario(
   const reason = (file: string): string | undefined =>
     prep.planned.excluded.find((e) => e.path === file)?.reason;
   s.check(
-    'acquired blobs equal the planned blob IDs exactly',
+    'every planned blob is in the store and no unplanned blob arrived',
     prep.acquisition.exact,
     prep.acquisition,
   );
@@ -694,52 +694,5 @@ export async function ancestryScenario(
     results[item.name] = result;
   }
   s.data(results);
-  return s.build();
-}
-
-// Scans every Git process the run started: a fetch without the blob filter
-// would be a full download.
-export function noFullFetchScenario(
-  lab: Lab,
-  records: readonly ScenarioRecord[],
-): ScenarioRecord {
-  const s = new ScenarioBuilder(
-    'no-full-fetch',
-    [3, 5],
-    'No failure widens the scope, and no fetch ever omits the blob filter',
-  );
-  const fetches = lab.git.log.filter((entry) => entry.args.includes('fetch'));
-  const unfiltered = fetches.filter(
-    (entry) => !entry.args.includes('--filter=blob:none'),
-  );
-  s.check(
-    'every fetch the spike issued carried --filter=blob:none',
-    unfiltered.length === 0,
-    {
-      fetches: fetches.length,
-      unfiltered: unfiltered.map((e) => e.args.join(' ')),
-    },
-  );
-  const failed = records.flatMap((record) =>
-    record.steps
-      .filter((step) => step.status !== 0)
-      .map((step) => ({
-        scenario: record.id,
-        step: step.step,
-        blobs: step.acquired.byType.blob.count,
-        objects: step.acquired.objects.length,
-      })),
-  );
-  s.check(
-    'every failed step acquired no objects',
-    failed.every((step) => step.objects === 0),
-    failed,
-  );
-  const lazy = lab.git.log.filter((entry) => entry.lazyFetch !== 'disabled');
-  s.check(
-    'lazy fetch was enabled only for the backfill measurements',
-    lazy.every((entry) => entry.args.includes('backfill')),
-    lazy.map((e) => e.args.join(' ')),
-  );
   return s.build();
 }

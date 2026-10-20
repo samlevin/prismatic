@@ -107,27 +107,21 @@ describe('GitRunner', () => {
     expect(call?.options).not.toHaveProperty('input');
   });
 
-  it('passes input, limits and the lazy-fetch switch through', async () => {
+  it('passes input, the output limit and the lazy-fetch switch through', async () => {
     const { spawner, calls } = recordingSpawner(result());
-    const runner = new GitRunner({
-      ...base,
-      spawner,
-      timeoutMs: 5,
-      maxOutputBytes: 6,
-    });
+    const runner = new GitRunner({ ...base, spawner });
     await runner.run('/repo', ['backfill'], {
       input: 'x',
       lazyFetch: 'enabled-for-this-process',
     });
-    await runner.run('/repo', ['fetch'], { timeoutMs: 7, maxOutputBytes: 8 });
+    await runner.run('/repo', ['cat-file', '--batch'], { maxOutputBytes: 8 });
     expect(calls[0]?.options).toMatchObject({
       input: 'x',
-      timeoutMs: 5,
-      maxOutputBytes: 6,
+      maxOutputBytes: defaultGitMaxOutputBytes,
     });
     expect(calls[0]?.options.env.GIT_NO_LAZY_FETCH).toBe('0');
     expect(calls[1]?.options).toMatchObject({
-      timeoutMs: 7,
+      timeoutMs: defaultGitTimeoutMs,
       maxOutputBytes: 8,
     });
     expect(runner.log.map((entry) => entry.lazyFetch)).toEqual([

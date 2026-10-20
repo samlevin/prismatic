@@ -6,7 +6,7 @@ Status: accepted
 
 The review reads pull request content without ever checking it out. Spec §5.3 and §5.4 describe a two-stage blobless fetch: stage A fetches the trusted base tip with `--depth=1 --filter=blob:none`, and stage B fetches the PR head, the merge-base, the last reviewed head and the findings' baseline commits the same way. Blobs then arrive only for paths that pass metadata admission. The draft named `git backfill --sparse --no-include-edges <sha>^!` as the acquisition command and required `GIT_NO_LAZY_FETCH=1` on every Git process, so that a read outside the acquired scope fails instead of downloading. P0.8 (#141) is the go/no-go gate for that contract: if the pinned Git cannot acquire exactly the intended objects, the strategy changes before any production slice builds on it, and the repository is never fetched in full to get past the gate.
 
-The spike lives in `experiments/fetch/`. `experiments/fetch/run-in-image.sh` runs it inside the Action image, with the pinned Git 2.56.0 from `docker/binaries.lock`, as the unprivileged user (uid 10001). Every Git process gets the §5.3 environment and `-c` options. Fixture remotes are generated bare repositories served over `file://` with `uploadpack.allowFilter` and `uploadpack.allowAnySHA1InWant`, the settings GitHub behaves like. The GitHub sandbox run fetches this public repository anonymously over HTTPS, pull request #236, with the normative options only. Each step lists every object in the store before and after it, so the results record the ID, type and size of every acquired object. `experiments/fetch/results/2026-10-19.json` holds the run this ADR cites. Every check in it passed.
+The spike lives in `experiments/fetch/`. `experiments/fetch/run-in-image.sh` runs it inside the Action image, with the pinned Git 2.56.0 from `docker/binaries.lock`, as the unprivileged user (uid 10001). Every Git process gets the §5.3 environment and `-c` options. Fixture remotes are generated bare repositories served over `file://` with `uploadpack.allowFilter` and `uploadpack.allowAnySHA1InWant`, the settings GitHub behaves like. The GitHub sandbox run fetches this public repository anonymously over HTTPS, pull request #236, with the normative options only. Each recorded step lists every object in the store before and after it, so the results record the ID, type and size of every object a recorded step acquired. Three parts of the run have no step records: the `history-cost` preparations, which keep only per-run counts, the preparation in `lazy-fetch-disabled`, and the commit fetches that set up the `backfill` clients. `experiments/fetch/results/2026-10-19.json` holds the run this ADR cites. Every check in it passed.
 
 ## Findings
 
@@ -29,7 +29,7 @@ git -c fetch.negotiationAlgorithm=noop fetch --no-tags --no-write-fetch-head \
   --recurse-submodules=no --filter=blob:none --stdin origin
 ```
 
-with one planned blob ID per input line. This is not a lazy fetch, so it runs with `GIT_NO_LAZY_FETCH=1`. The acquired blobs equalled the planned IDs exactly in every scenario, on the fixtures and on GitHub. A blob ID the server does not have fails the fetch with `not our ref` and acquires nothing.
+with one planned blob ID per input line. This is not a lazy fetch, so it runs with `GIT_NO_LAZY_FETCH=1`. In every scenario, on the fixtures and on GitHub, the fetch of the admitted blobs acquired exactly the planned IDs. A blob ID the server does not have fails the fetch with `not our ref` and acquires nothing.
 
 The noop negotiator is required. Once a local ref names a commit, as it does after stage B stores the PR ref, the default negotiator advertises that commit, and the server leaves out every blob reachable from it. The fetch then fails with `did not send all necessary objects` and acquires nothing. Without local refs the default negotiator happens to work, which is why this is easy to miss.
 
@@ -69,7 +69,7 @@ All 130 fetches in the fixture run and all 10 in the GitHub run carried `--filte
 
 ### The 2 GiB fixture
 
-The fixture's tree holds 2,148,329,321 bytes of blobs: 512 incompressible 4 MiB files and 200 source files. For a 10-file change, stages A and B downloaded 48,219 bytes of pack data and 80,780 bytes of blobs, the 20 head and merge-base sides of the changed files. The limit is 100 MiB.
+The fixture's tree holds 2,148,329,321 bytes of blobs: 512 incompressible 4 MiB files and 200 source files. For a 10-file change, stages A and B downloaded 48,219 bytes of pack data. The blobs in it were the 6-byte `.gitignore` and 80,774 bytes for the 20 head and merge-base sides of the changed files. The limit is 100 MiB.
 
 ### Preparation cost grows with reviewed history
 
@@ -88,13 +88,13 @@ Under the union manifest, unrelated blob acquisition, parsing and patch generati
 
 The narrowed rows are a lower bound for the plan decision 6 adopts. The fixture has no pending ranges or obligations, because every earlier round was fully reviewed. They also leave out the files the one-hop impact graph needs, which the bounded reference search finds. The spike did not measure either addition.
 
-Wall-clock time is not the problem: under half a second against a 22-minute deadline. The read volume is. At the cap, a one-file delta reads 2.85 MiB of unrelated source to index it, 18% of the 16 MiB context read budget, at 6 KB per file. Real files are larger, and the cost repeats on every incremental round.
+Wall-clock time is not the problem: under half a second against a 22-minute deadline. The read volume is. At the cap, a one-file delta reads 2.83 MiB of unrelated source to index it, 18% of the 16 MiB context read budget, at 6 KB per file. Real files are larger, and the cost repeats on every incremental round.
 
 ## Decision
 
 1. Keep the two blobless stages, `--depth=1 --filter=blob:none`, no checkout, `GIT_NO_LAZY_FETCH=1` on every Git process, and no full-fetch fallback.
 2. Acquire blobs with the exact blob-ID fetch above, never with `git backfill`. This is the tested equivalent §5.4 allows. The plan lists object IDs from metadata, deduplicated across revisions and counted against the 100 MiB budget, and the fetch sends them in batches of `fetch.backfillBatchSize`. Because the request names objects rather than paths, no sparse pattern is written and no path needs escaping for acquisition. Pathspecs for `git diff` and `git grep` stay literal (`:(literal)<path>`).
-3. Every acquisition step verifies that the acquired blob IDs equal the planned IDs and fails otherwise.
+3. Every acquisition step requests only the planned blob IDs the store does not already hold. Afterwards it verifies that every planned blob ID is in the store and that no unplanned blob arrived, and fails otherwise. A blob already in the store, such as a `.gitignore` read for admission or content shared with another path, is not requested again and is not reported as missing.
 4. Blob sizes come from the GitHub tree API. `remote-object-info` is not used while GitHub does not offer it.
 5. Ancestry is proved by blobless deepening within `fetch.deepenCapCommits`, or by the compare API. `rewritten` requires complete history of both commits, checked per commit as above, or the compare API. Everything else is `unknown`.
 6. Adopt the narrowed acquisition plan for incremental and reconcile rounds. Acquisition, parsing and patches cover the incremental delta, the evidence paths of open findings, paths with pending ranges or `CoverageObligation` records, and the files the bounded reference search admits for the one-hop impact graph. The rest of the union manifest stays as metadata for eligibility, the hidden-path detector, coverage and ledger reconstruction. It narrows the union manifest and does not replace it. Full rounds still acquire the whole union manifest.
@@ -106,7 +106,7 @@ Wall-clock time is not the problem: under half a second against a 22-minute dead
 - No dependent slice is blocked. The bounded strategy works, with the acquisition command changed.
 - P1.0 (#147) orchestrates the exact blob-ID fetch instead of `git backfill`, and plans acquisition per decision 6.
 - P1.1 (#148) allows `-c fetch.negotiationAlgorithm=noop` on fetches that name blob IDs, and keeps `protocol.file.allow=always` reachable only from the test harness.
-- P1.9 (#156) acquires admitted blobs by ID and verifies the acquired set. It needs no sparse-checkout configuration.
+- P1.9 (#156) acquires admitted blobs by ID and verifies the store against the plan, as decision 3 says. It needs no sparse-checkout configuration.
 - P1.4 (#151) and P3.2a (#169) build patches and indexes from the narrowed set in incremental rounds, and P3.2a owns the open question under decision 6. P1.10 (#157) follows decision 5.
 - The spec's §5.3 `RepositoryFetcher` row and §5.4 scoped-backfill paragraph still name `git backfill`. This ADR supersedes them until the spec is revised.
 - `docker/binaries.lock` notes that this contract was proved against Git 2.56.0. A Git upgrade reruns `experiments/fetch/run-in-image.sh` (`docker/runtime-policy.md`).

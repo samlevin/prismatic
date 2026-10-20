@@ -1,5 +1,15 @@
 // The shape of one scenario's result in the recorded JSON.
-import type { StepRecord } from './lab.ts';
+import type { AcquiredObjects } from './objectStore.ts';
+
+// One Git process and the objects it added to the local store.
+export interface StepRecord {
+  readonly step: string;
+  readonly status: number | null;
+  readonly elapsedMs: number;
+  readonly acquired: AcquiredObjects;
+  readonly packBytesAdded: number;
+  readonly stderr?: string;
+}
 
 export interface Check {
   readonly name: string;
@@ -46,6 +56,7 @@ export class ScenarioBuilder {
     this.#data = value;
   }
 
+  // A scenario with no checks proves nothing, so it does not pass.
   build(): ScenarioRecord {
     return {
       id: this.#id,

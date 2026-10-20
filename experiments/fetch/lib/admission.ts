@@ -2,8 +2,8 @@
 // is admitted for acquisition only when its tree entry is a regular file
 // with a reviewed extension outside the prohibited directories, it is not
 // ignored, and its advertised size is known and within the per-blob cap.
-// The plan deduplicates object IDs across revisions and stops at the
-// aggregate cap; it never reads content.
+// The plan deduplicates object IDs across revisions and skips any blob that
+// would exceed the aggregate cap; it never reads content.
 
 export const defaultExtensions: readonly string[] = [
   '.ts',

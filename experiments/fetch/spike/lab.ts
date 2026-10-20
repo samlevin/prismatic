@@ -4,6 +4,7 @@
 // the unit tests cover the library under ../lib instead.
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { parseCatFileBatch } from '../lib/catFile.ts';
 import { GitRunner } from '../lib/gitCommand.ts';
 import type { LazyFetch } from '../lib/gitCommand.ts';
 import {
@@ -11,7 +12,7 @@ import {
   inventoryFormat,
   parseObjectInventory,
 } from '../lib/objectStore.ts';
-import type { AcquiredObjects, ObjectInventory } from '../lib/objectStore.ts';
+import type { ObjectInventory } from '../lib/objectStore.ts';
 import { historyCompleteFrom } from '../lib/ancestry.ts';
 import { parseLsTree, parseRawDiff } from '../lib/inventory.ts';
 import type { RawDiff, TreeListing } from '../lib/inventory.ts';
@@ -19,6 +20,7 @@ import { fastImportStream } from '../lib/fixtures.ts';
 import type { FixtureCommit } from '../lib/fixtures.ts';
 import { nodeSpawner } from '../lib/processRunner.ts';
 import type { ProcessResult } from '../lib/processRunner.ts';
+import type { StepRecord } from '../lib/scenarioRecord.ts';
 import { patternSecretRedactor } from '../../../src/shared/redaction.ts';
 
 export interface Server {
@@ -31,15 +33,6 @@ export interface Server {
 export interface Client {
   readonly dir: string;
   readonly url: string;
-}
-
-export interface StepRecord {
-  readonly step: string;
-  readonly status: number | null;
-  readonly elapsedMs: number;
-  readonly acquired: AcquiredObjects;
-  readonly packBytesAdded: number;
-  readonly stderr?: string;
 }
 
 export interface Measured<T> {
@@ -147,7 +140,6 @@ export class Lab {
     return total;
   }
 
-  // Runs one Git step and records what it added to the store.
   async step(
     repo: string,
     step: string,
@@ -289,23 +281,7 @@ export class Lab {
       input: oids.map((oid) => `${oid}\n`).join(''),
       maxOutputBytes: maxBytes + oids.length * 128 + 1,
     });
-    const blobs = new Map<string, Buffer>();
-    const out = result.stdout;
-    let offset = 0;
-    while (offset < out.length) {
-      const newline = out.indexOf(10, offset);
-      const header = out.subarray(offset, newline).toString('latin1');
-      const match = /^([0-9a-f]{40}) blob (\d+)$/.exec(header);
-      if (match === null)
-        throw new Error(`Unexpected cat-file header: ${header}`);
-      const size = Number(match[2]);
-      blobs.set(
-        match[1] as string,
-        out.subarray(newline + 1, newline + 1 + size),
-      );
-      offset = newline + 1 + size + 1;
-    }
-    return blobs;
+    return parseCatFileBatch(result.stdout);
   }
 
   async writeFile(file: string, content: string): Promise<void> {

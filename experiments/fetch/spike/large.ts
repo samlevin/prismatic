@@ -2,10 +2,10 @@
 // change downloads under 100 MiB.
 import { seededContent, sourceText } from '../lib/fixtures.ts';
 import type { FixtureChange, FixtureCommit } from '../lib/fixtures.ts';
+import { ScenarioBuilder } from '../lib/scenarioRecord.ts';
+import type { ScenarioRecord } from '../lib/scenarioRecord.ts';
 import type { Lab } from './lab.ts';
 import { prepare } from './prepare.ts';
-import { ScenarioBuilder } from './record.ts';
-import type { ScenarioRecord } from './record.ts';
 
 const assetCount = 512;
 const assetBytes = 4 * 1024 * 1024;
@@ -92,7 +92,7 @@ export async function largeScenario(lab: Lab): Promise<ScenarioRecord> {
     0,
   );
   s.check(
-    'exactly the planned blobs arrive',
+    'every planned blob is in the store and no unplanned blob arrived',
     prep.acquisition.exact,
     prep.acquisition,
   );

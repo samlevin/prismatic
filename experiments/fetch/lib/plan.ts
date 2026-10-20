@@ -3,8 +3,7 @@
 // which ignored paths are the §5.1 hidden-reviewable condition. The spike's
 // stage B (spike/prepare.ts) runs Git around these.
 import { planAdmission } from './admission.ts';
-import type { AdmissionPolicy, Candidate } from './admission.ts';
-import { defaultPolicy } from './admission.ts';
+import type { Candidate } from './admission.ts';
 import type { ManifestEntry } from './inventory.ts';
 
 export type PlanScope = 'union' | 'narrowed';
@@ -75,7 +74,6 @@ export function hiddenReviewablePaths(
   head: string,
   baseTip: string,
   candidates: readonly Candidate[],
-  policy: AdmissionPolicy = defaultPolicy,
 ): string[] {
   const hidden: string[] = [];
   for (const [path, revisions] of ignoredAt) {
@@ -83,8 +81,7 @@ export function hiddenReviewablePaths(
     const atHead = candidates.filter(
       (candidate) => candidate.path === path && candidate.revision === head,
     );
-    if (planAdmission(atHead, new Set(), policy).admitted.length > 0)
-      hidden.push(path);
+    if (planAdmission(atHead, new Set()).admitted.length > 0) hidden.push(path);
   }
   return hidden.sort();
 }
