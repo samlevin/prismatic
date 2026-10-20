@@ -7,10 +7,12 @@ import tseslint from 'typescript-eslint';
 import boundaries, {
   sourceModules,
 } from './tooling/eslint/importBoundaries.ts';
+import processRunner from './tooling/eslint/processRunnerSeam.ts';
 
 const javascriptFiles = ['**/*.{js,mjs,cjs}'];
 const typescriptFiles = ['**/*.ts'];
 const codeFiles = [...javascriptFiles, ...typescriptFiles];
+const root = fileURLToPath(new URL('.', import.meta.url));
 
 // The adapters come from the boundary rule's module table, so the two lists
 // cannot drift.
@@ -64,7 +66,7 @@ export default [
       'boundaries/imports': [
         'error',
         {
-          root: fileURLToPath(new URL('.', import.meta.url)),
+          root,
           packages: [],
           exceptions: [
             // The entrypoint's root-only descriptor work, and the stub's
@@ -77,6 +79,14 @@ export default [
         },
       ],
     },
+  },
+  // Only tests reach ReadOnlyProcessRunner's spawner, the seam the test
+  // harness uses to allow the file transport.
+  {
+    files: ['src/**/*.ts', 'apps/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    plugins: { 'process-runner': processRunner },
+    rules: { 'process-runner/seam': ['error', { root }] },
   },
   // Outside the adapters, production code also may not reach the network,
   // the filesystem, or native code through globals that need no import.
