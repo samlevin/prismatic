@@ -1,10 +1,10 @@
 # {{label}} leaf delivery
 
-This file is the one procedure for delivering a leaf issue of `{{repository}}`, or reworking one of its PRs. The delivery owner follows it: the main thread running {{prefix}}implement by default, or an isolated {{prefix}}implementer when the owner delegated the leaf. The owner creates and owns the worktree, claims the issue, implements, runs the checks, gets the pre-PR review, runs stack operations, and opens the ready-for-review PR. No other agent does any of that for it. Run autonomously within the assignment; ask only for a material missing decision or authority. Retrieve evidence as `.agents/evidence.md` describes.
+This file is the one procedure for delivering a leaf issue of `{{repository}}`, or reworking one of its PRs. The delivery owner follows it: a {{prefix}}implementer dispatched by {{prefix}}implement by default, or the main thread for an explicit `inline` leaf or rework. The owner creates and owns the worktree, claims the issue, implements, runs the checks, gets the pre-PR review, runs stack operations, and opens the ready-for-review PR. No other agent does any of that for it. Run autonomously within the assignment; ask only for a material missing decision or authority. Retrieve evidence as `.agents/evidence.md` describes.
 
 ## Inputs
 
-You start from the target (an issue URL, or a PR URL for rework), trunk `main`, and a fresh `origin/main` SHA. A request or handoff may also supply acceptance criteria, accepted decisions, verified prerequisites with their SHAs, the project item ID, the base to build on, validation requirements, and `reviewer` overrides. Reuse what was supplied. Fetch only what is missing or may be stale, and return BLOCKED when you cannot establish the issue or its acceptance criteria.
+You start from the target (an issue URL, or a PR URL for rework), trunk `main`, and a fresh `origin/main` SHA. A request or handoff may also supply the base branch and SHA, the leaf's ledger line, the delivery ID, the effort decision with any explicit constraints, accepted decisions, verified prerequisites with their SHAs, the project item ID, validation requirements, and `reviewer` overrides. Reuse what was supplied. Fetch only what is missing or may be stale, and return BLOCKED when you cannot establish the issue or its acceptance criteria.
 
 ## Read
 
@@ -22,7 +22,7 @@ Before claiming, check for one logical outcome, testable acceptance criteria, a 
 Building on an unmerged blocker makes the branch stack-eligible, so run the [Stack](#stack) check before you create it. Run `git fetch origin`, then print the branch name with `node scripts/branch-name.mjs <issue> --actor agent`, adding `--layer <n>` for layer 2 and up.
 
 <!-- claude-only -->
-In the main thread, create the worktree from the checkout root with `git worktree add -b <branch> .claude/worktrees/<branch-slug> <base-SHA>`, where `<branch-slug>` is the branch name with `/` replaced by `-`. Run every later command in that worktree. An isolated implementer starts in the linked worktree the Agent tool created under `.claude/worktrees/` and runs `git switch -c <branch> <base-SHA>` there.
+A {{prefix}}implementer starts in the linked worktree the Agent tool created under `.claude/worktrees/` and runs `git switch -c <branch> <base-SHA>` there. For inline work, the main thread creates the worktree from the checkout root with `git worktree add -b <branch> .claude/worktrees/<branch-slug> <base-SHA>`, where `<branch-slug>` is the branch name with `/` replaced by `-`. Run every later command in that worktree.
 <!-- /claude-only -->
 <!-- codex-only -->
 Create the worktree inside the workspace so the sandbox can write to it: `git worktree add -b <branch> .codex/worktrees/<branch-slug> <base-SHA>` from the checkout root, where `<branch-slug>` is the branch name with `/` replaced by `-`. Every later command runs with `exec_command.workdir` set to that worktree. Use default permissions first; escalate only after an observed sandbox denial.
@@ -32,7 +32,7 @@ Run `npm ci` inside the worktree when the checks need Node dependencies; never s
 
 ## Claim
 
-Check for existing claims, PRs, and branches. Post one claim comment (agent, branch, worktree, approach, likely files, planned checks) with `gh api -X POST repos/{{repository}}/issues/<N>/comments -F body=@/abs/claim.md`. Move the project item to In progress: discover the Status field ID and option IDs with `gh api users/{{project.owner}}/projectsV2/{{project.number}}/fields`, take the item ID from the inputs or else find the item whose `content.id` is the issue's REST `id` in `gh api 'users/{{project.owner}}/projectsV2/{{project.number}}/items?per_page=100' --paginate`, then run `gh api -X PATCH users/{{project.owner}}/projectsV2/{{project.number}}/items/<ITEM> --input /abs/status.json` with `{"fields": [{"id": <STATUS_FIELD_ID>, "value": "<OPTION_ID>"}]}`. This is your only status move; the issue-state rule in `AGENTS.md` (Delivery binding) governs every other status.
+Check for existing claims, PRs, and branches. Post one claim comment (agent, branch, worktree, approach, likely files, planned checks, and the effort, rule, evidence, and reason) ending in the `{{prefix}}claim` and `{{prefix}}effort` records that [queue.md](queue.md#records) shows, with the delivery ID as the claim's agent (your tool and the issue number when there is none), with `gh api -X POST repos/{{repository}}/issues/<N>/comments -F body=@/abs/claim.md`. Move the project item to In progress: discover the Status field ID and option IDs with `gh api users/{{project.owner}}/projectsV2/{{project.number}}/fields`, take the item ID from the inputs or else find the item whose `content.id` is the issue's REST `id` in `gh api 'users/{{project.owner}}/projectsV2/{{project.number}}/items?per_page=100' --paginate`, then run `gh api -X PATCH users/{{project.owner}}/projectsV2/{{project.number}}/items/<ITEM> --input /abs/status.json` with `{"fields": [{"id": <STATUS_FIELD_ID>, "value": "<OPTION_ID>"}]}`. This is your only status move; the issue-state rule in `AGENTS.md` (Delivery binding) governs every other status.
 
 Keep issue administration proportional to the change: read each piece of metadata once, write no plan beyond the claim's approach, and post no other issue comment unless you release the claim. The PR body carries the final validation evidence.
 
@@ -41,6 +41,10 @@ Keep issue administration proportional to the change: read each piece of metadat
 Write code plus meaningful tests for changed behavior, and update the nearest docs for contract or operator changes. Run checks as the Checks section of `AGENTS.md` says, and fix failures before you push. If the same command or blocker fails twice without new evidence, stop and return BLOCKED instead of repeating it. Keep a terse log of commands, results, and the tested SHA.
 
 Re-read: before the first push, and again before pushing each rework, re-read in full every file you edited, plus one generated file for each edited source. Read for meaning, which a diff cannot show: other lines that state the rule you changed, references to anything you renamed or moved, and qualifiers a rewrite dropped. Fix what you find before pushing.
+
+## Escalation
+
+When a medium attempt exposes a problem that matches a rubric rule in the {{prefix}}implement skill, stop implementing and return `Status: ESCALATION REQUEST` with the rule, the evidence, why medium with the written plan is insufficient, the branch and head, completed checks, and open work. Never raise your own effort. An explicit medium constraint rules escalation out. A routine failure, formatting, an environment problem, a first unsuccessful attempt, or the number of review rounds never qualifies, and escalation adds no retries or review rounds.
 
 ## Stack
 
@@ -74,7 +78,7 @@ You need APPROVE for that exact base/head pair. On REQUEST CHANGES: fix, rerun t
 
 ## PR
 
-Only the delivery owner opens PRs. Load the {{prefix}}plain-language skill, write the body to a file, and open the PR through REST with `gh api -X POST repos/{{repository}}/pulls -f title=<title> -f head=<branch> -f base=<base> -F body=@/abs/body.md`. Give it a Conventional Commits title that has a component scope, the repository template, the immediate base, `Closes #N` on the final layer only, `Parent issue or epic: #P` when one exists, and validation evidence including the pre-PR approval base/head SHAs and the settings lines from your result. Open it ready for review, then link stacked PRs bottom to top with the {{prefix}}stack skill. Repository automation moves the issue when the PR opens; report the state you find at handoff as the issue-state rule in `AGENTS.md` says. Once a PR exists, never invoke {{prefix}}code-reviewer for that branch again; rework goes through your checks plus formal review. Replies to review comments go on the PR.
+Only the delivery owner opens PRs. Load the {{prefix}}plain-language skill, write the body to a file, and open the PR through REST with `gh api -X POST repos/{{repository}}/pulls -f title=<title> -f head=<branch> -f base=<base> -F body=@/abs/body.md`. Give it a Conventional Commits title that has a component scope, the repository template, the immediate base, `Closes #N` on the final layer only, `Parent issue or epic: #P` when one exists, and validation evidence including `Pre-PR review: APPROVE; base=<full SHA>; head=<full SHA>` and the settings lines from your result. Record the effort, rule, evidence, and reason, with any explicit constraint. Add a usage record: input, cached input, and output or reasoning tokens for the parent, the implementer, and the reviewer, as far as the tool reports them, naming each metric it does not report. Claim no savings and compare nothing with inline delivery. Open it ready for review, then link stacked PRs bottom to top with the {{prefix}}stack skill. Repository automation moves the issue when the PR opens; report the state you find at handoff as the issue-state rule in `AGENTS.md` says. Once a PR exists, never invoke {{prefix}}code-reviewer for that branch again; rework goes through your checks plus formal review. Replies to review comments go on the PR.
 
 ## Rework
 
@@ -86,4 +90,24 @@ Stay inside the authority that `AGENTS.md` (Autonomous delivery) gives a deliver
 
 ## Result
 
-Return READY FOR REVIEW or BLOCKED (`BLOCKED: gh stack not installed` with the `gh` version when the extension check fails): issue, branch, worktree, base and head SHAs, PR URL(s), stack id, check results, approval base/head SHAs (mark historical if rework moved the head), the issue's project state as you found it (reported, never corrected), blocker, then your own settings line (`Advisory policy: ...` in the main thread, `Requested settings: Policy: <as dispatched>` in an isolated implementer), followed by one `Requested settings: Policy: <as sent>` line per agent you or a skill you ran spawned, such as {{prefix}}code-reviewer or {{prefix}}issue-triager, in spawn order. No narrative.
+Return READY FOR REVIEW, BLOCKED (`BLOCKED: gh stack not installed` with the `gh` version when the extension check fails), or ESCALATION REQUEST in these fixed fields, with no narrative. Details go in the PR body. Report the issue's project state as you found it, never corrected.
+
+```text
+Status: READY FOR REVIEW | BLOCKED | ESCALATION REQUEST
+Issue: #N
+PR: <URL(s) or none>
+Branch: <name>
+Worktree: <path>
+Base: <branch> <SHA>
+Head: <SHA>
+Stack: <id or none>
+Effort: <level>; rule=<default | user override | rule ID>; evidence=<reference>; reason=<reason>
+Check: <command> | <PASS | FAIL | not run>
+Review: <APPROVE | REQUEST CHANGES | BLOCKED | skipped | historical>; base=<SHA>; head=<SHA>
+Project: <state as read>
+Blocker: <none, or one line; an escalation request also names completed checks and open work>
+Requested settings: Policy: <as dispatched>
+Requested settings: Policy: <as sent>
+```
+
+Give one `Check:` line per check, and one `Requested settings: Policy: <as sent>` line per agent you or a skill you ran spawned, such as {{prefix}}code-reviewer or {{prefix}}issue-triager, in spawn order. In the main thread, replace your own `Requested settings:` line with `Advisory policy: ...`.
