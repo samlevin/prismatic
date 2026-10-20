@@ -91,6 +91,23 @@ describe('parseHistory', () => {
     });
   });
 
+  test('accepts a check by a second agent that is not the labeler', () => {
+    const history = cleanHistory();
+    history.labels['labeledBy'] = 'agent:prism-implementer';
+    history.labels['check'] = {
+      status: 'confirmed',
+      by: 'agent:label-checker',
+      on: '2026-10-20',
+      notes: 'Agreed.',
+    };
+    expect(parseHistory(history).labels.check).toEqual({
+      status: 'confirmed',
+      by: 'agent:label-checker',
+      on: '2026-10-20',
+      notes: 'Agreed.',
+    });
+  });
+
   test('accepts a partial fix and a defect first published in a later round', () => {
     const history = sampleHistory();
     history['scenarios'] = ['incremental-fix'];
@@ -265,17 +282,6 @@ describe('parseHistory', () => {
           notes: 'Changed a severity.',
         }),
       'checker must not be the labeler',
-    ],
-    [
-      'an agent as checker',
-      (h) =>
-        void (h.labels['check'] = {
-          status: 'confirmed',
-          by: 'Agent:prism-code-reviewer',
-          on: '2026-10-19',
-          notes: 'Looked fine.',
-        }),
-      'the checker must be a person',
     ],
     [
       'the labeler as checker in another case',

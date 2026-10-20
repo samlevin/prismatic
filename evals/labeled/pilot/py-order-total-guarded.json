@@ -98,7 +98,10 @@
     "labeledBy": "agent:prism-implementer",
     "labeledOn": "2026-10-19",
     "check": {
-      "status": "pending"
+      "status": "confirmed",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "_line_total sums every line of the order, which is exactly what order_total_cents must return; only the singular name misleads, so the clean label stands. The line-total-none decoy on line 29 is a true decoy because the only caller raises OrderNotFound on None first."
     },
     "defects": [],
     "decoys": [

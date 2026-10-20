@@ -17,7 +17,7 @@ The code in `evals/lib/` implements each definition, so a metric here and its co
 A history is one synthetic pull request reviewed over one or more rounds. Each is a JSON file named `<id>.json`. Following §16.2, a history keeps four kinds of content apart:
 
 - `source`: the base tree and, per round, the changed files (full new content, or `null` for a deletion), the trigger (`opened`, `synchronize`, `force-push`), and the author actions taken before that round is reviewed. The only action so far is `dismiss`.
-- `labels`: the defects and decoys, who labeled them, and the second person's check.
+- `labels`: the defects and decoys, who labeled them, and the second checker's check.
 - `expected`: per round, the coverage the labeler expects, the paths policy excludes, whether the round needs a model call, which defects should first be published, and which findings should be fixed, persist or be dismissed.
 - Nothing else. Mock model responses for deterministic tests live with those tests, never in a labeled history; the parser refuses unknown keys, including `mockResponses`.
 
@@ -38,7 +38,7 @@ Every history records its origin, author, creation date, license and notes. The 
 ## Labeling and checking
 
 1. One person labels a history: defects, decoys, eligibility and availability, introduction and fix rounds, and the expected behavior per round. The labeler is recorded in `labels.labeledBy`.
-2. A second person checks the labels and records `confirmed` or `amended` in `labels.check` with their GitHub login, the date and notes. The checker cannot be the labeler (compared without case), and cannot be an agent: the parser refuses a checker that starts with `agent:`. Until then the check is `pending`.
+2. A second checker reads the labels and records `confirmed` or `amended` in `labels.check` with their identity, the date and notes. The checker cannot be the labeler (compared without case); the parser refuses that. For the pilot (P0.11a) the checker may be another agent, recorded as `agent:<role>`, because the pilot supports no quality claim. The release corpus (P0.11b) requires a person's GitHub login as checker, and its slice adds that rule to the parser. Until a check is recorded it is `pending`.
 3. Scoring refuses a history whose check is pending. A run that only looks for implementation problems, such as the P0.12 pilot, may pass `allowPendingChecks`; its numbers are never reported as quality results.
 4. Labels are frozen before the variant they score is run. Nobody who labels or checks a history sees that variant's output first.
 5. After a run, a person adjudicates each published finding: which labeled defect it matches, if any, and whether its `introducedBy` supports the causal claim. The scorer never matches findings itself.

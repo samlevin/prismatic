@@ -19,17 +19,17 @@ In `go-display-name-nil-profile`, round 2 adds a nil check on the user rather th
 
 ## Label status
 
-An agent (`agent:prism-implementer`) wrote every label on 2026-10-19. The second check is pending for all 10 histories. Scoring refuses pending histories unless the caller passes `allowPendingChecks`, which P0.12 may use to find implementation problems but never for a reported result. The checker must be a person other than the labeler; the parser refuses a checker that starts with `agent:`.
+An agent (`agent:prism-implementer`) wrote every label on 2026-10-19. A second agent (`agent:label-checker`) checked all 10 histories on 2026-10-20; each history's `labels.check` holds its verdict and notes. One check is `amended`: `go-config-from-env-clean` gained an upper bound on `READ_TIMEOUT_MS`, because the unbounded value overflowed the duration and disabled the read timeout, so the history is now genuinely clean. The protocol lets the pilot use an agent as checker because the pilot supports no quality claim; the release corpus (P0.11b) requires a person, and #274 tracks a person's check of these labels. Scoring refuses pending histories unless the caller passes `allowPendingChecks`, which P0.12 may use to find implementation problems but never for a reported result.
 
 To check a history, the checker reads its source round by round, then its defects, decoys and expected behavior, and decides whether each label is right. Then they replace `labels.check` with:
 
 ```json
 {
   "status": "confirmed",
-  "by": "<checker's GitHub login>",
+  "by": "<checker's GitHub login, or agent:<role> for the pilot>",
   "on": "<YYYY-MM-DD>",
   "notes": "<what was checked, and any disagreement>"
 }
 ```
 
-Use `amended` instead of `confirmed` when the check changed a label, and say what changed in `notes`. Run `npx vitest run evals` afterwards. It fails when a label no longer matches its source.
+Use `amended` instead of `confirmed` when the check changed a label or a source line, and say what changed in `notes`. The checker cannot be the labeler; the parser refuses that. Run `npx vitest run evals` afterwards. It fails when a label no longer matches its source.

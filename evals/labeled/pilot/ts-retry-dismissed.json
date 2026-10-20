@@ -113,7 +113,10 @@
     "labeledBy": "agent:prism-implementer",
     "labeledOn": "2026-10-19",
     "check": {
-      "status": "pending"
+      "status": "confirmed",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "Line 12 never runs the task when attempts <= 0, so line 22 throws undefined. Medium severity is right. The dismissal before round 2 and the 2-line shift in round 3 are as labeled."
     },
     "defects": [
       {

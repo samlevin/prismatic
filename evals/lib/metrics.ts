@@ -331,7 +331,7 @@ export interface RateEstimate {
 }
 
 export interface ScoreOptions extends BootstrapOptions {
-  // Score histories whose second-person label check is still pending. Only
+  // Score histories whose second label check is still pending. Only
   // for runs that find implementation problems, such as the P0.12 pilot;
   // never for a reported quality result.
   readonly allowPendingChecks?: boolean;

@@ -71,7 +71,10 @@
     "labeledBy": "agent:prism-implementer",
     "labeledOn": "2026-10-19",
     "check": {
-      "status": "pending"
+      "status": "confirmed",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "Vendor line 3 no longer escapes <, and chart.ts line 4 interpolates a caller-supplied unit. The evidence sits in the excluded vendor path, so the defect is ineligible and coverage is partial. A finding on chart.ts line 4 that names the vendored escape should adjudicate to vendor-escape-dropped, not count as false."
     },
     "defects": [
       {

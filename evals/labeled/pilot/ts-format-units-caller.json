@@ -70,7 +70,10 @@
     "labeledBy": "agent:prism-implementer",
     "labeledOn": "2026-10-19",
     "check": {
-      "status": "pending"
+      "status": "confirmed",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "format.ts line 7 changes the parameter to dollars while the unchanged summary.ts lines 9-10 still pass a total in cents. Cross-file evidence is correct."
     },
     "defects": [
       {

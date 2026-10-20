@@ -162,7 +162,10 @@
     "labeledBy": "agent:prism-implementer",
     "labeledOn": "2026-10-19",
     "check": {
-      "status": "pending"
+      "status": "confirmed",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "Lines 31 and 15 match their markers. The round 2 nil check on the user leaves the Profile dereference in place, so persists is right, and round 3 fixes it. Dropping the user nil check in round 3 is fine because the Store contract returns ErrNotFound. The partial-fix tag here covers a fix attempt that missed its target rather than a partial repair."
     },
     "defects": [
       {

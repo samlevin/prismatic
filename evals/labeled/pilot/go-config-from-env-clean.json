@@ -72,7 +72,7 @@
             "\t}",
             "\tif raw, ok := lookup(\"READ_TIMEOUT_MS\"); ok {",
             "\t\tms, err := strconv.Atoi(raw)",
-            "\t\tif err != nil || ms < 1 {",
+            "\t\tif err != nil || ms < 1 || ms > 3600000 {",
             "\t\t\treturn Settings{}, fmt.Errorf(\"invalid READ_TIMEOUT_MS %q\", raw)",
             "\t\t}",
             "\t\tsettings.ReadTimeout = time.Duration(ms) * time.Millisecond",
@@ -154,7 +154,10 @@
     "labeledBy": "agent:prism-implementer",
     "labeledOn": "2026-10-19",
     "check": {
-      "status": "pending"
+      "status": "amended",
+      "by": "agent:label-checker",
+      "on": "2026-10-20",
+      "notes": "Checked round 1 config.go and the round 2 test against the PR body. Line 36 converted READ_TIMEOUT_MS with time.Duration(ms) * time.Millisecond and no upper bound, so a value above 9223372036854 overflowed int64 and silently disabled the read timeout that main.go line 17 installs. Amended line 33 to reject ms above 3600000 (one hour), which makes the history genuinely clean. No labels; the clean-pr scenario stands."
     },
     "defects": [],
     "decoys": []
