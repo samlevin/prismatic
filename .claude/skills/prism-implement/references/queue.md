@@ -4,18 +4,18 @@ The main thread running prism-implement follows this file for a container or epi
 
 ## Read the ledger
 
-Run `node scripts/delivery-queue.mjs <N> --actor <delivery ID>`. The read-only script refetches over REST on every run: native sub-issues recursively, blocked-by edges, claim and effort comments, project Status and Size, PRs, and `agent/*` branches. It caches field IDs only within one run. A nested issue with children is a container too: it gets no branch, no PR, and no acceptance criteria, and its own leaves join the ledger. It orders the leaves so every blocker comes before the leaves it blocks, breaking ties by issue number, and prints one line per leaf: state, effort decision, base, branch and head, PR, project state, Size, claim, and blocker.
+Run `node scripts/delivery-queue.mjs <N> --actor <delivery ID>`, adding `--effort <level>` when the request overrides the implementer's effort. The read-only script refetches over REST on every run: native sub-issues recursively, each leaf's blocked-by edges and the state of each blocker, claim and effort comments, project Status and Size, PRs, and `agent/*` branches. It caches field IDs only within one run. It counts only PRs from a collaborator whose head branch is in `samlevin/prismatic`, so a fork or an outside contributor cannot hide a leaf or become a stack base. A nested issue with children is a container too: it gets no branch, no PR, and no acceptance criteria, and its own leaves join the ledger. It orders the leaves so every blocker comes before the leaves it blocks, breaking ties by issue number, and prints one line per leaf: state, effort decision, base, branch and head, PR, project state, Size, claim, and blocker.
 
 Each leaf gets one state:
 
 - `done`: closed, or its closing PR merged.
 - `in review`: an open PR already closes it. Record the PR and skip the leaf.
 - `owned elsewhere`: another agent or person claimed it and did not release the claim. Ask the person before taking it over.
-- `resume`: the request said to resume it (`--resume <leaf>`), or its claim names this delivery's ID and a worktree that `git worktree list` shows here. The implementer reuses that worktree and the pushed branch, keeping the branch's name; a stacked branch follows the rework and resume rule of the prism-stack skill. Any other unreleased claim is `owned elsewhere`, including one whose worktree is missing here, because it may live on another machine or in the other tool.
+- `resume`: its `prism-claim` record names this delivery's ID (`--actor`), and either that claim's worktree shows in `git worktree list` here or the request said to resume that leaf (`--resume <leaf>`, with `--actor` set to the earlier delivery's ID). The implementer reuses that worktree and the pushed branch, keeping the branch's name; a stacked branch follows the rework and resume rule of the prism-stack skill. Any other unreleased claim is `owned elsewhere`, including a free-text claim and one whose worktree is missing here without `--resume`, because it may live on another machine or in the other tool.
 - `waiting`: a blocker is unmet. A blocker is met when it is closed, or when its open PR qualifies for stacking under the [Gate](delivery.md#gate); then the line's base is that PR's branch and head. Two or more stackable prerequisites need a stacking decision from the person.
 - `ready`: no unmet blocker. The implementer still runs the gate before it claims.
 
-A dependency cycle, an inaccessible child or blocker, a link to another repository, or a malformed record shows as `waiting` with a `BLOCKED:` blocker on that leaf only; the other lines still print, and the script exits non-zero.
+A dependency cycle, an inaccessible leaf or blocker, a blocker in another repository, or a malformed record shows as `waiting` with a `BLOCKED:` blocker on that leaf only. A sub-issue in another repository prints as a `BLOCKED:` line of its own, and its siblings stay in the ledger. The other lines still print, and the script exits non-zero.
 
 ## Records
 
@@ -26,7 +26,7 @@ The implementer's one claim comment carries both records, each on its own line, 
 <!-- prism-effort {"effort":"medium","rule":"default","evidence":"issue/spec","reason":"The written plan resolves the design."} -->
 ```
 
-A release comment posts the claim record again with `"released":true`. A user override records `"rule":"user override"` with the selected effort and the explicit constraint as evidence and reason; it holds for every later run. An initial high decision, or a later escalation, also records the unresolved `question` and a `criteria` object whose keys are the matching rule's `requires` list in `.agents/policy.json`, each set to `true`; a later escalation adds `"later":true`:
+A release comment posts the claim record again with `"released":true`. A user override records `"rule":"user override"` and `"agent":"<delivery ID>"` with the selected effort and the explicit constraint as evidence and reason; it holds for every later run of that delivery and ends with it. An initial high decision, or a later escalation, also records the unresolved `question` and a `criteria` object whose keys are the matching rule's `requires` list in `.agents/policy.json`, each set to `true`; a later escalation adds `"later":true`:
 
 ```html
 <!-- prism-effort {"effort":"high","rule":"H3-demonstrated-limit","later":true,"question":"<unresolved correctness question>","evidence":"<failing case or finding>","reason":"<why medium with the plan is insufficient>","criteria":{"mediumAttempt":true,"reproducibleFailureOrFinding":true,"designRevisionRequired":true,"unresolvedReasoning":true}} -->
@@ -36,7 +36,7 @@ You post the later-escalation record yourself, once, with `gh api -X POST repos/
 
 ## Deliver
 
-Delivery is sequential by default. Run `--next`: it returns a `resume` leaf before any `ready` leaf, and when the earliest remaining leaf is `owned elsewhere` it returns that leaf and its claim instead of skipping it, so you ask the person first. Print the announcement line it prints, dispatch that leaf to one prism-implementer as the prism-implement skill describes, and record its fixed result before you start the next leaf. Rerun the script after every result and when you resume.
+Delivery is sequential by default. Run `--next`: it returns a `resume` leaf before any `ready` leaf, and when the earliest remaining leaf is `owned elsewhere` it returns that leaf and its claim instead of skipping it, so you ask the person first. Print the announcement line it prints; when your own assessment selects high for a leaf the ledger shows at medium, print the full line from the prism-implement skill with the rule and evidence instead. Dispatch that leaf to one prism-implementer as the prism-implement skill describes, and record its fixed result before you start the next leaf. Rerun the script after every result and when you resume.
 
 When a leaf ends BLOCKED and the implementer released its claim, add it to `--skip <leaf,...>` for the rest of this delivery so `--next` moves on, and keep the blocked results in a file outside tracked paths rather than in this conversation. Retry that leaf only when new evidence resolves its blocker. An L leaf, or one that fails the gate, gets planning or decomposition through the prism-create-github-issue skill within the accepted scope, or a recorded blocker. Never relax the gate.
 

@@ -14,7 +14,7 @@ You are the dispatcher. Each leaf and each PR rework goes to its own prism-imple
 2. Parse `inline`, `parallel`, and overrides from the request. `reviewer model <name>` and `reviewer effort <level>` apply to prism-code-reviewer. An unprefixed `model <name>` or `effort <level>`, or one with an `implementer` prefix, applies to prism-implementer. A partial override changes only the named setting. Overrides never modify `.agents/policy.json` or workstation configuration, they end with this task, and every continuation and recovery handoff keeps them.
 3. `git fetch origin` (read-only on the human checkout) and record the `origin/main` SHA.
 4. Pick a delivery ID once, `<tool>-<issue>-<UTC timestamp>`, and pass it as `--actor` and in every assignment, so the queue recognizes claims this delivery made.
-5. Run `node scripts/delivery-queue.mjs <N> --actor <delivery ID>`, adding `--resume <leaf>` only when the request says to resume that leaf. It accepts a container or a single leaf, refetches everything over REST on every run, and prints one ledger line per leaf. [references/queue.md](references/queue.md) defines the states and records.
+5. Run `node scripts/delivery-queue.mjs <N> --actor <delivery ID>`, adding `--effort <level>` for an implementer effort override, and `--resume <leaf>` only when the request says to resume that leaf, with `--actor` set to the delivery ID in that leaf's claim. It accepts a container or a single leaf, refetches everything over REST on every run, and prints one ledger line per leaf. [references/queue.md](references/queue.md) defines the states and records.
 
 ## Pick the mode
 
@@ -49,7 +49,7 @@ Labels (risk, severity, area), shared-contract changes, Size, file count, multip
 
 An explicit `effort <level>` or `implementer effort <level>` overrides the rubric for this task. An explicit medium prevents automatic escalation; if it then prevents delivery, report the concrete blocker instead of raising effort. Reviewer settings stay independent of the implementer's.
 
-The queue prints the announcement for the leaf `--next` selects. Before every dispatch, print it: `Implementation effort: medium (default)` for ordinary delivery, and before every dispatch or redispatch above medium `Implementation effort: medium -> <selected effort>; issue: #N; rule: <H1/H2/H3 or user override>; evidence: <specific reference and unresolved problem>; reason: <why medium is insufficient>`. It is an announcement, not an approval request, and reporting a choice never changes runtime effort.
+The queue prints the announcement for the leaf `--next` selects, including an `--effort` override; when your own assessment selects high, compose the line yourself. Before every dispatch, print it: `Implementation effort: medium (default)` for ordinary delivery, and before every dispatch or redispatch above medium `Implementation effort: medium -> <selected effort>; issue: #N; rule: <H1/H2/H3 or user override>; evidence: <specific reference and unresolved problem>; reason: <why medium is insufficient>`. It is an announcement, not an approval request, and reporting a choice never changes runtime effort.
 
 ## Settings
 

@@ -10,7 +10,7 @@ const POSITIVE_INTEGER = /^[1-9]\d*$/;
 // Only collaborators can claim work or record an effort decision.
 const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const USAGE =
-  'Usage: delivery-queue.mjs <issue> [--next] [--resume <issue>] [--actor <delivery id>] [--skip <issue,...>]';
+  'Usage: delivery-queue.mjs <issue> [--next] [--resume <issue>] [--actor <delivery id>] [--effort <level>] [--skip <issue,...>]';
 
 // Every run refetches GitHub; nothing is cached between runs.
 export function restClient(run = execFileSync) {
@@ -111,37 +111,44 @@ export function claimRecord(comments) {
   let active = null;
   for (const comment of trusted(comments)) {
     const body = comment.body ?? '';
+    const login = comment.user?.login;
     const value = record(body, 'claim');
     if (value) {
-      if (!value.released) active = { ...value, url: comment.html_url };
+      if (!value.released)
+        active = { ...value, structured: true, login, url: comment.html_url };
       else if (active?.agent === value.agent) active = null;
+    } else if (body.includes('<!-- prism-')) {
+      // Another record, such as a later escalation, is never a claim.
     } else if (/\breleas(?:e|ed|es|ing)\b/i.test(body)) {
-      if (/\bclaim/i.test(body) && active?.login === comment.user?.login)
-        active = null;
+      if (/\bclaim/i.test(body) && active?.login === login) active = null;
     } else if (/\bclaim(?:s|ed|ing)?\b/i.test(body))
       active = {
-        agent: comment.user?.login,
+        agent: login,
+        structured: false,
         branch: /`(agent\/[^`\s]+)`/.exec(body)?.[1],
         worktree: /`([^`\s]*\.(?:claude|codex)\/worktrees\/[^`\s]+)`/.exec(
           body,
         )?.[1],
         url: comment.html_url,
-        login: comment.user?.login,
+        login,
       };
   }
   return active;
 }
 
-// A user override pins every later decision; each recorded later escalation
-// to high counts toward the transition limit.
-export function effortRecord(comments, policy) {
+// A user override holds for the delivery that recorded it and pins every
+// later decision there; each later escalation to high counts toward the limit.
+export function effortRecord(comments, policy, actor) {
   let decision = implementationEffort(policy);
   let constraint = null;
   let transitions = 0;
   for (const comment of trusted(comments)) {
     const value = record(comment.body, 'effort');
     if (!value) continue;
-    if (value.rule === 'user override') constraint = value;
+    if (value.rule === 'user override') {
+      if (!actor || value.agent !== actor) continue;
+      constraint = value;
+    }
     decision = implementationEffort(policy, {
       decision: constraint ?? value,
       transitions,
@@ -232,52 +239,79 @@ function repositoryOf(issue) {
 export function deliveryQueue(
   policy,
   number,
-  { api = restClient(), resume, actor, worktrees = [] } = {},
+  { api = restClient(), resume, actor, override, worktrees = [] } = {},
 ) {
   const { repository, project } = policy.binding;
   const repo = `repos/${repository}`;
   const nodes = new Map();
   const leaves = [];
   const errors = [];
-  const read = (n, tree, ancestors = []) => {
+  const inaccessible = (n, error) => {
+    const message = `issue #${n} inaccessible: ${failureMessage(error)}`;
+    errors.push(message);
+    return message;
+  };
+  // Links to another repository are reported, never read as numbers here.
+  const split = (related) => {
+    const local = [];
+    const foreign = [];
+    for (const entry of related) {
+      const other = repositoryOf(entry);
+      if (other && other.toLowerCase() !== repository.toLowerCase())
+        foreign.push(`${other}#${entry.number}`);
+      else local.push(entry.number);
+    }
+    return { local, foreign };
+  };
+  const read = (n, ancestors = []) => {
     if (ancestors.includes(n)) {
       errors.push(`sub-issue cycle: ${[...ancestors, n].join(' -> ')}`);
       return;
     }
-    if (!nodes.has(n)) {
-      try {
-        const node = {
-          issue: api.get(`${repo}/issues/${n}`),
-          children: api.list(`${repo}/issues/${n}/sub_issues`),
-          dependencies: api.list(`${repo}/issues/${n}/dependencies/blocked_by`),
-          comments: api.list(`${repo}/issues/${n}/comments`),
-        };
-        for (const related of [...node.children, ...node.dependencies]) {
-          const other = repositoryOf(related);
-          if (other && other.toLowerCase() !== repository.toLowerCase())
-            throw new Error(
-              `links ${other}#${related.number}, outside ${repository}`,
-            );
-        }
-        nodes.set(n, node);
-      } catch (error) {
-        const message = `issue #${n} inaccessible: ${failureMessage(error)}`;
-        errors.push(message);
-        nodes.set(n, { error: message, children: [], dependencies: [] });
-      }
+    if (nodes.has(n)) return;
+    const node = { children: [], dependencies: [], foreign: [], comments: [] };
+    nodes.set(n, node);
+    try {
+      node.issue = api.get(`${repo}/issues/${n}`);
+      const children = split(api.list(`${repo}/issues/${n}/sub_issues`));
+      node.children = children.local;
+      for (const other of children.foreign)
+        errors.push(
+          `issue #${n} has a sub-issue in another repository: ${other}`,
+        );
+    } catch (error) {
+      node.error = inaccessible(n, error);
     }
-    const node = nodes.get(n);
-    if (tree) {
-      if (!node.children.length) {
-        if (!leaves.includes(n)) leaves.push(n);
-      } else
-        for (const child of node.children)
-          read(child.number, true, [...ancestors, n]);
+    if (node.children.length) {
+      for (const child of node.children) read(child, [...ancestors, n]);
+      return;
     }
-    for (const dependency of node.dependencies)
-      if (!nodes.has(dependency.number)) read(dependency.number, false);
+    leaves.push(n);
+    if (node.error) return;
+    try {
+      const blockers = split(
+        api.list(`${repo}/issues/${n}/dependencies/blocked_by`),
+      );
+      node.dependencies = blockers.local;
+      node.foreign = blockers.foreign;
+      node.comments = api.list(`${repo}/issues/${n}/comments`);
+    } catch (error) {
+      node.error = inaccessible(n, error);
+    }
   };
-  read(number, true);
+  read(number);
+  // A blocker outside the tree needs only its state.
+  const outside = new Map();
+  for (const n of leaves)
+    for (const d of nodes.get(n).dependencies)
+      if (!nodes.has(d) && !outside.has(d))
+        try {
+          outside.set(d, api.get(`${repo}/issues/${d}`));
+        } catch (error) {
+          inaccessible(d, error);
+          outside.set(d, null);
+        }
+  const issueOf = (n) => (nodes.has(n) ? nodes.get(n).issue : outside.get(n));
 
   const trunk = api.get(`${repo}/commits/main`).sha;
   const fields = api.list(
@@ -289,7 +323,15 @@ export function deliveryQueue(
   const items = api.list(
     `users/${project.owner}/projectsV2/${project.number}/items?fields=${wanted.map((field) => field.id).join(',')}`,
   );
-  const prs = api.list(`${repo}/pulls?state=all`);
+  // A fork or an outside author's PR body could otherwise hide a leaf or
+  // become a stack base.
+  const prs = api
+    .list(`${repo}/pulls?state=all`)
+    .filter(
+      (pr) =>
+        TRUSTED.has(pr.author_association) &&
+        pr.head.repo?.full_name?.toLowerCase() === repository.toLowerCase(),
+    );
   const branches = api
     .list(`${repo}/branches`)
     .filter((branch) => branch.name.startsWith('agent/'));
@@ -297,8 +339,7 @@ export function deliveryQueue(
     prs.filter((pr) => closingIssues(pr.body ?? '', repository).includes(n));
   const merged = (n) => closing(n).find((pr) => pr.merged_at);
   const open = (n) => closing(n).find((pr) => pr.state === 'open');
-  const closed = (n) =>
-    nodes.get(n)?.issue?.state === 'closed' || Boolean(merged(n));
+  const closed = (n) => issueOf(n)?.state === 'closed' || Boolean(merged(n));
   const ready = new Map();
   const qualifies = (pr) => {
     if (!pr) return false;
@@ -322,12 +363,7 @@ export function deliveryQueue(
 
   const { order, cycles } = orderLeaves(
     leaves,
-    new Map(
-      [...nodes].map(([n, node]) => [
-        n,
-        node.dependencies.map((dependency) => dependency.number),
-      ]),
-    ),
+    new Map(leaves.map((n) => [n, nodes.get(n).dependencies])),
   );
   const blocked = (row, blocker) => ({
     ...row,
@@ -352,7 +388,9 @@ export function deliveryQueue(
       const row = {
         ...base,
         state: 'ready',
-        effort: effortRecord(node.comments, policy),
+        effort: override
+          ? implementationEffort(policy, { override })
+          : effortRecord(node.comments, policy, actor),
         base: { branch: 'main', sha: trunk },
         branch,
         head: branches.find((entry) => entry.name === branch)?.commit.sha,
@@ -361,20 +399,23 @@ export function deliveryQueue(
         size: field(item, 'Size'),
         claim,
       };
-      if (cycles.has(n))
-        return blocked(
-          row,
-          `dependency cycle among ${cycles
-            .get(n)
-            .map((m) => `#${m}`)
-            .join(', ')}`,
-        );
       if (closed(n)) return { ...row, state: 'done' };
       if (open(n)) return { ...row, state: 'in review' };
-      const unmet = node.dependencies
-        .map((dependency) => dependency.number)
-        .filter((d) => !closed(d));
-      const failed = unmet.filter((d) => nodes.get(d)?.error);
+      if (cycles.has(n)) {
+        const message = `dependency cycle among ${cycles
+          .get(n)
+          .map((m) => `#${m}`)
+          .join(', ')}`;
+        errors.push(`issue #${n}: ${message}`);
+        return blocked(row, message);
+      }
+      if (node.foreign.length) {
+        const message = `blocker ${node.foreign.join(', ')} is in another repository`;
+        errors.push(`issue #${n}: ${message}`);
+        return blocked(row, message);
+      }
+      const unmet = node.dependencies.filter((d) => !closed(d));
+      const failed = unmet.filter((d) => !issueOf(d));
       if (failed.length)
         return blocked(
           row,
@@ -382,17 +423,18 @@ export function deliveryQueue(
         );
       const stackable = unmet.filter((d) => qualifies(open(d)));
       if (claim) {
+        // Only a structured claim this delivery made can resume; --resume
+        // waives the worktree check, never the ownership check.
         const ours =
+          claim.structured &&
           actor &&
           claim.agent === actor &&
-          worktrees.some(
-            (path) =>
-              path === claim.worktree || path.endsWith(`/${claim.worktree}`),
-          );
-        return {
-          ...row,
-          state: resume === n || ours ? 'resume' : 'owned elsewhere',
-        };
+          (resume === n ||
+            worktrees.some(
+              (path) =>
+                path === claim.worktree || path.endsWith(`/${claim.worktree}`),
+            ));
+        return { ...row, state: ours ? 'resume' : 'owned elsewhere' };
       }
       if (stackable.length < unmet.length)
         return {
@@ -457,12 +499,16 @@ export function parseArguments(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--next') options.next = true;
-    else if (['--resume', '--actor', '--skip'].includes(argument)) {
+    else if (['--resume', '--actor', '--effort', '--skip'].includes(argument)) {
       const value = argv[++index];
       if (value === undefined || value.startsWith('--'))
         throw new Error(`Option ${argument} requires a value`);
       if (argument === '--actor') options.actor = value;
-      else {
+      else if (argument === '--effort') {
+        if (!/^[a-z]+$/.test(value))
+          throw new Error('--effort requires an effort level');
+        options.effort = value;
+      } else {
         const numbers = value.split(',');
         if (!numbers.every((entry) => POSITIVE_INTEGER.test(entry)))
           throw new Error(`${argument} requires issue numbers`);
@@ -488,6 +534,7 @@ export function run(argv, { policy = loadPolicy(), api, worktrees } = {}) {
     ...(api ? { api } : {}),
     resume: options.resume,
     actor: options.actor,
+    override: options.effort,
     worktrees: worktrees ?? registeredWorktrees(),
   });
   const lines = [];

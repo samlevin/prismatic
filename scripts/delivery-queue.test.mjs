@@ -96,12 +96,14 @@ function fakeApi({ issues, prs = [], branches = [], items = [], checks = {} }) {
         state = 'open',
         title = `Issue ${match[1]}`,
         body = '',
+        labels = [],
       } = issue(Number(match[1]));
       return {
         number: Number(match[1]),
         state,
         title,
         body,
+        labels: labels.map((name) => ({ name })),
         repository_url: URL,
       };
     }
@@ -149,7 +151,12 @@ const pr = (number, closes, extra = {}) => ({
   draft: false,
   merged_at: null,
   body: `Closes #${closes}`,
-  head: { ref: `agent/${closes}-thing`, sha: HEAD },
+  author_association: 'OWNER',
+  head: {
+    ref: `agent/${closes}-thing`,
+    sha: HEAD,
+    repo: { full_name: 'samlevin/prismatic' },
+  },
   ...extra,
 });
 
@@ -178,13 +185,15 @@ test('every member of a dependency cycle is blocked and other leaves still run',
       5: {},
     },
   });
-  const { rows } = deliveryQueue(policy, 1, { api });
+  const { rows, errors } = deliveryQueue(policy, 1, { api });
   for (const n of [2, 3, 4]) {
     const row = rows.find((entry) => entry.issue === n);
     assert.equal(row.state, 'waiting');
     assert.equal(row.blocker, 'BLOCKED: dependency cycle among #2, #3, #4');
   }
   assert.equal(states(rows)[5], 'ready');
+  // A cycle makes the script exit non-zero.
+  assert.equal(errors.length, 3);
   const self = deliveryQueue(policy, 1, {
     api: fakeApi({ issues: { 1: { children: [2] }, 2: { blockedBy: [2] } } }),
   });
@@ -216,7 +225,16 @@ test('assigns every queue state', () => {
           }),
         ],
       },
-      7: { comments: [claim({ agent: 'someone', branch: 'agent/7-z' })] },
+      // This delivery's claim; --resume waives the missing worktree.
+      7: {
+        comments: [
+          claim({
+            agent: 'claude-1-t',
+            branch: 'agent/7-z',
+            worktree: '.claude/worktrees/agent-7-z',
+          }),
+        ],
+      },
       8: { blockedBy: [20] },
       9: {},
       10: { blockedBy: [2] },
@@ -274,6 +292,75 @@ test('a claim whose worktree is missing here is owned elsewhere, even for this a
   assert.equal(rows[0].state, 'owned elsewhere');
 });
 
+test('--resume never takes over a claim another delivery or person made', () => {
+  for (const comments of [
+    [claim({ agent: 'someone', branch: 'agent/7-z' })],
+    [comment('Claiming this. Branch `agent/7-z`.')],
+  ]) {
+    const { rows } = deliveryQueue(policy, 7, {
+      api: fakeApi({ issues: { 7: { comments } } }),
+      resume: 7,
+      actor: 'claude-1-t',
+      worktrees: [],
+    });
+    assert.equal(rows[0].state, 'owned elsewhere');
+  }
+});
+
+test('only trusted PRs from this repository count for review state and stacking', () => {
+  const approved = `Closes #20\n\nPre-PR review: APPROVE; base=${BASE}; head=${HEAD}`;
+  const passing = {
+    [HEAD]: { runs: [{ status: 'completed', conclusion: 'success' }] },
+  };
+  const fork = {
+    ref: 'agent/20-thing',
+    sha: HEAD,
+    repo: { full_name: 'outsider/prismatic' },
+  };
+  for (const extra of [
+    { head: fork },
+    { author_association: 'NONE' },
+    { author_association: 'CONTRIBUTOR' },
+  ]) {
+    const { rows } = deliveryQueue(policy, 1, {
+      api: fakeApi({
+        issues: {
+          1: { children: [4, 8] },
+          4: {},
+          8: { blockedBy: [20] },
+          20: {},
+        },
+        prs: [pr(50, 4, extra), pr(51, 20, { body: approved, ...extra })],
+        checks: passing,
+      }),
+    });
+    assert.equal(states(rows)[4], 'ready', JSON.stringify(extra));
+    assert.equal(states(rows)[8], 'waiting', JSON.stringify(extra));
+    assert.equal(rows.find((row) => row.issue === 8).base.branch, 'main');
+  }
+});
+
+test('a cross-repository link affects only the leaf or child it names', () => {
+  const { rows, errors } = deliveryQueue(policy, 1, {
+    api: fakeApi({
+      issues: {
+        1: { children: [6, 3] },
+        6: { children: [7, { number: 8, repository: 'other/repo' }] },
+        7: {},
+        3: { blockedBy: [10] },
+        10: {
+          state: 'closed',
+          blockedBy: [{ number: 9, repository: 'other/repo' }],
+        },
+      },
+    }),
+  });
+  assert.deepEqual(states(rows), { 3: 'ready', 7: 'ready' });
+  assert.deepEqual(errors, [
+    'issue #6 has a sub-issue in another repository: other/repo#8',
+  ]);
+});
+
 test('a released claim frees the leaf, and free-text claims count until released', () => {
   assert.equal(
     claimRecord([
@@ -299,6 +386,26 @@ test('a released claim frees the leaf, and free-text claims count until released
   // Comments from outside contributors never claim work.
   assert.equal(
     claimRecord([comment('I claim this', { author_association: 'NONE' })]),
+    null,
+  );
+  // A later-escalation record that mentions the claim does not replace it,
+  // so the structured release still clears it.
+  const structured = claim({ agent: 'claude-1-t', branch: 'agent/1-x' });
+  const escalation = comment(
+    `Escalating; this is not a second claim.\n<!-- prism-effort ${JSON.stringify(H3)} -->`,
+  );
+  assert.equal(claimRecord([structured, escalation]).agent, 'claude-1-t');
+  assert.equal(
+    claimRecord([
+      structured,
+      escalation,
+      claim({ agent: 'claude-1-t', released: true }),
+    ]),
+    null,
+  );
+  // A free-text release by the account that posted a structured claim clears it.
+  assert.equal(
+    claimRecord([structured, comment('Releasing the claim.')]),
     null,
   );
 });
@@ -400,9 +507,9 @@ test('an inaccessible child or blocker, and a link to another repository, block 
   const byIssue = Object.fromEntries(rows.map((row) => [row.issue, row]));
   assert.match(byIssue[2].blocker, /^BLOCKED: issue #2 inaccessible/);
   assert.equal(byIssue[3].blocker, 'BLOCKED: blocker #9 inaccessible');
-  assert.match(
+  assert.equal(
     byIssue[4].blocker,
-    /^BLOCKED: issue #4 inaccessible: links other\/repo#7, outside samlevin\/prismatic/,
+    'BLOCKED: blocker other/repo#7 is in another repository',
   );
   assert.equal(byIssue[5].state, 'ready');
   assert.equal(errors.length, 3);
@@ -444,27 +551,42 @@ test('effort defaults to medium; metadata never selects high', () => {
     evidence: 'issue/spec',
     reason: 'The written plan resolves the design.',
   });
-  // A well-specified contract change, Size L, a serious bug label, and
-  // repeated routine review fixes leave no qualifying record.
+  // A well-specified contract change, Size M and L, serious bug and risk
+  // labels, and repeated routine review fixes leave no qualifying record.
+  const contract =
+    '### Implementation notes\n\nChange the shared `ReviewResult` contract and update its three consumers. The spec fixes the new field names and the migration order.';
+  const labels = ['bug', 'severity: critical', 'risk: data-contract'];
+  const size = (n, value) => ({
+    content: { number: n, repository_url: URL },
+    fields: [
+      { name: 'Status', value: { name: { raw: 'Ready' } } },
+      { name: 'Size', value: { name: { raw: value } } },
+    ],
+  });
   const { rows } = deliveryQueue(policy, 1, {
     api: fakeApi({
       issues: {
-        1: { labels: ['severity: critical', 'risk: data-contract'] },
-      },
-      items: [
-        {
-          content: { number: 1, repository_url: URL },
-          fields: [
-            { name: 'Status', value: { name: { raw: 'Ready' } } },
-            { name: 'Size', value: { name: { raw: 'L' } } },
+        1: { children: [2, 3] },
+        2: { labels, body: contract },
+        3: {
+          labels,
+          body: contract,
+          comments: [
+            comment('Review round 1: fixed formatting.'),
+            comment('Review round 2: fixed a typo.'),
           ],
         },
-      ],
+      },
+      items: [size(2, 'M'), size(3, 'L')],
     }),
   });
-  assert.equal(rows[0].effort.effort, 'medium');
-  assert.equal(rows[0].size, 'L');
-  assert.equal(rows[0].project, 'Ready');
+  assert.deepEqual(
+    rows.map((row) => [row.issue, row.size, row.project, row.effort]),
+    [
+      [2, 'M', 'Ready', ordinary],
+      [3, 'L', 'Ready', ordinary],
+    ],
+  );
   assert.deepEqual(
     effortRecord(
       [
@@ -528,10 +650,35 @@ test('an explicit override wins, and an explicit medium prevents escalation', ()
   const medium = {
     effort: 'medium',
     rule: 'user override',
+    agent: 'claude-1-t',
     evidence: 'implementer effort medium in the request',
     reason: 'The request fixes medium.',
   };
-  assert.deepEqual(effortRecord([effort(medium), effort(H3)], policy), medium);
+  assert.deepEqual(
+    effortRecord([effort(medium), effort(H3)], policy, 'claude-1-t'),
+    medium,
+  );
+  // An override ends with the delivery that recorded it.
+  assert.deepEqual(
+    effortRecord([effort(medium), effort(H3)], policy, 'codex-1-u'),
+    H3,
+  );
+  assert.deepEqual(
+    effortRecord([effort(medium)], policy),
+    implementationEffort(policy),
+  );
+  // --effort reaches the ledger and the announcement.
+  const api = fakeApi({ issues: { 2: {} } });
+  const next = run(['2', '--next', '--effort', 'high'], {
+    policy,
+    api,
+    worktrees: [],
+  });
+  assert.match(next.lines[0], /effort=high; rule=user override;/);
+  assert.equal(
+    next.lines[1],
+    'Implementation effort: medium -> high; issue: #2; rule: user override; evidence: explicit user constraint; reason: The request selects this effort.',
+  );
   assert.throws(
     () =>
       implementationEffort(policy, {
@@ -617,6 +764,8 @@ test('parses arguments and rejects bad ones', () => {
       '13',
       '--actor',
       'claude-12-t',
+      '--effort',
+      'high',
       '--skip',
       '14,15',
     ]),
@@ -625,6 +774,7 @@ test('parses arguments and rejects bad ones', () => {
       next: true,
       resume: 13,
       actor: 'claude-12-t',
+      effort: 'high',
       skip: [14, 15],
     },
   );

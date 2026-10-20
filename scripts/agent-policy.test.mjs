@@ -2167,7 +2167,7 @@ test('the delivery queue runs the script and is sequential by default', () => {
       assert.ok(ledger.includes(`- \`${state}\`: `), `${path}: ${state}`);
     assert.match(
       ledger,
-      /A dependency cycle, an inaccessible child or blocker/,
+      /A dependency cycle, an inaccessible leaf or blocker, a blocker in another repository, or a malformed record shows as `waiting` with a `BLOCKED:` blocker on that leaf only\. A sub-issue in another repository prints as a `BLOCKED:` line of its own, and its siblings stay in the ledger\./,
       path,
     );
     const records = section(queue, 'Records');
