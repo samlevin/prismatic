@@ -7,7 +7,7 @@ This page records what P0.10 (#143) established about the publisher identity, th
 | Part | State |
 | --- | --- |
 | Forged snapshot rejection by account id | Verified offline |
-| Publisher resolution: Actions `GITHUB_TOKEN`, configured App, CLI personal token, CLI App token | Verified offline. Read-only lookups verified live on 2026-10-19. Actions `GITHUB_TOKEN` and CLI personal token writes verified live on 2026-10-20. App token writes not yet run live |
+| Publisher resolution: Actions `GITHUB_TOKEN`, configured App, CLI personal token, CLI App token | Verified offline. Read-only lookups verified live on 2026-10-19. Writes verified live on 2026-10-20 for the Actions `GITHUB_TOKEN`, App and CLI personal token paths |
 | Bounded markers, decompression caps, linked shards, chunked publication record | Verified offline |
 | Status snapshot deletion with inline and progress publication off, and with no findings | Verified offline |
 | Interruption at every step, and lost write responses | Verified offline |
@@ -30,9 +30,9 @@ An Actions run may also name a machine user that owns a personal token stored as
 
 The tests in `lib/protocol.test.ts` cover the forged cases. A snapshot posted by another account, whose API author matches the login the snapshot claims for itself, is ignored, together with the journal shard and effect marker in the same comment. A byte-for-byte copy of the publisher's own status comment posted by another account is ignored. After the publisher renames, another account can take the old login; its comments do not pass, and the publisher's earlier comments still do. A publisher-authored snapshot naming another pull request is ignored. Under a publisher resolved as the forger, the same comments would be trusted, which shows the account id is the only thing that decides.
 
-Live, read-only, on 2026-10-19: with a personal token, `GET /user` succeeded and returned a `User`. `GET /users/github-actions%5Bbot%5D` and the same lookup for another App's bot login returned `Bot` accounts. Writes under the App token path have not been run yet; see [What is still pending](#what-is-still-pending).
+Live, read-only, on 2026-10-19: with a personal token, `GET /user` succeeded and returned a `User`. `GET /users/github-actions%5Bbot%5D` and the same lookup for another App's bot login returned `Bot` accounts.
 
-Live, with writes, on 2026-10-20: a `workflow_dispatch` job in a sandbox repository ran the probe with the workflow's `GITHUB_TOKEN` (`--path actions --write`) against a sandbox pull request. `GET /user` returned 403, the publisher resolved to `github-actions[bot]`, and `createAuthorMatches`, `editAuthorMatches` and `listAuthorMatches` were all `true`. The probe deleted its comment afterwards. The same probe under a CLI personal token (`--path personal --write`), against the same pull request, resolved the publisher through `GET /user`, matched the author on create, edit and list, and deleted its comment.
+Live, with writes, on 2026-10-20: a `workflow_dispatch` job in a sandbox repository ran the probe with the workflow's `GITHUB_TOKEN` (`--path actions --write`) against a sandbox pull request. `GET /user` returned 403, the publisher resolved to `github-actions[bot]`, and `createAuthorMatches`, `editAuthorMatches` and `listAuthorMatches` were all `true`. The probe deleted its comment afterwards. The same probe under a CLI personal token (`--path personal --write`), against the same pull request, resolved the publisher through `GET /user`, matched the author on create, edit and list, and deleted its comment. Under an App installation token minted inside a `workflow_dispatch` job (`--path app --publisher-login <slug>[bot] --write`), against the same pull request, `GET /user` returned 403, the publisher resolved to the App's `[bot]` login, the author matched on create, edit and list, and the comment was deleted.
 
 ## Markers
 
@@ -118,14 +118,6 @@ A reset is how a maintainer lets automatic reviews continue after `recovery-requ
 4. The run rewrites the status comment to say who reset the baseline and why, with no current round and the carried spend.
 
 Readers stop at the newest reset, so history before it is acknowledged and not read. Corruption that appears after the reset stops the run again. A round published before the reset is `attempt-closed`, not reviewed again; a new head reviews normally. The reset never treats missing history as an empty pull request: the status comment says history was not fully recoverable, and charges and dismissals survive.
-
-## What is still pending
-
-This needs an App installation token the implementing agent did not have. The command is in [experiments/state/README.md](../experiments/state/README.md#running-it).
-
-- Run the probe with `--write` under an App installation token (`--path app --publisher-login <slug>[bot]`).
-
-The run should print `createAuthorMatches`, `editAuthorMatches` and `listAuthorMatches` as `true`. Record the outcome in the status table above.
 
 ## Contract changes for P6.1 and P6.2
 
