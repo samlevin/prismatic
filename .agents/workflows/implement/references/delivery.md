@@ -11,7 +11,7 @@ You start from the target (an issue URL, or a PR URL for rework), trunk `main`, 
 - The loaded `AGENTS.md` may come from a stale checkout. Read `git show origin/main:AGENTS.md` and follow that copy: its Checks section, its autonomous-delivery rules (authority, worktrees, prerequisites, stacking, handoffs, review), its PR title and issue-state rules, and its hard rules.
 - Read through REST what the inputs did not supply: `gh api repos/{{repository}}/issues/<N>` for the body, plus `/comments`, `/parent` (404 when there is none), `/dependencies/blocked_by`, and `/sub_issues`. An issue with native sub-issues is a container. The main thread follows [queue.md](queue.md) for it instead of this file.
 - Read the code you will change with its callers and tests. Read each file in full before you edit it.
-- Open {{docs.guides}} only when the loaded instructions lack a check command or rule you need, or when the task changes them. Read `.github/pull_request_template.md` when you open the PR.
+- Open {{docs.guides}} only when the loaded instructions lack a triage, status, or dependency rule you need, or when the task changes them. Read `.github/pull_request_template.md` when you open the PR.
 
 ## Gate
 

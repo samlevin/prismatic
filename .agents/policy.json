@@ -10,9 +10,9 @@
       "name": "Prismatic delivery"
     },
     "docs": {
-      "triage": "CONTRIBUTING.md",
+      "triage": "ISSUE_TRIAGE.md",
       "workflow": "AGENTS.md",
-      "guides": ["CONTRIBUTING.md"]
+      "guides": ["ISSUE_TRIAGE.md"]
     },
     "features": {
       "infrastructure": false

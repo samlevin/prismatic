@@ -11,7 +11,7 @@ effort: medium
 
 ## Resolve
 
-Repository `samlevin/prismatic`, project [Prismatic delivery](https://github.com/users/samlevin/projects/2) (number 2, owner `samlevin`). Read `.agents/issue-creation.md` and the matching `.github/ISSUE_TEMPLATE/*.yml`; `AGENTS.md` is already loaded. Read `CONTRIBUTING.md` when you classify drafts, which is the default. Discover labels (`gh api 'repos/samlevin/prismatic/labels?per_page=100' --paginate --jq '.[].name'`), project fields and options (`gh api users/samlevin/projectsV2/2/fields`), and native issue types once per batch, and reuse the results. Repository commands run read-only against the human checkout; do not modify it.
+Repository `samlevin/prismatic`, project [Prismatic delivery](https://github.com/users/samlevin/projects/2) (number 2, owner `samlevin`). Read `.agents/issue-creation.md` and the matching `.github/ISSUE_TEMPLATE/*.yml`; `AGENTS.md` is already loaded. Read `ISSUE_TRIAGE.md` when you classify drafts, which is the default. Discover labels (`gh api 'repos/samlevin/prismatic/labels?per_page=100' --paginate --jq '.[].name'`), project fields and options (`gh api users/samlevin/projectsV2/2/fields`), and native issue types once per batch, and reuse the results. Repository commands run read-only against the human checkout; do not modify it.
 
 This skill pins the main-thread model and effort for the turn from `.agents/policy.json` (`issue-creation`). A `model` or `effort` override in the request applies to this turn by naming it (`/model`, `--model`, `--effort`), not through this skill.
 
@@ -26,11 +26,11 @@ Search for duplicates first (`gh api -X GET search/issues -f q='repo:samlevin/pr
 
 ## Triage
 
-Classify inline by default: set severity, Priority, Size, labels, and leaf or container scope for each draft by `CONTRIBUTING.md` and `.agents/issue-creation.md`.
+Classify inline by default: set severity, Priority, Size, labels, and leaf or container scope for each draft by `ISSUE_TRIAGE.md` and `.agents/issue-creation.md`.
 
 Spawn one `prism-issue-triager` for the batch instead when the filing needs independent judgment:
 
-- Classification: the request asks for independent triage, or a draft's severity, Size, or leaf-or-container scope stays uncertain after you read `CONTRIBUTING.md`.
+- Classification: the request asks for independent triage, or a draft's severity, Size, or leaf-or-container scope stays uncertain after you read `ISSUE_TRIAGE.md`.
 - Decomposition: a draft may hold more than one logical outcome, or the batch creates a container or epic.
 - Dependency judgment: a new container or epic has two or more leaf drafts, which need independence groups, or the batch adds blocked-by edges among its new issues.
 
