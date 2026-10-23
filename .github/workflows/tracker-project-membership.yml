@@ -4,8 +4,6 @@ run-name: "${{ github.event_name == 'issues' && format('Add issue #{0} to the pr
 on:
   issues:
     types: [opened]
-  schedule:
-    - cron: '37 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:

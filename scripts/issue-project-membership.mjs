@@ -1,11 +1,11 @@
 // Adds issues in this repository to the Prismatic delivery project. The
 // project's built-in auto-add cannot be enabled through the API, so
 // tracker-project-membership.yml runs this for one issue when it opens, and
-// with --sweep on a schedule for every open issue missing from the project,
-// in case GitHub dropped an `opened` run. An issue whose item has no Status
-// gets Inbox, so issue-triage.mjs picks it up, and an existing Status never
-// changes. Pull requests never go on the board, so the board counts only
-// issues.
+// tracker-issue-states.yml runs it with --sweep every hour for every open
+// issue missing from the project, in case GitHub dropped an `opened` run. An
+// issue whose item has no Status gets Inbox, so issue-triage.mjs picks it up,
+// and an existing Status never changes. Pull requests never go on the board,
+// so the board counts only issues.
 import { pathToFileURL } from 'node:url';
 import { failureMessage, ghGraphql } from './github-api.mjs';
 import {
