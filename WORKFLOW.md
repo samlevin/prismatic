@@ -53,4 +53,4 @@ Two more tracker workflows run when a pull request opens, reopens, or leaves dra
 
 [tracker-pr-metadata.yml](.github/workflows/tracker-pr-metadata.yml) copies the linked issue's labels, assignees, and milestone onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues. Run it by hand with a pull request number and `dry_run`, which defaults to true.
 
-[tracker-pr-issue-status.yml](.github/workflows/tracker-pr-issue-status.yml) moves every issue the pull request closes to In review, from Ready or In progress for collaborators and from In progress only for everyone else. It logs a skip instead of failing when an issue isn't on the board.
+[tracker-pr-issue-status.yml](.github/workflows/tracker-pr-issue-status.yml) moves every issue the pull request closes to In review, from Ready or In progress for collaborators and from In progress only for everyone else. It skips a draft pull request until it leaves draft. It logs a skip instead of failing when an issue isn't on the board.
