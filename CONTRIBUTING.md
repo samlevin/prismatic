@@ -7,7 +7,7 @@ This guide covers setting up, running the checks, and submitting a change. Two m
 
 ## Setup
 
-Follow [Setup](README.md#setup) in the README: install the Node version pinned in `.tool-versions`, then run `npm ci` and `npm run check`.
+Follow [Setup](README.md#setup) in the README.
 
 ## Submitting a change
 
