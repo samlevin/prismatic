@@ -202,6 +202,8 @@ function request(args, { input, run = execFileSync, graphql }) {
     const output = run('gh', ['api', '--include', ...args], {
       ...(input === undefined ? {} : { input }),
       encoding: 'utf8',
+      // One page of 100 pull requests with their bodies can pass 1 MB.
+      maxBuffer: 64 * 1024 * 1024,
       stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
     return { failed: false, ...parseResponse(output) };
@@ -251,6 +253,23 @@ export function ghRest(args, { run = execFileSync } = {}) {
   const output = request(args, { run, graphql: false });
   if (output.failed || output.status >= 400) throw responseError(output);
   return output.body;
+}
+
+// Reads every page of a REST list and returns the parsed pages. It follows the
+// Link header, because `--paginate` cannot be combined with `--include` and
+// the Projects v2 endpoints page by cursor.
+export function ghRestPages(path, { run = execFileSync } = {}) {
+  const pages = [];
+  let next = path;
+  while (next) {
+    const output = request([next], { run, graphql: false });
+    if (output.failed || output.status >= 400) throw responseError(output);
+    pages.push(output.json);
+    next = /<https:\/\/api\.github\.com\/([^>]+)>;\s*rel="next"/.exec(
+      output.headers.link ?? '',
+    )?.[1];
+  }
+  return pages;
 }
 
 // The one line a script prints when it fails. GitHub failures carry a message

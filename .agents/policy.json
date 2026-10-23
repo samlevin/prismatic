@@ -42,14 +42,14 @@
       }
     },
     "implementation": {
-      "summary": "Leaf delivery, PR rework, and container queues through ready-for-review PRs; binding for an isolated implementer, advisory for the main thread",
+      "summary": "Delegated leaf delivery and PR rework through ready-for-review PRs; binding for the implementer, advisory only for explicit inline delivery",
       "claude": {
-        "model": "opus",
-        "effort": "high"
+        "model": "claude-opus-5-5",
+        "effort": "medium"
       },
       "codex": {
         "model": "gpt-6.1-sol",
-        "effort": "high"
+        "effort": "medium"
       }
     },
     "code-review": {
@@ -102,6 +102,41 @@
         "gpt-5.6-sol": ["low", "medium", "high", "xhigh", "max", "ultra"],
         "gpt-5.6-terra": ["low", "medium", "high", "xhigh", "max", "ultra"],
         "gpt-5.6-luna": ["low", "medium", "high", "xhigh", "max"]
+      }
+    }
+  },
+  "implementationEffort": {
+    "description": "Medium-first rubric for implementer effort. scripts/delivery-queue.mjs reads recorded decisions against it; only a rule whose required evidence is all recorded selects high, and labels, Size, and file count never do.",
+    "default": "medium",
+    "automaticMaximum": "high",
+    "maximumTransitions": 1,
+    "rules": {
+      "H1-boundary": {
+        "description": "Design or prove a new security, immutable-evidence, persistent-data, or compatibility guarantee across components whose mechanism the issue or spec leaves unresolved. Applying an established, specified pattern does not qualify.",
+        "requires": [
+          "newGuarantee",
+          "acrossComponents",
+          "mechanismUnresolved",
+          "failureScenario"
+        ]
+      },
+      "H2-coupled-design": {
+        "description": "An algorithm, state machine, concurrency protocol, or migration has interacting correctness constraints the supplied design does not resolve, and existing patterns, focused tests, or a reviewable decomposition do not resolve them. File count, Size, and multiple consumers do not qualify.",
+        "requires": [
+          "interactingConstraints",
+          "designUnresolved",
+          "patternsInsufficient",
+          "decompositionInsufficient"
+        ]
+      },
+      "H3-demonstrated-limit": {
+        "description": "A medium attempt produced a reproducible correctness failure or a substantive review finding that requires revising the underlying design. Routine test, formatting, or environment failures, a first unsuccessful attempt, and the number of review rounds do not qualify.",
+        "requires": [
+          "mediumAttempt",
+          "reproducibleFailureOrFinding",
+          "designRevisionRequired",
+          "unresolvedReasoning"
+        ]
       }
     }
   }

@@ -9,6 +9,7 @@ import {
   failureMessage,
   ghGraphql,
   ghRest,
+  ghRestPages,
   GitHubApiError,
   parseResponse,
   responseError,
@@ -128,6 +129,39 @@ test('ghRest returns the body text and closes stdin', () => {
   assert.equal(body, '{"title":"x"}');
   assert.deepEqual(calls[0].args, ['api', '--include', 'repos/o/r/issues/1']);
   assert.equal(calls[0].options.stdio[0], 'ignore');
+  assert.ok(calls[0].options.maxBuffer >= 16 * 1024 * 1024);
+});
+
+test('ghRestPages follows the Link header and stops on the last page', () => {
+  const calls = [];
+  const responses = [
+    include(
+      200,
+      {
+        Link: '<https://api.github.com/users/o/projectsV2/2/items?per_page=100&after=abc>; rel="next", <https://api.github.com/users/o/projectsV2/2/items?per_page=100>; rel="first"',
+      },
+      [1, 2],
+    ),
+    include(200, {}, [3]),
+  ];
+  const pages = ghRestPages('users/o/projectsV2/2/items?per_page=100', {
+    run: (command, args) => {
+      calls.push(args);
+      return responses.shift();
+    },
+  });
+  assert.deepEqual(pages, [[1, 2], [3]]);
+  assert.deepEqual(calls, [
+    ['api', '--include', 'users/o/projectsV2/2/items?per_page=100'],
+    ['api', '--include', 'users/o/projectsV2/2/items?per_page=100&after=abc'],
+  ]);
+  const error = caught(() =>
+    ghRestPages('repos/o/r/issues/9/comments', {
+      run: failing(include(404, {}, { message: 'Not Found' })),
+    }),
+  );
+  assert.equal(error.kind, 'not_found');
+  assert.equal(error.httpStatus, 404);
 });
 
 test('a GraphQL error reports each type or code with its message', () => {
@@ -422,6 +456,7 @@ test('every script that calls GitHub prints the shared message and exits non-zer
     ['issue-pr-metadata.mjs', [], { PR_NUMBER: '10' }],
     ['issue-pr-status.mjs', [], { PR_NUMBER: '10' }],
     ['branch-name.mjs', ['33']],
+    ['delivery-queue.mjs', ['33']],
   ];
   for (const [name, args, env = {}] of scripts) {
     let failure;

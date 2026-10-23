@@ -10,7 +10,7 @@ You run every command here yourself, in the worktree you created for the deliver
 
 ## Check the extension
 
-Run `gh stack --help` before any other command here. If it exits non-zero, run `gh --version` and stop before any branch, stack, or PR work. In the main thread, give the install prompt from the Check gh stack section of the prism-implement skill. An isolated implementer returns `BLOCKED: gh stack not installed` with that version instead. Never install the extension yourself.
+Run `gh stack --help` before any other command here. If it exits non-zero, run `gh --version` and stop before any branch, stack, or PR work. In the main thread, give the install prompt from the Check gh stack section of the prism-implement skill. A prism-implementer returns `BLOCKED: gh stack not installed` with that version instead. Never install the extension yourself.
 
 ## Inspect before every change
 
