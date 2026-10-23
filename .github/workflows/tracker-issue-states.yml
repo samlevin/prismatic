@@ -17,9 +17,14 @@ permissions:
   contents: read
 
 # One group per issue, so a burst of events on one issue collapses to the
-# latest and an event on another issue is never dropped from the queue.
+# latest and an event on another issue is never dropped from the queue. A label
+# event the job skips gets its own group, so it never replaces a pending run.
 concurrency:
-  group: prismatic-issue-triage-${{ github.event.issue.number || 'sweep' }}
+  group: >-
+    prismatic-issue-triage-${{ github.event.issue.number || 'sweep' }}${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
+    !(startsWith(github.event.label.name, 'severity:') || github.event.label.name == 'epic' ||
+    github.event.label.name == 'automation: container-closed' ||
+    contains(github.event.issue.labels.*.name, 'epic')) && '-skip' || '' }}
   cancel-in-progress: false
 
 jobs:
