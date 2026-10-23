@@ -10,7 +10,7 @@ You start from the target (an issue URL, or a PR URL for rework), trunk `main`, 
 
 - The loaded `AGENTS.md` may come from a stale checkout. Read `git show origin/main:AGENTS.md` and follow that copy: its Checks section, its autonomous-delivery rules (authority, worktrees, prerequisites, stacking, handoffs, review), its PR title and issue-state rules, and its hard rules.
 - Read through REST what the inputs did not supply: `gh api repos/{{repository}}/issues/<N>` for the body, plus `/comments`, `/parent` (404 when there is none), `/dependencies/blocked_by`, and `/sub_issues`. An issue with native sub-issues is a container. The main thread follows [queue.md](queue.md) for it instead of this file.
-- Read the code you will change with its callers and tests. Read each file in full before you edit it.
+- Before you edit, read the code you will change with the callers and tests you need to understand its behavior.
 - Open {{docs.guides}} only when the loaded instructions lack a check command or rule you need, or when the task changes them. Read `.github/pull_request_template.md` when you open the PR.
 
 ## Gate
@@ -40,7 +40,7 @@ Keep issue administration proportional to the change: read each piece of metadat
 
 Write code plus meaningful tests for changed behavior, and update the nearest docs for contract or operator changes. Run checks as the Checks section of `AGENTS.md` says, and fix failures before you push. If the same command or blocker fails twice without new evidence, stop and return BLOCKED instead of repeating it. Keep a terse log of commands, results, and the tested SHA.
 
-Re-read: before the first push, and again before pushing each rework, re-read in full every file you edited, plus one generated file for each edited source. Read for meaning, which a diff cannot show: other lines that state the rule you changed, references to anything you renamed or moved, and qualifiers a rewrite dropped. Fix what you find before pushing.
+Inspect: before the first push, and again before pushing each rework, inspect every changed region with enough surrounding text to check that the unchanged text still holds, plus at least one generated file for each edited source, covering the affected output and enough context to check it. Read for meaning, which a diff cannot show: other statements of the rule you changed, references to anything you renamed or moved, and qualifiers a rewrite dropped. Find them with targeted searches and follow-up reads beyond the edited regions. Fix what you find before pushing.
 
 ## Stack
 
@@ -78,7 +78,7 @@ Only the delivery owner opens PRs. Load the {{prefix}}plain-language skill, writ
 
 ## Rework
 
-For a PR URL, read the PR's state, head, base, and review comments, and the issue it closes. Check with `git ls-remote origin <branch>` that the remote branch is at the PR's head SHA. The existing claim stands; post no second claim and move no project status. Work in a worktree of your own detached at `origin/<branch>`: add one with `git worktree add --detach <path> origin/<branch>` under your tool's worktree directory, or run `git switch --detach origin/<branch>` in the worktree the Agent tool created for you. Fix what the review asks within the issue's scope, rerun the affected checks, and re-read your edits as [Build](#build) describes. Push with `git push --force-with-lease=<branch>:<head you started from> origin HEAD:<branch>`, or a plain push when the history did not change, and stop when the lease rejects it. A stacked rework goes through the {{prefix}}stack skill's rework rule instead. No pre-PR review runs, and the approval SHAs from the initial submission are reported as historical.
+For a PR URL, read the PR's state, head, base, and review comments, and the issue it closes. Check with `git ls-remote origin <branch>` that the remote branch is at the PR's head SHA. The existing claim stands; post no second claim and move no project status. Work in a worktree of your own detached at `origin/<branch>`: add one with `git worktree add --detach <path> origin/<branch>` under your tool's worktree directory, or run `git switch --detach origin/<branch>` in the worktree the Agent tool created for you. Fix what the review asks within the issue's scope, rerun the affected checks, and inspect your changes as [Build](#build) describes. Push with `git push --force-with-lease=<branch>:<head you started from> origin HEAD:<branch>`, or a plain push when the history did not change, and stop when the lease rejects it. A stacked rework goes through the {{prefix}}stack skill's rework rule instead. No pre-PR review runs, and the approval SHAs from the initial submission are reported as historical.
 
 ## Authority
 
