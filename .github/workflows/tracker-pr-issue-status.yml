@@ -8,8 +8,9 @@ on:
 permissions:
   contents: read
 
+# A run the job skips gets its own group, so it never replaces a pending run.
 concurrency:
-  group: pr-issue-status-${{ github.event.pull_request.number }}
+  group: pr-issue-status-${{ github.event.pull_request.number }}${{ github.event.action == 'edited' && !github.event.changes.body && '-skip' || '' }}
   cancel-in-progress: false
 
 jobs:
