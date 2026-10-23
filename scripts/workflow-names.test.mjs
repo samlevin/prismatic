@@ -175,7 +175,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   assert.deepEqual(contract('tracker-issue-states.yml'), {
     on: {
       issues: {
-        types: ['opened', 'reopened', 'closed', 'labeled', 'unlabeled'],
+        types: ['reopened', 'closed', 'labeled', 'unlabeled'],
       },
       schedule: [{ cron: '7 * * * *' }],
       workflow_dispatch: {
@@ -191,11 +191,23 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
     },
     permissions: { contents: 'read' },
     concurrency: {
-      group:
-        "prismatic-issue-triage-${{ github.event.issue.number || 'sweep' }}",
+      group: `prismatic-issue-triage-\${{ github.event.issue.number || 'sweep' }}${[
+        "${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') &&",
+        "!(startsWith(github.event.label.name, 'severity:') || github.event.label.name == 'epic' ||",
+        "github.event.label.name == 'automation: container-closed' ||",
+        "contains(github.event.issue.labels.*.name, 'epic')) && '-skip' || '' }}",
+      ].join(' ')}`,
       'cancel-in-progress': false,
     },
-    if: "github.repository == 'samlevin/prismatic' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)",
+    if: [
+      "github.repository == 'samlevin/prismatic' &&",
+      "github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&",
+      "((github.event.action != 'labeled' && github.event.action != 'unlabeled') ||",
+      "startsWith(github.event.label.name, 'severity:') ||",
+      "github.event.label.name == 'epic' ||",
+      "github.event.label.name == 'automation: container-closed' ||",
+      "contains(github.event.issue.labels.*.name, 'epic'))",
+    ].join(' '),
     steps: [
       checkout,
       node,
@@ -322,6 +334,13 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
         run: 'node scripts/issue-project-membership.mjs',
       },
       {
+        if: "github.event_name == 'issues'",
+        uses: undefined,
+        with: undefined,
+        env: { PRISMATIC_PROJECT_TOKEN: token, ISSUE_NUMBER: eventNumber },
+        run: 'node scripts/issue-triage.mjs --apply --issue "$ISSUE_NUMBER"',
+      },
+      {
         if: "github.event_name != 'issues'",
         uses: undefined,
         with: undefined,
@@ -332,7 +351,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   });
 });
 
-test('project membership adds one issue when it opens and sweeps on a schedule or dispatch', () => {
+test('project membership adds and triages one issue when it opens and sweeps on a schedule or dispatch', () => {
   const definition = definitions.get('tracker-project-membership.yml');
   const job = definition.jobs['add-to-project'];
   const format = (template, ...values) =>
@@ -362,7 +381,9 @@ test('project membership adds one issue when it opens and sweeps on a schedule o
         .filter((step) => step.if && evaluate(step.if, values))
         .map((step) => ({
           run: step.run,
-          dryRun: interpolate(step.env.DRY_RUN, values),
+          ...(step.env.DRY_RUN && {
+            dryRun: interpolate(step.env.DRY_RUN, values),
+          }),
         })),
     };
   };
@@ -372,6 +393,7 @@ test('project membership adds one issue when it opens and sweeps on a schedule o
     runs: true,
     steps: [
       { run: 'node scripts/issue-project-membership.mjs', dryRun: 'false' },
+      { run: 'node scripts/issue-triage.mjs --apply --issue "$ISSUE_NUMBER"' },
     ],
   });
   const sweep = 'node scripts/issue-project-membership.mjs --sweep';
@@ -401,6 +423,81 @@ test('project membership adds one issue when it opens and sweeps on a schedule o
     }).runs,
     false,
   );
+});
+
+test('issue states run for state changes and for labels that triage or containers read', () => {
+  const definition = definitions.get('tracker-issue-states.yml');
+  const job = definition.jobs['reconcile-issues'];
+  const runs = (eventName, event = {}, ref = 'refs/heads/main') => {
+    const values = {
+      format: (template, ...values) =>
+        template.replace(/\{(\d+)\}/g, (_, index) => values[index]),
+      startsWith: (text, prefix) =>
+        typeof text === 'string' && text.startsWith(prefix),
+      contains: (list, value) => list.includes(value),
+      github: {
+        repository: 'samlevin/prismatic',
+        ref,
+        event_name: eventName,
+        event: {
+          repository: { default_branch: 'main' },
+          label: {},
+          issue: { number: 5, labels: [] },
+          ...event,
+        },
+      },
+    };
+    const runs = evaluate(job.if, values);
+    // A skipped run waits in its own group, so it never replaces a pending run.
+    const group = definition.concurrency.group.replace(
+      /\$\{\{([\s\S]*?)\}\}/g,
+      (_, expression) => evaluate(expression, values),
+    );
+    const id = eventName === 'issues' ? 5 : 'sweep';
+    if (eventName === 'issues' && ref === 'refs/heads/main')
+      assert.equal(
+        group,
+        `prismatic-issue-triage-${id}${runs ? '' : '-skip'}`,
+        JSON.stringify(values.github.event),
+      );
+    return runs;
+  };
+  const labelEvent = (action, name, labels = [name]) => ({
+    action,
+    label: { name },
+    issue: { number: 5, labels: labels.map((label) => ({ name: label })) },
+  });
+  assert.equal(runs('schedule'), true);
+  assert.equal(runs('workflow_dispatch'), true);
+  assert.equal(runs('workflow_dispatch', {}, 'refs/heads/feature'), false);
+  for (const action of ['reopened', 'closed'])
+    assert.equal(runs('issues', { action }), true, action);
+  for (const name of [
+    'severity: high',
+    'epic',
+    'automation: container-closed',
+  ]) {
+    assert.equal(runs('issues', labelEvent('labeled', name)), true, name);
+    assert.equal(runs('issues', labelEvent('unlabeled', name, [])), true, name);
+  }
+  for (const name of ['bug', 'area: repository', 'documentation']) {
+    assert.equal(runs('issues', labelEvent('labeled', name)), false, name);
+    assert.equal(
+      runs('issues', labelEvent('unlabeled', name, [])),
+      false,
+      name,
+    );
+    assert.equal(
+      runs('issues', labelEvent('labeled', name, ['epic', name])),
+      true,
+      `${name} on an epic`,
+    );
+    assert.equal(
+      runs('issues', labelEvent('unlabeled', name, ['epic'])),
+      true,
+      `${name} removed from an epic`,
+    );
+  }
 });
 
 test('workflows started by pull_request_target never check out or run pull request code', () => {

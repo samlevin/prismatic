@@ -44,6 +44,12 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           DRY_RUN: 'false'
         run: node scripts/issue-project-membership.mjs
+      - name: Triage the issue
+        if: github.event_name == 'issues'
+        env:
+          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: node scripts/issue-triage.mjs --apply --issue "$ISSUE_NUMBER"
       - name: Add missing open issues to Prismatic delivery
         if: github.event_name != 'issues'
         env:

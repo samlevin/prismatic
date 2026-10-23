@@ -21,7 +21,7 @@ export const runScript = (script, globals) =>
 // Evaluate a GitHub Actions expression as JavaScript. `${{ }}` is optional.
 // Job IDs such as `detect-changes` are valid property names in Actions but not
 // in JavaScript, so a hyphenated property outside a string literal becomes an
-// index access.
+// index access, and an object filter such as `labels.*.name` becomes a map.
 export const evaluate = (expression, values) =>
   Function(
     ...Object.keys(values),
@@ -29,7 +29,9 @@ export const evaluate = (expression, values) =>
       .trim()
       .replace(/^\$\{\{([\s\S]*)\}\}$/, '$1')
       .replace(
-        /('(?:[^']|'')*')|\.([A-Za-z_][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)+)/g,
-        (match, literal, name) => literal ?? `['${name}']`,
+        /('(?:[^']|'')*')|\.([A-Za-z_][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)+)|\.\*\.([A-Za-z_][A-Za-z0-9_]*)/g,
+        (match, literal, name, filtered) =>
+          literal ??
+          (name ? `['${name}']` : `.map((item) => item?.${filtered})`),
       )});`,
   )(...Object.values(values));

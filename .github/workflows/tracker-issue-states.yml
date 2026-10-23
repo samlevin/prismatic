@@ -3,7 +3,7 @@ run-name: "Reconcile issue states (${{ github.event_name == 'issues' && format('
 
 on:
   issues:
-    types: [opened, reopened, closed, labeled, unlabeled]
+    types: [reopened, closed, labeled, unlabeled]
   schedule:
     - cron: '7 * * * *'
   workflow_dispatch:
@@ -17,15 +17,28 @@ permissions:
   contents: read
 
 # One group per issue, so a burst of events on one issue collapses to the
-# latest and an event on another issue is never dropped from the queue.
+# latest and an event on another issue is never dropped from the queue. A label
+# event the job skips gets its own group, so it never replaces a pending run.
 concurrency:
-  group: prismatic-issue-triage-${{ github.event.issue.number || 'sweep' }}
+  group: >-
+    prismatic-issue-triage-${{ github.event.issue.number || 'sweep' }}${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
+    !(startsWith(github.event.label.name, 'severity:') || github.event.label.name == 'epic' ||
+    github.event.label.name == 'automation: container-closed' ||
+    contains(github.event.issue.labels.*.name, 'epic')) && '-skip' || '' }}
   cancel-in-progress: false
 
 jobs:
   reconcile-issues:
     name: Reconcile issue project states
-    if: github.repository == 'samlevin/prismatic' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # Label events run only for labels triage or containers read, or any label on an epic.
+    if: >-
+      github.repository == 'samlevin/prismatic' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+      startsWith(github.event.label.name, 'severity:') ||
+      github.event.label.name == 'epic' ||
+      github.event.label.name == 'automation: container-closed' ||
+      contains(github.event.issue.labels.*.name, 'epic'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
