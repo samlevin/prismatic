@@ -4,7 +4,7 @@ Delivery owners (implementers, or the main thread for inline work) and code revi
 
 - Start with targeted searches and the relevant callers, and widen only as the evidence leads.
 - Ask for what the task needs. Select GitHub response fields with `--jq`, page list endpoints with `--paginate`, and read the issue, comment, PR, or line range you need instead of printing whole responses.
-- Read a file of up to about 400 lines whole. For a larger file, run `rg -n` first, then read the ranges the task needs. Never read a file again only to confirm that an edit applied.
+- Read a file of up to about 400 lines whole, and a file you will edit whole at any size. For any other larger file, run `rg -n` first, then read the ranges the task needs. Never read a file again only to confirm that an edit applied.
 - Do not load these by default: `package-lock.json`; generated `.claude/`, `.codex/`, and `.agents/skills/` output (read the `.agents/` source first); build output; snapshots; and test fixtures. Read the relevant parts when the change or an acceptance criterion involves them.
 - Reuse evidence whose inputs have not changed: the same file content, the same base and head, the same query, or the same check at the same tested SHA. Run it again only when something it depends on changed.
 - Keep validation output short. Filter a long log to its failures and a tail, and report the command, its result, and the failures. A filter must never hide a failing exit status.

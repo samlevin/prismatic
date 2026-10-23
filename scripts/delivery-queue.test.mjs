@@ -709,13 +709,71 @@ test('one later escalation is allowed per leaf; a second blocks it', () => {
 
 test('the announcement names the rule, evidence, and reason above medium', () => {
   assert.equal(
-    effortAnnouncement(7, implementationEffort(policy)),
+    effortAnnouncement(7, implementationEffort(policy), policy),
     'Implementation effort: medium (default)',
   );
   assert.equal(
-    effortAnnouncement(7, H3),
+    effortAnnouncement(7, H3, policy),
     'Implementation effort: medium -> high; issue: #7; rule: H3-demonstrated-limit; evidence: Reproducible case race-1 after the medium attempt; reason: The attempt requires revising the ordering design.',
   );
+  assert.match(
+    effortAnnouncement(
+      7,
+      implementationEffort(policy, { override: 'xhigh' }),
+      policy,
+    ),
+    /^Implementation effort: medium -> xhigh; issue: #7; rule: user override;/,
+  );
+  // The arrow line is only for efforts above medium.
+  for (const level of ['low', 'medium'])
+    assert.equal(
+      effortAnnouncement(
+        7,
+        implementationEffort(policy, { override: level }),
+        policy,
+      ),
+      `Implementation effort: ${level} (user override); issue: #7; evidence: explicit user constraint`,
+    );
+});
+
+test('--effort accepts only a supported effort level', () => {
+  const api = fakeApi({ issues: { 2: {} } });
+  assert.throws(
+    () => run(['2', '--effort', 'banana'], { policy, api, worktrees: [] }),
+    /Unsupported effort "banana"\. Supported: low, medium, high, xhigh, max, ultra\./,
+  );
+});
+
+test('a resumed leaf with a stackable blocker keeps the prerequisite as its base', () => {
+  const approved = `Closes #20\n\nPre-PR review: APPROVE; base=${BASE}; head=${HEAD}`;
+  const { rows } = deliveryQueue(policy, 1, {
+    api: fakeApi({
+      issues: {
+        1: { children: [8] },
+        8: {
+          blockedBy: [20],
+          comments: [
+            claim({
+              agent: 'claude-1-t',
+              branch: 'agent/8-x',
+              worktree: '.claude/worktrees/agent-8-x',
+            }),
+          ],
+        },
+        20: {},
+      },
+      prs: [pr(40, 20, { body: approved })],
+      checks: {
+        [HEAD]: { runs: [{ status: 'completed', conclusion: 'success' }] },
+      },
+    }),
+    actor: 'claude-1-t',
+    worktrees: ['/repo/.claude/worktrees/agent-8-x'],
+  });
+  assert.equal(rows[0].state, 'resume');
+  assert.deepEqual(rows[0].base, { branch: 'agent/20-thing', sha: HEAD });
+  // The ledger names the claim's delivery ID, which a resumed run adopts.
+  assert.match(ledgerLine(rows[0]), /; claim=claude-1-t https:\/\//);
 });
 
 test('run prints one ledger line per leaf, and --next adds the announcement', () => {
@@ -790,33 +848,73 @@ test('parses arguments and rejects bad ones', () => {
     assert.throws(() => parseArguments(argv), undefined, argv.join(' '));
 });
 
-test('the REST client pages with GET and flattens the pages', () => {
+// A response the way `gh api --include` prints it.
+const included = (status, body, headers = '') =>
+  `HTTP/2.0 ${status} Status\n${headers}\r\n${JSON.stringify(body)}`;
+
+test('the REST client follows Link pages through the shared GitHub module', () => {
   const calls = [];
+  const responses = [
+    included(
+      200,
+      { check_runs: [1, 2] },
+      `Link: <https://api.github.com/${REPO}/commits/x/check-runs?per_page=100&page=2>; rel="next"\r\n`,
+    ),
+    included(200, { check_runs: [3] }),
+    included(200, { sha: TRUNK }),
+  ];
   const api = restClient((command, args) => {
     calls.push([command, ...args]);
-    return args.includes('--slurp')
-      ? JSON.stringify([{ check_runs: [1, 2] }, { check_runs: [3] }])
-      : JSON.stringify({ sha: TRUNK });
+    return responses.shift();
   });
   assert.deepEqual(
     api.list(`${REPO}/commits/x/check-runs`, 'check_runs'),
     [1, 2, 3],
   );
   assert.deepEqual(api.get(`${REPO}/commits/main`), { sha: TRUNK });
-  assert.deepEqual(calls[0], [
-    'gh',
-    'api',
-    '-X',
-    'GET',
-    `${REPO}/commits/x/check-runs?per_page=100`,
-    '--paginate',
-    '--slurp',
+  assert.deepEqual(calls, [
+    ['gh', 'api', '--include', `${REPO}/commits/x/check-runs?per_page=100`],
+    [
+      'gh',
+      'api',
+      '--include',
+      `${REPO}/commits/x/check-runs?per_page=100&page=2`,
+    ],
+    ['gh', 'api', '--include', `${REPO}/commits/main`],
   ]);
-  assert.deepEqual(calls[1], [
-    'gh',
-    'api',
-    '-X',
-    'GET',
-    `${REPO}/commits/main`,
-  ]);
+});
+
+test('a missing child and a rate limit keep their own messages', () => {
+  const failing = (stdout) =>
+    restClient(() => {
+      throw Object.assign(new Error('gh failed'), {
+        status: 1,
+        stdout,
+        stderr: 'gh: secret',
+      });
+    });
+  const reasons = [
+    included(404, { message: 'Not Found' }),
+    included(
+      403,
+      { message: 'API rate limit exceeded for user ID 1.' },
+      'X-Ratelimit-Remaining: 0\r\n',
+    ),
+  ].map((stdout) => {
+    // Only the issue read fails; the rest of the run reads fixtures.
+    const broken = failing(stdout);
+    const fixtures = fakeApi({ issues: {} });
+    const api = {
+      get: (path) =>
+        path.endsWith('/issues/5') ? broken.get(path) : fixtures.get(path),
+      list: fixtures.list,
+    };
+    return deliveryQueue(policy, 5, { api }).rows[0].blocker;
+  });
+  assert.match(
+    reasons[0],
+    /^BLOCKED: issue #5 inaccessible: .*404.*does not exist/,
+  );
+  assert.match(reasons[1], /^BLOCKED: issue #5 inaccessible: .*rate limit/i);
+  assert.notEqual(reasons[0], reasons[1]);
 });

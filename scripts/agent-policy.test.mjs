@@ -1981,7 +1981,6 @@ test('each implementer and reviewer spawn passes its own model and effort', () =
     assert.equal(implementer.effort, 'medium', tool);
     assert.equal(reviewer.effort, 'high', tool);
     // An implementer at medium still sends its reviewer the reviewer's policy.
-    assert.notEqual(implementer.spawn, reviewer.spawn, tool);
     const effort = tool === 'claude' ? 'effort' : 'reasoning_effort';
     assert.equal(implementer.spawn[effort], 'medium', tool);
     assert.equal(reviewer.spawn[effort], 'high', tool);
@@ -2409,7 +2408,7 @@ test('delivery owners and reviewers share one retrieval rule', () => {
   );
   assert.match(
     evidence,
-    /^- Read a file of up to about 400 lines whole\. For a larger file, run `rg -n` first, then read the ranges the task needs\./m,
+    /^- Read a file of up to about 400 lines whole, and a file you will edit whole at any size\. For any other larger file, run `rg -n` first, then read the ranges the task needs\./m,
   );
   assert.match(
     evidence,

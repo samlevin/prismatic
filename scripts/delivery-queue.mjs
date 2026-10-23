@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { loadPolicy } from './agent-policy.mjs';
-import { failureMessage } from './github-api.mjs';
+import { failureMessage, ghRest, ghRestPages } from './github-api.mjs';
 import { closingIssues } from './issue-pr-status.mjs';
 
 const POSITIVE_INTEGER = /^[1-9]\d*$/;
@@ -14,28 +14,11 @@ const USAGE =
 
 // Every run refetches GitHub; nothing is cached between runs.
 export function restClient(run = execFileSync) {
-  const get = (path, paginate = false) =>
-    JSON.parse(
-      run(
-        'gh',
-        [
-          'api',
-          '-X',
-          'GET',
-          path,
-          ...(paginate ? ['--paginate', '--slurp'] : []),
-        ],
-        {
-          encoding: 'utf8',
-          maxBuffer: 64 * 1024 * 1024,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        },
-      ),
-    );
+  const get = (path) => JSON.parse(ghRest([path], { run }));
   const list = (path, key) =>
-    get(`${path}${path.includes('?') ? '&' : '?'}per_page=100`, true).flatMap(
-      (page) => (key ? page[key] : page),
-    );
+    ghRestPages(`${path}${path.includes('?') ? '&' : '?'}per_page=100`, {
+      run,
+    }).flatMap((page) => (key ? page[key] : page));
   return { get, list };
 }
 
@@ -89,10 +72,25 @@ export function implementationEffort(
   return { ...decision };
 }
 
-export function effortAnnouncement(issue, decision) {
+// Effort levels from lowest to highest, as the widest supported list orders
+// them.
+export function effortLevels(policy) {
+  return Object.values(policy.supported)
+    .flatMap((tool) => Object.values(tool.models))
+    .reduce((widest, levels) =>
+      levels.length > widest.length ? levels : widest,
+    );
+}
+
+// The arrow line is reserved for efforts above the default.
+export function effortAnnouncement(issue, decision, policy) {
+  const levels = effortLevels(policy);
+  const { default: ordinary } = policy.implementationEffort;
+  if (levels.indexOf(decision.effort) > levels.indexOf(ordinary))
+    return `Implementation effort: ${ordinary} -> ${decision.effort}; issue: #${issue}; rule: ${decision.rule}; evidence: ${decision.evidence}; reason: ${decision.reason}`;
   if (decision.rule === 'default')
-    return 'Implementation effort: medium (default)';
-  return `Implementation effort: medium -> ${decision.effort}; issue: #${issue}; rule: ${decision.rule}; evidence: ${decision.evidence}; reason: ${decision.reason}`;
+    return `Implementation effort: ${ordinary} (default)`;
+  return `Implementation effort: ${decision.effort} (${decision.rule}); issue: #${issue}; evidence: ${decision.evidence}`;
 }
 
 const trusted = (comments) =>
@@ -422,6 +420,14 @@ export function deliveryQueue(
           `blocker ${failed.map((d) => `#${d}`).join(', ')} inaccessible`,
         );
       const stackable = unmet.filter((d) => qualifies(open(d)));
+      // A resumed stacked branch keeps its prerequisite as the base.
+      if (stackable.length === 1) {
+        const prerequisite = open(stackable[0]);
+        row.base = {
+          branch: prerequisite.head.ref,
+          sha: prerequisite.head.sha,
+        };
+      }
       if (claim) {
         // Only a structured claim this delivery made can resume; --resume
         // waives the worktree check, never the ownership check.
@@ -451,13 +457,6 @@ export function deliveryQueue(
           state: 'waiting',
           blocker: `unmerged prerequisites ${stackable.map((d) => `#${d}`).join(', ')} need a stacking decision`,
         };
-      if (stackable.length === 1) {
-        const prerequisite = open(stackable[0]);
-        row.base = {
-          branch: prerequisite.head.ref,
-          sha: prerequisite.head.sha,
-        };
-      }
       return row;
     } catch (error) {
       const message = `issue #${n} has an invalid record: ${error.message}`;
@@ -487,7 +486,7 @@ export function ledgerLine(row) {
   ];
   if (row.base)
     parts.push(
-      `base=${row.base.branch}@${row.base.sha}; branch=${row.branch ?? 'none'}; head=${row.head ?? 'none'}; PR=${row.pr ?? 'none'}; project=${row.project ?? 'none'}; size=${row.size ?? 'none'}; claim=${row.claim?.url ?? 'none'}`,
+      `base=${row.base.branch}@${row.base.sha}; branch=${row.branch ?? 'none'}; head=${row.head ?? 'none'}; PR=${row.pr ?? 'none'}; project=${row.project ?? 'none'}; size=${row.size ?? 'none'}; claim=${row.claim ? `${row.claim.agent} ${row.claim.url}` : 'none'}`,
     );
   if (row.blocker) parts.push(row.blocker);
   return parts.join(' | ');
@@ -504,11 +503,8 @@ export function parseArguments(argv) {
       if (value === undefined || value.startsWith('--'))
         throw new Error(`Option ${argument} requires a value`);
       if (argument === '--actor') options.actor = value;
-      else if (argument === '--effort') {
-        if (!/^[a-z]+$/.test(value))
-          throw new Error('--effort requires an effort level');
-        options.effort = value;
-      } else {
+      else if (argument === '--effort') options.effort = value;
+      else {
         const numbers = value.split(',');
         if (!numbers.every((entry) => POSITIVE_INTEGER.test(entry)))
           throw new Error(`${argument} requires issue numbers`);
@@ -530,6 +526,11 @@ export function parseArguments(argv) {
 
 export function run(argv, { policy = loadPolicy(), api, worktrees } = {}) {
   const options = parseArguments(argv);
+  const levels = effortLevels(policy);
+  if (options.effort && !levels.includes(options.effort))
+    throw new Error(
+      `Unsupported effort "${options.effort}". Supported: ${levels.join(', ')}.`,
+    );
   const { rows, errors } = deliveryQueue(policy, options.issue, {
     ...(api ? { api } : {}),
     resume: options.resume,
@@ -541,7 +542,10 @@ export function run(argv, { policy = loadPolicy(), api, worktrees } = {}) {
   if (options.next) {
     const row = nextLeaf(rows, options.skip);
     if (row)
-      lines.push(ledgerLine(row), effortAnnouncement(row.issue, row.effort));
+      lines.push(
+        ledgerLine(row),
+        effortAnnouncement(row.issue, row.effort, policy),
+      );
     else lines.push('No resume, ready, or owned-elsewhere leaf remains.');
   } else lines.push(...rows.map(ledgerLine));
   return { lines, errors };

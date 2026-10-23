@@ -26,7 +26,7 @@ The implementer's one claim comment carries both records, each on its own line, 
 <!-- {{prefix}}effort {"effort":"medium","rule":"default","evidence":"issue/spec","reason":"The written plan resolves the design."} -->
 ```
 
-A release comment posts the claim record again with `"released":true`. A user override records `"rule":"user override"` and `"agent":"<delivery ID>"` with the selected effort and the explicit constraint as evidence and reason; it holds for every later run of that delivery and ends with it. An initial high decision, or a later escalation, also records the unresolved `question` and a `criteria` object whose keys are the matching rule's `requires` list in `.agents/policy.json`, each set to `true`; a later escalation adds `"later":true`:
+A release comment posts the claim record again with `"released":true`. A user override records `"rule":"user override"` and `"agent":"<delivery ID>"` with the selected effort and the explicit constraint as evidence and reason; it holds for every later run of that delivery and ends with it. An initial high decision, which the implementer copies from its assignment, or a later escalation, also records the unresolved `question` and a `criteria` object whose keys are the matching rule's `requires` list in `.agents/policy.json`, each set to `true`; a later escalation adds `"later":true`:
 
 ```html
 <!-- {{prefix}}effort {"effort":"high","rule":"H3-demonstrated-limit","later":true,"question":"<unresolved correctness question>","evidence":"<failing case or finding>","reason":"<why medium with the plan is insufficient>","criteria":{"mediumAttempt":true,"reproducibleFailureOrFinding":true,"designRevisionRequired":true,"unresolvedReasoning":true}} -->
@@ -38,7 +38,7 @@ You post the later-escalation record yourself, once, with `gh api -X POST repos/
 
 Delivery is sequential by default. Run `--next`: it returns a `resume` leaf before any `ready` leaf, and when the earliest remaining leaf is `owned elsewhere` it returns that leaf and its claim instead of skipping it, so you ask the person first. Print the announcement line it prints; when your own assessment selects high for a leaf the ledger shows at medium, print the full line from the {{prefix}}implement skill with the rule and evidence instead. Dispatch that leaf to one {{prefix}}implementer as the {{prefix}}implement skill describes, and record its fixed result before you start the next leaf. Rerun the script after every result and when you resume.
 
-When a leaf ends BLOCKED and the implementer released its claim, add it to `--skip <leaf,...>` for the rest of this delivery so `--next` moves on, and keep the blocked results in a file outside tracked paths rather than in this conversation. Retry that leaf only when new evidence resolves its blocker. An L leaf, or one that fails the gate, gets planning or decomposition through the {{prefix}}create-github-issue skill within the accepted scope, or a recorded blocker. Never relax the gate.
+When a leaf ends BLOCKED and the implementer released its claim, or the person declines to take over an `owned elsewhere` leaf, add it to `--skip <leaf,...>` for the rest of this delivery so `--next` moves on, and keep the blocked results in a file outside tracked paths rather than in this conversation. Retry that leaf only when new evidence resolves its blocker. An L leaf, or one that fails the gate, gets planning or decomposition through the {{prefix}}create-github-issue skill within the accepted scope, or a recorded blocker. Never relax the gate.
 
 ## Parallel exception
 
