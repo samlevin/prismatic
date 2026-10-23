@@ -245,7 +245,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
       group: 'pr-issue-status-${{ github.event.pull_request.number }}',
       'cancel-in-progress': false,
     },
-    if: "github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft",
+    if: "github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft && (github.event.action != 'edited' || github.event.changes.body)",
     steps: [
       checkout,
       node,
@@ -289,7 +289,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
         'pr-issue-metadata-${{ github.event.pull_request.number || inputs.pull_request }}',
       'cancel-in-progress': false,
     },
-    if: "github.repository == 'samlevin/prismatic' && (github.event_name == 'pull_request_target' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))",
+    if: "github.repository == 'samlevin/prismatic' && (github.event_name == 'pull_request_target' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && (github.event.action != 'edited' || github.event.changes.body)",
     steps: [
       checkout,
       node,
@@ -548,6 +548,47 @@ test('the hourly sweep adds missing issues, then triages, then closes containers
     steps('issues').map((step) => step.name),
     ['Triage issues', 'Close finished containers'],
   );
+});
+
+test('PR tracker workflows skip edits that leave the body unchanged', () => {
+  for (const file of [
+    'tracker-pr-issue-status.yml',
+    'tracker-pr-metadata.yml',
+  ]) {
+    const [job] = Object.values(definitions.get(file).jobs);
+    const runs = (action, changes = {}) =>
+      Boolean(
+        evaluate(job.if, {
+          format: (template, ...values) =>
+            template.replace(/\{(\d+)\}/g, (_, index) => values[index]),
+          github: {
+            repository: 'samlevin/prismatic',
+            ref: 'refs/heads/feature',
+            event_name: 'pull_request_target',
+            event: {
+              action,
+              changes,
+              pull_request: { draft: false },
+              repository: { default_branch: 'main' },
+            },
+          },
+        }),
+      );
+    for (const action of ['opened', 'reopened', 'ready_for_review'])
+      assert.equal(runs(action), true, `${file} ${action}`);
+    assert.equal(runs('edited', { body: { from: 'old' } }), true, file);
+    assert.equal(
+      runs('edited', { body: { from: 'old' }, title: { from: 'old' } }),
+      true,
+      file,
+    );
+    assert.equal(runs('edited', { title: { from: 'old' } }), false, file);
+    assert.equal(
+      runs('edited', { base: { ref: { from: 'main' } } }),
+      false,
+      file,
+    );
+  }
 });
 
 test('workflows started by pull_request_target never check out or run pull request code', () => {

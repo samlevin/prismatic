@@ -32,14 +32,15 @@ function fixture({
   changed = false,
   changedAssociation = false,
   unknown = false,
+  body = 'Closes #1. Also #99',
 } = {}) {
   const writes = [];
   const calls = [];
   let reads = 0;
   let prReads = 0;
-  const content = (fresh) => ({
-    id: 'issue',
-    number: 1,
+  const content = (fresh, number) => ({
+    id: `issue-${number}`,
+    number,
     state: fresh ? freshState : state,
     __typename: 'Issue',
     repository: { nameWithOwner: REPOSITORY },
@@ -55,7 +56,7 @@ function fixture({
       return {
         repository: {
           pullRequest: {
-            body: changed && prReads > 1 ? 'Closes #2' : 'Closes #1. Also #99',
+            body: changed && prReads > 1 ? 'Closes #2' : body,
             state: prState,
             isDraft: draft,
             authorAssociation:
@@ -95,7 +96,7 @@ function fixture({
             projectItems: {
               nodes: vars.cursor
                 ? member
-                  ? [{ id: 'item', project: { id: 'project' } }]
+                  ? [{ id: `item-${vars.number}`, project: { id: 'project' } }]
                   : []
                 : [{ id: 'unrelated', project: { id: 'other' } }],
               pageInfo: { hasNextPage: !vars.cursor, endCursor: 'next' },
@@ -107,10 +108,10 @@ function fixture({
       if (!vars.cursor) reads++;
       return {
         node: {
-          id: 'item',
+          id: vars.id,
           type: 'ISSUE',
           project: { id: 'project' },
-          content: content(reads > 1),
+          content: content(reads > 1, Number(vars.id.split('-')[1])),
           fieldValues: {
             nodes: vars.cursor
               ? [
@@ -132,7 +133,7 @@ function fixture({
     if (query.includes('labels('))
       return {
         node: {
-          ...content(reads > 1),
+          ...content(reads > 1, Number(vars.id.split('-')[1])),
           labels: { nodes: [], pageInfo: { hasNextPage: false } },
         },
       };
@@ -146,7 +147,12 @@ test('only claimed closing issues move, with paginated item and field reads', as
   const f = fixture();
   await moveIssuesToReview({ ...f, number: 10, dryRun: false });
   assert.deepEqual(f.writes, [
-    { project: 'project', item: 'item', field: 'status', option: 'In review' },
+    {
+      project: 'project',
+      item: 'item-1',
+      field: 'status',
+      option: 'In review',
+    },
   ]);
   assert.equal(
     f.calls.filter((c) => c.query.includes('issueOrPullRequest')).length,
@@ -160,6 +166,23 @@ test('only claimed closing issues move, with paginated item and field reads', as
     f.calls
       .filter((c) => c.query.includes('issueOrPullRequest'))
       .every((c) => c.vars.number === 1),
+  );
+});
+
+test('one run discovers the project fields once for every closing issue', async () => {
+  const f = fixture({ body: 'Closes #1, closes #2' });
+  await moveIssuesToReview({ ...f, number: 10, dryRun: false });
+  assert.deepEqual(
+    f.writes.map((write) => write.item),
+    ['item-1', 'item-2'],
+  );
+  assert.equal(
+    f.calls.filter((c) => c.query.includes('projectV2(number:')).length,
+    1,
+  );
+  assert.equal(
+    f.calls.filter((c) => c.query.includes('pullRequest(number:')).length,
+    3,
   );
 });
 
