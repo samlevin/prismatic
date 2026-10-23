@@ -2178,6 +2178,28 @@ test('delivery owners and reviewers share one retrieval rule', () => {
     /fetch the missing part with a narrower query, a line range, or the next page/,
   );
   assert.match(evidence, /never to meet a size or a count/);
+  assert.match(evidence, /not a threshold that requires a full read/);
+  assert.match(evidence, /when context was compacted or lost a detail/);
+  assert.match(evidence, /never read a file again only to confirm that/);
+  for (const path of inBoth('implement/references/delivery.md')) {
+    const delivery = files.get(path);
+    assert.doesNotMatch(delivery, /in full|re-read/i, path);
+    assert.match(
+      delivery,
+      /inspect every changed region with enough surrounding text/,
+      path,
+    );
+    assert.match(
+      delivery,
+      /at least one generated file for each edited source/,
+      path,
+    );
+    assert.match(
+      delivery,
+      /other statements of the rule you changed, references to anything you renamed or moved, and qualifiers a rewrite dropped/,
+      path,
+    );
+  }
   assert.match(
     evidence,
     /^- Start with targeted searches and the relevant callers/m,
