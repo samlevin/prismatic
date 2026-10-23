@@ -182,7 +182,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
         inputs: {
           dry_run: {
             description:
-              'Preview metadata and container completion without writes',
+              'Preview added issues, metadata, and container completion without writes',
             type: 'boolean',
             default: true,
           },
@@ -212,6 +212,14 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
       checkout,
       node,
       {
+        if: "github.event_name != 'issues'",
+        uses: undefined,
+        with: undefined,
+        env: { PRISMATIC_PROJECT_TOKEN: token, DRY_RUN: dispatchDryRun },
+        run: 'node scripts/issue-project-membership.mjs --sweep',
+      },
+      ...['issue-triage.mjs', 'issue-containers.mjs'].map((script) => ({
+        if: '${{ !cancelled() }}',
         uses: undefined,
         with: undefined,
         env: {
@@ -221,11 +229,10 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
         },
         run: [
           'if [ "$GITHUB_EVENT_NAME" = issues ]; then set -- --issue "$ISSUE_NUMBER"; fi',
-          'node scripts/issue-triage.mjs "$@"',
-          'node scripts/issue-containers.mjs "$@"',
+          `node scripts/${script} "$@"`,
           '',
         ].join('\n'),
-      },
+      })),
     ],
   });
   const prEvents = {
@@ -302,7 +309,6 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   assert.deepEqual(contract('tracker-project-membership.yml'), {
     on: {
       issues: { types: ['opened'] },
-      schedule: [{ cron: '37 * * * *' }],
       workflow_dispatch: {
         inputs: {
           dry_run: {
@@ -351,7 +357,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   });
 });
 
-test('project membership adds and triages one issue when it opens and sweeps on a schedule or dispatch', () => {
+test('project membership adds and triages one issue when it opens and sweeps on dispatch', () => {
   const definition = definitions.get('tracker-project-membership.yml');
   const job = definition.jobs['add-to-project'];
   const format = (template, ...values) =>
@@ -397,12 +403,6 @@ test('project membership adds and triages one issue when it opens and sweeps on 
     ],
   });
   const sweep = 'node scripts/issue-project-membership.mjs --sweep';
-  assert.deepEqual(start('schedule'), {
-    name: 'Add missing issues to the project (schedule)',
-    group: 'project-membership-sweep',
-    runs: true,
-    steps: [{ run: sweep, dryRun: 'false' }],
-  });
   for (const [dryRunInput, dryRun] of [
     [true, 'true'],
     [false, 'false'],
@@ -498,6 +498,56 @@ test('issue states run for state changes and for labels that triage or container
       `${name} removed from an epic`,
     );
   }
+});
+
+test('the hourly sweep adds missing issues, then triages, then closes containers, past failures', () => {
+  const definition = definitions.get('tracker-issue-states.yml');
+  const schedules = [...definitions].filter(([, workflow]) =>
+    triggers(workflow).includes('schedule'),
+  );
+  assert.deepEqual(
+    schedules.map(([file, workflow]) => [file, workflow.on.schedule]),
+    [['tracker-issue-states.yml', [{ cron: '7 * * * *' }]]],
+  );
+  // A step without a status function runs only while every earlier step passed.
+  const steps = (eventName, inputs = {}) =>
+    definition.jobs['reconcile-issues'].steps
+      .filter(
+        (step) =>
+          !step.if ||
+          evaluate(step.if, {
+            cancelled: () => false,
+            github: { event_name: eventName },
+          }),
+      )
+      .filter((step) => step.env)
+      .map((step) => ({
+        name: step.name,
+        runsAfterFailure: step.if?.includes('!cancelled()') ?? false,
+        dryRun: evaluate(step.env.DRY_RUN, {
+          github: { event_name: eventName },
+          inputs,
+        }),
+      }));
+  const sweep = (dryRun) =>
+    [
+      'Add missing open issues to Prismatic delivery',
+      'Triage issues',
+      'Close finished containers',
+    ].map((name, index) => ({
+      name,
+      runsAfterFailure: index > 0,
+      dryRun,
+    }));
+  assert.deepEqual(steps('schedule'), sweep('false'));
+  assert.deepEqual(
+    steps('workflow_dispatch', { dry_run: true }),
+    sweep('true'),
+  );
+  assert.deepEqual(
+    steps('issues').map((step) => step.name),
+    ['Triage issues', 'Close finished containers'],
+  );
 });
 
 test('workflows started by pull_request_target never check out or run pull request code', () => {

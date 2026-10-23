@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Preview metadata and container completion without writes
+        description: Preview added issues, metadata, and container completion without writes
         type: boolean
         default: true
 
@@ -52,14 +52,29 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24.22.0'
-      - name: Triage issues and close finished containers
+      # The sweep adds missing issues first, so triage sees their items.
+      - name: Add missing open issues to Prismatic delivery
+        if: github.event_name != 'issues'
+        env:
+          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: node scripts/issue-project-membership.mjs --sweep
+      # Each later sweep runs after an earlier failure, and the job still fails.
+      - name: Triage issues
+        if: ${{ !cancelled() }}
         env:
           PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-        # An issue event reconciles only that issue; the schedule and manual
-        # runs sweep the whole project.
         run: |
           if [ "$GITHUB_EVENT_NAME" = issues ]; then set -- --issue "$ISSUE_NUMBER"; fi
           node scripts/issue-triage.mjs "$@"
+      - name: Close finished containers
+        if: ${{ !cancelled() }}
+        env:
+          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = issues ]; then set -- --issue "$ISSUE_NUMBER"; fi
           node scripts/issue-containers.mjs "$@"
