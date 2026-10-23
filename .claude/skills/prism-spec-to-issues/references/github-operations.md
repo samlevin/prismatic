@@ -48,10 +48,9 @@ gh api -X PATCH repos/R/issues/N --input /abs/state/patch.json --jq .number
 
 ## Project items
 
-- Find: `gh api 'users/samlevin/projectsV2/P/items?per_page=100' --paginate --jq '.[] | select(.content_type=="Issue") | {item: .id, issue: .content.id}'`, then match `issue` to every recorded issue `id`. One listing covers the whole batch; re-list, never list per issue.
-- Add, only for issues still missing after the batch's single 3-minute wait: `gh api -X POST users/samlevin/projectsV2/P/items -f type=Issue -F id=ISSUE_ID`.
+- Add: from the repository root, `ISSUE_NUMBER=N DRY_RUN=false node scripts/issue-project-membership.mjs --json`, once per created issue, paced as a write. It prints one line on stdout, `{"issue":N,"item":"ITEM","status":"Inbox"}`; record `item` as `projectItemId`. Running it for an issue already on the project returns that item and changes nothing. A non-zero exit means the issue has no item. Never add an item with a direct REST project add.
 - Set Priority and Size: `gh api -X PATCH users/samlevin/projectsV2/P/items/ITEM --input fields.json`, with `fields.json` as `{"fields": [{"id": PRIORITY_FIELD_ID, "value": "OPTION_ID"}, {"id": SIZE_FIELD_ID, "value": "OPTION_ID"}]}`. Field IDs are the numeric `id` values from the fields read; option IDs are the option `id` strings.
-- Never set Status. The repository automation sets Inbox, and `scripts/issue-triage.mjs` moves an issue to Ready. An item you added yourself has no Status, so triage skips it; report it as unfinished.
+- Never set Status yourself. The script sets Inbox on an item without a Status and keeps an existing one, and `scripts/issue-triage.mjs` moves an issue to Ready.
 
 ## Resume lookup
 

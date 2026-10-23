@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
@@ -51,9 +54,10 @@ function fixture({
         throw new Error('API rate limit exceeded');
       if (!items.has(variables.content))
         items.set(variables.content, { id: `PVTI_${items.size + 1}` });
+      const { id } = items.get(variables.content);
       return {
         addProjectV2ItemById: {
-          item: { id: items.get(variables.content).id },
+          item: { id, fullDatabaseId: id.replace('PVTI_', '90') },
         },
       };
     }
@@ -158,7 +162,7 @@ const statusWrites = (f) =>
 test('adds a new issue by node ID and sets its Status to Inbox', async () => {
   const f = fixture();
   const item = await addToProject({ ...f, number: 7, dryRun: false });
-  assert.equal(item, 'PVTI_1');
+  assert.deepEqual(item, { id: 'PVTI_1', databaseId: '901', status: 'Inbox' });
   assert.deepEqual(f.calls[0].variables, {
     owner: 'samlevin',
     name: 'prismatic',
@@ -186,10 +190,11 @@ test('an issue already on the board keeps its Status', async () => {
   const f = fixture({
     existing: { I_1: { id: 'PVTI_5', status: 'OPT_READY' } },
   });
-  assert.equal(
-    await addToProject({ ...f, number: 7, dryRun: false }),
-    'PVTI_5',
-  );
+  assert.deepEqual(await addToProject({ ...f, number: 7, dryRun: false }), {
+    id: 'PVTI_5',
+    databaseId: '905',
+    status: 'Ready',
+  });
   assert.deepEqual(statusWrites(f), []);
   assert.equal(f.items.get('I_1').status, 'OPT_READY');
   assert.deepEqual(f.lines, [
@@ -223,7 +228,7 @@ test('adding content already in the project returns the same item', async () => 
   const f = fixture();
   const first = await addToProject({ ...f, number: 7, dryRun: false });
   const second = await addToProject({ ...f, number: 7, dryRun: false });
-  assert.equal(second, first);
+  assert.deepEqual(second, first);
   assert.equal(f.items.size, 1);
   assert.deepEqual(statusWrites(f), ['OPT_INBOX']);
 });
@@ -308,17 +313,19 @@ test('missing content, a missing or closed project, and bad numbers fail before 
   }
 });
 
-test('a mutation without an item fails', async () => {
-  const f = fixture();
-  const original = f.api;
-  f.api = async (query, variables) =>
-    query.startsWith('mutation')
-      ? { addProjectV2ItemById: null }
-      : original(query, variables);
-  await assert.rejects(
-    addToProject({ ...f, number: 7, dryRun: false }),
-    /did not return a project item/,
-  );
+test('a mutation without an item or its database ID fails', async () => {
+  for (const response of [null, { item: { id: 'PVTI_1' } }]) {
+    const f = fixture();
+    const original = f.api;
+    f.api = async (query, variables) =>
+      query.startsWith('mutation')
+        ? { addProjectV2ItemById: response }
+        : original(query, variables);
+    await assert.rejects(
+      addToProject({ ...f, number: 7, dryRun: false }),
+      /did not return a project item/,
+    );
+  }
 });
 
 const issue = (number, options = {}) => ({
@@ -453,11 +460,19 @@ test('configuration requires the token and repository in Actions and defaults to
     sweep: true,
     dryRun: false,
   });
-  for (const args of [['--apply'], ['--sweep', '--sweep']])
+  for (const args of [
+    ['--apply'],
+    ['--sweep', '--sweep'],
+    ['--sweep', '--json'],
+  ])
     assert.throws(
       () => configuration({ ISSUE_NUMBER: '12' }, args),
-      /only option is --sweep/,
+      /only options are --sweep and --json/,
     );
+  assert.deepEqual(
+    configuration({ ISSUE_NUMBER: '12', DRY_RUN: 'false' }, ['--json']),
+    { number: 12, dryRun: false, json: true },
+  );
   assert.throws(
     () => configuration({ GITHUB_ACTIONS: 'true' }, ['--sweep']),
     /PRISMATIC_PROJECT_TOKEN/,
@@ -465,6 +480,7 @@ test('configuration requires the token and repository in Actions and defaults to
   assert.deepEqual(configuration({ ISSUE_NUMBER: '12' }), {
     number: 12,
     dryRun: true,
+    json: false,
   });
   assert.deepEqual(
     configuration({
@@ -474,7 +490,7 @@ test('configuration requires the token and repository in Actions and defaults to
       ISSUE_NUMBER: '12',
       DRY_RUN: 'false',
     }),
-    { number: 12, dryRun: false },
+    { number: 12, dryRun: false, json: false },
   );
   const actions = {
     GITHUB_ACTIONS: 'true',
@@ -510,4 +526,57 @@ test('the command line reports configuration errors without calling GitHub', () 
   }
   assert.equal(failure?.status, 1);
   assert.match(failure.stderr, /PRISMATIC_PROJECT_TOKEN is required/);
+});
+
+test('--json prints only the item ID and Status on stdout and logs to stderr', (t) => {
+  if (process.platform === 'win32')
+    return t.skip('the fake gh is a shell script');
+  const directory = mkdtempSync(join(tmpdir(), 'issue-project-membership-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  // Answers each query the add makes for a new issue, by its shape.
+  const responder = join(directory, 'gh.mjs');
+  writeFileSync(
+    responder,
+    `import { readFileSync } from 'node:fs';
+const { query } = JSON.parse(readFileSync(0, 'utf8'));
+const page = { hasNextPage: false };
+const project = { id: 'PVT_1', closed: false };
+const data = /issueOrPullRequest/.test(query)
+  ? { repository: { issueOrPullRequest: { __typename: 'Issue', id: 'I_1', projectItems: { nodes: [] } } }, user: { projectV2: project } }
+  : /fields\\(first: 100/.test(query)
+    ? { user: { projectV2: { id: 'PVT_1', fields: { nodes: [{ id: 'FIELD_STATUS', name: 'Status', options: [{ id: 'OPT_INBOX', name: 'Inbox' }] }], pageInfo: page } } } }
+    : /addProjectV2ItemById/.test(query)
+      ? { addProjectV2ItemById: { item: { id: 'PVTI_1', fullDatabaseId: '901' } } }
+      : /updateProjectV2ItemFieldValue/.test(query)
+        ? { updateProjectV2ItemFieldValue: { projectV2Item: { id: 'PVTI_1' } } }
+        : /on ProjectV2Item/.test(query)
+          ? { node: { id: 'PVTI_1', type: 'ISSUE', project, content: { __typename: 'Issue', id: 'I_1' }, fieldValues: { nodes: [], pageInfo: page } } }
+          : { node: { id: 'I_1', __typename: 'Issue', labels: { nodes: [], pageInfo: page } } };
+process.stdout.write('HTTP/2.0 200 OK\\r\\n\\r\\n' + JSON.stringify({ data }));
+`,
+  );
+  const gh = join(directory, 'gh');
+  writeFileSync(gh, `#!/bin/sh\nexec "${process.execPath}" "${responder}"\n`);
+  chmodSync(gh, 0o755);
+  const script = fileURLToPath(
+    new URL('./issue-project-membership.mjs', import.meta.url),
+  );
+  const run = spawnSync(process.execPath, [script, '--json'], {
+    env: {
+      PATH: `${directory}:${process.env.PATH}`,
+      ISSUE_NUMBER: '7',
+      DRY_RUN: 'false',
+    },
+    encoding: 'utf8',
+  });
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(JSON.parse(run.stdout), {
+    issue: 7,
+    item: '901',
+    status: 'Inbox',
+  });
+  assert.equal(
+    run.stderr,
+    'Added issue #7 to Prismatic delivery as item PVTI_1.\nSet Status Inbox on issue #7.\n',
+  );
 });

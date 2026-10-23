@@ -5,7 +5,8 @@
 // in case GitHub dropped an `opened` run. An issue whose item has no Status
 // gets Inbox, so issue-triage.mjs picks it up, and an existing Status never
 // changes. Pull requests never go on the board, so the board counts only
-// issues.
+// issues. The filing skills run it for each issue they create with --json,
+// which prints the item's REST ID and Status as one JSON line on stdout.
 import { pathToFileURL } from 'node:url';
 import { failureMessage, ghGraphql } from './github-api.mjs';
 import {
@@ -74,24 +75,25 @@ export async function addToProject({
   // project, so reruns and duplicate events add nothing.
   const result = await api(
     `mutation($project: ID!, $content: ID!) {
-      addProjectV2ItemById(input: { projectId: $project, contentId: $content }) { item { id } }
+      addProjectV2ItemById(input: { projectId: $project, contentId: $content }) { item { id fullDatabaseId } }
     }`,
     { project: project.id, content: content.id },
   );
-  const item = result.addProjectV2ItemById?.item?.id;
-  if (!item)
+  const { id, fullDatabaseId: databaseId } =
+    result.addProjectV2ItemById?.item ?? {};
+  if (!id || !databaseId)
     throw new Error(`GitHub did not return a project item for #${number}`);
-  log(`Added issue #${number} to Prismatic delivery as item ${item}.`);
-  const current = await readItem(api, item, context);
+  log(`Added issue #${number} to Prismatic delivery as item ${id}.`);
+  const current = await readItem(api, id, context);
   if (!current)
-    throw new Error(`Could not read project item ${item} for #${number}`);
+    throw new Error(`Could not read project item ${id} for #${number}`);
   if (current.fields.Status) {
     log(`Kept Status ${current.fields.Status} on issue #${number}.`);
-    return item;
+    return { id, databaseId, status: current.fields.Status };
   }
-  await updateProjectStatus(api, context, item, INITIAL_STATUS);
+  await updateProjectStatus(api, context, id, INITIAL_STATUS);
   log(`Set Status ${INITIAL_STATUS} on issue #${number}.`);
-  return item;
+  return { id, databaseId, status: INITIAL_STATUS };
 }
 
 // Lists open issues a page at a time with their project items, so a sweep that
@@ -169,11 +171,16 @@ export function configuration(env, args = []) {
     throw new Error('DRY_RUN must be true or false');
   if (args.length === 1 && args[0] === '--sweep')
     return { sweep: true, dryRun: mode === 'true' };
-  if (args.length) throw new Error('The only option is --sweep');
+  if (args.length > 1 || (args.length && args[0] !== '--json'))
+    throw new Error('The only options are --sweep and --json');
   const number = env.ISSUE_NUMBER ?? '';
   if (!/^[1-9]\d*$/.test(number) || !Number.isSafeInteger(Number(number)))
     throw new Error('ISSUE_NUMBER must be a positive integer');
-  return { number: Number(number), dryRun: mode === 'true' };
+  return {
+    number: Number(number),
+    dryRun: mode === 'true',
+    json: args[0] === '--json',
+  };
 }
 
 if (
@@ -181,16 +188,26 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   try {
-    const { sweep, ...config } = configuration(
+    const { sweep, json, ...config } = configuration(
       process.env,
       process.argv.slice(2),
     );
     if (process.env.GITHUB_ACTIONS === 'true')
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
-    await (sweep ? addMissingIssues : addToProject)({
+    // With --json the log goes to stderr, so stdout holds only the JSON line.
+    const result = await (sweep ? addMissingIssues : addToProject)({
       api: ghGraphql,
       ...config,
+      log: json ? console.error : console.log,
     });
+    if (json)
+      console.log(
+        JSON.stringify({
+          issue: config.number,
+          item: result?.databaseId ?? null,
+          status: result?.status ?? null,
+        }),
+      );
   } catch (error) {
     console.error(failureMessage(error));
     process.exitCode = 1;
