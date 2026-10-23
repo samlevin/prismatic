@@ -13,7 +13,7 @@ While editing, run only the focused tests for what you touched. Before the first
 | `Dockerfile`, `.dockerignore`, `docker/`, or `apps/action/` | `npm run check`, then `npm run test:container` (needs Docker) |
 | `.agents/`, `.claude/`, `.codex/`, or `scripts/agent-policy*` | `npm run agents:generate` after editing a source, then `npm run check` |
 
-CI picks its checks from the changed files, as CONTRIBUTING.md describes. Tests mock GitHub and never call it.
+CI picks its checks from the changed files with `scripts/ci-scope.mjs`. Tests mock GitHub and never call it.
 
 ## Autonomous delivery
 
@@ -68,7 +68,7 @@ Issue tracker: GitHub Issues. This marker turns on the GitHub issue flows (`impl
 
 Repo `samlevin/prismatic`, trunk `main`, project [Prismatic delivery](https://github.com/users/samlevin/projects/2). Discover project field IDs with `gh`.
 
-- Triage, statuses, and PR rules live in [CONTRIBUTING.md](CONTRIBUTING.md); labels in [.github/labels.json](.github/labels.json); forms in `.github/ISSUE_TEMPLATE/`.
+- Triage, statuses, and dependencies live in [ISSUE_TRIAGE.md](ISSUE_TRIAGE.md), and the branch, PR, and claim rules in this file; labels in [.github/labels.json](.github/labels.json); forms in `.github/ISSUE_TEMPLATE/`.
 - PR titles use Conventional Commits, e.g. `feat: add CSV export`. Body: `Closes #N`, plus `Parent issue or epic: #P` when one exists. For a request with no issue, write `No linked issue.` instead and skip the issue state steps.
 - Issue states: claim and move to `In progress` before coding. That is the only status an agent sets; agents never set `In review` or `Done`. `tracker-pr-issue-status.yml` moves the closing issue to `In review` when the PR opens. If the issue is not `In review` at handoff, because the workflow has not run, skipped the issue, or failed, report the state you see in the handoff and leave it unchanged.
 - Issue titles are plain, with no `[Type]:` prefix. For issue filing, follow `.agents/issue-creation.md`.

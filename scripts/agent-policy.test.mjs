@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -1224,6 +1230,30 @@ test('the issue triager uses reported facts and writes no label-evidence report'
       path,
     );
   }
+});
+
+test('no agent source or generated agent file names CONTRIBUTING.md', () => {
+  const root = new URL('../', import.meta.url);
+  const files = new Map(render());
+  for (const directory of [
+    '.agents',
+    '.claude/agents',
+    '.claude/skills',
+    '.codex/agents',
+  ])
+    for (const file of readdirSync(new URL(directory, root), {
+      recursive: true,
+      withFileTypes: true,
+    }))
+      if (file.isFile()) {
+        const path = join(file.parentPath, file.name);
+        files.set(path, readFileSync(path, 'utf8'));
+      }
+  assert.ok(files.size > 20, 'agent files were read');
+  for (const [path, text] of files)
+    assert.doesNotMatch(text, /CONTRIBUTING/, path);
+  assert.deepEqual(policy.binding.docs.guides, ['ISSUE_TRIAGE.md']);
+  assert.equal(policy.binding.docs.triage, 'ISSUE_TRIAGE.md');
 });
 
 test('generated definitions in the repository are current', () => {
