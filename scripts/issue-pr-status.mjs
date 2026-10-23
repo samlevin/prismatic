@@ -78,8 +78,9 @@ export async function moveIssuesToReview({
     log(`Pull request #${number} closes no issues.`);
     return;
   }
-  const statuses = { Status: ['Ready', 'In progress', 'In review'] };
-  const context = await discover(api, statuses);
+  const context = await discover(api, {
+    Status: ['Ready', 'In progress', 'In review'],
+  });
   for (const issueNumber of numbers) {
     const items = await paginate(async (cursor) => {
       const data = await api(
@@ -126,8 +127,7 @@ export async function moveIssuesToReview({
       throw new Error(
         'Pull request changed during discovery; rerun reconciliation',
       );
-    const freshContext = await discover(api, statuses);
-    const fresh = await readItem(api, item.id, freshContext);
+    const fresh = await readItem(api, item.id, context);
     const freshReason =
       fresh?.content?.number === issueNumber
         ? skipReason(fresh, pr.authorAssociation)
@@ -136,7 +136,7 @@ export async function moveIssuesToReview({
       log(`Issue #${issueNumber}: skipped after re-read, ${freshReason}.`);
       continue;
     }
-    await updateProjectStatus(api, freshContext, fresh.id, 'In review');
+    await updateProjectStatus(api, context, fresh.id, 'In review');
     log(`Issue #${issueNumber}: ${fresh.fields.Status} -> In review.`);
   }
 }

@@ -235,6 +235,8 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
       })),
     ],
   });
+  const skipGroup =
+    "${{ github.event.action == 'edited' && !github.event.changes.body && '-skip' || '' }}";
   const prEvents = {
     types: ['opened', 'edited', 'reopened', 'ready_for_review'],
   };
@@ -242,10 +244,10 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
     on: { pull_request_target: prEvents },
     permissions: { contents: 'read' },
     concurrency: {
-      group: 'pr-issue-status-${{ github.event.pull_request.number }}',
+      group: `pr-issue-status-\${{ github.event.pull_request.number }}${skipGroup}`,
       'cancel-in-progress': false,
     },
-    if: "github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft",
+    if: "github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft && (github.event.action != 'edited' || github.event.changes.body)",
     steps: [
       checkout,
       node,
@@ -285,11 +287,10 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
     },
     permissions: { contents: 'read' },
     concurrency: {
-      group:
-        'pr-issue-metadata-${{ github.event.pull_request.number || inputs.pull_request }}',
+      group: `pr-issue-metadata-\${{ github.event.pull_request.number || inputs.pull_request }}${skipGroup}`,
       'cancel-in-progress': false,
     },
-    if: "github.repository == 'samlevin/prismatic' && (github.event_name == 'pull_request_target' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))",
+    if: "github.repository == 'samlevin/prismatic' && (github.event_name == 'pull_request_target' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && (github.event.action != 'edited' || github.event.changes.body)",
     steps: [
       checkout,
       node,
@@ -547,6 +548,77 @@ test('the hourly sweep adds missing issues, then triages, then closes containers
   assert.deepEqual(
     steps('issues').map((step) => step.name),
     ['Triage issues', 'Close finished containers'],
+  );
+});
+
+test('PR tracker workflows skip edits that leave the body unchanged, outside the pending queue', () => {
+  const format = (template, ...values) =>
+    template.replace(/\{(\d+)\}/g, (_, index) => values[index]);
+  for (const [file, prefix] of [
+    ['tracker-pr-issue-status.yml', 'pr-issue-status'],
+    ['tracker-pr-metadata.yml', 'pr-issue-metadata'],
+  ]) {
+    const definition = definitions.get(file);
+    const [job] = Object.values(definition.jobs);
+    const start = (action, changes = {}) => {
+      const values = {
+        format,
+        inputs: {},
+        github: {
+          repository: 'samlevin/prismatic',
+          ref: 'refs/heads/feature',
+          event_name: 'pull_request_target',
+          event: {
+            action,
+            changes,
+            pull_request: { number: 7, draft: false },
+            repository: { default_branch: 'main' },
+          },
+        },
+      };
+      return {
+        runs: Boolean(evaluate(job.if, values)),
+        group: definition.concurrency.group.replace(
+          /\$\{\{([\s\S]*?)\}\}/g,
+          (_, expression) => evaluate(expression, values),
+        ),
+      };
+    };
+    const queued = { runs: true, group: `${prefix}-7` };
+    const skipped = { runs: false, group: `${prefix}-7-skip` };
+    for (const action of ['opened', 'reopened', 'ready_for_review'])
+      assert.deepEqual(start(action), queued, `${file} ${action}`);
+    assert.deepEqual(start('edited', { body: { from: 'old' } }), queued, file);
+    assert.deepEqual(
+      start('edited', { body: { from: 'old' }, title: { from: 'old' } }),
+      queued,
+      file,
+    );
+    assert.deepEqual(
+      start('edited', { title: { from: 'old' } }),
+      skipped,
+      file,
+    );
+    assert.deepEqual(
+      start('edited', { base: { ref: { from: 'main' } } }),
+      skipped,
+      file,
+    );
+  }
+  const metadata = definitions.get('tracker-pr-metadata.yml');
+  const values = {
+    format,
+    inputs: { pull_request: '7' },
+    github: {
+      repository: 'samlevin/prismatic',
+      ref: 'refs/heads/main',
+      event_name: 'workflow_dispatch',
+      event: { repository: { default_branch: 'main' } },
+    },
+  };
+  assert.equal(
+    Boolean(evaluate(metadata.jobs['copy-issue-metadata'].if, values)),
+    true,
   );
 });
 
