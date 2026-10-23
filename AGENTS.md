@@ -1,6 +1,6 @@
 # Agent rules
 
-These rules apply to every coding agent, including Claude Code and Codex. Prismatic is a pull request review agent in one npm package: product modules under `src/` with lint-enforced import boundaries ([docs/adr/0002-single-package.md](docs/adr/0002-single-package.md)), maintainer tooling under `tooling/`, the issue workflow (issue forms, labels, and the Node scripts in `scripts/` that keep the project board in sync) and the agent workflows described below. CONTRIBUTING.md is the guide for people. Read it or any other guide only when the task changes that file or a rule here sends you there.
+These rules apply to every coding agent, including Claude Code and Codex. Prismatic is a pull request review agent in one npm package: product modules under `src/` with lint-enforced import boundaries ([docs/adr/0002-single-package.md](docs/adr/0002-single-package.md)), maintainer tooling under `tooling/`, the issue workflow (issue forms, labels, and the Node scripts in `scripts/` that keep the project board in sync) and the agent workflows described below. CONTRIBUTING.md and WORKFLOW.md are the guides for people. Read them or any other guide only when the task changes that file or a rule here sends you there.
 
 ## Checks
 

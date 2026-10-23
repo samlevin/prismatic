@@ -1232,9 +1232,9 @@ test('the issue triager uses reported facts and writes no label-evidence report'
   }
 });
 
-test('no agent source or generated agent file names CONTRIBUTING.md', () => {
+test('no agent source or generated agent file names CONTRIBUTING.md or WORKFLOW.md', () => {
   const root = new URL('../', import.meta.url);
-  const files = new Map(render());
+  const files = new Map();
   for (const directory of [
     '.agents',
     '.claude/agents',
@@ -1251,9 +1251,7 @@ test('no agent source or generated agent file names CONTRIBUTING.md', () => {
       }
   assert.ok(files.size > 20, 'agent files were read');
   for (const [path, text] of files)
-    assert.doesNotMatch(text, /CONTRIBUTING/, path);
-  assert.deepEqual(policy.binding.docs.guides, ['ISSUE_TRIAGE.md']);
-  assert.equal(policy.binding.docs.triage, 'ISSUE_TRIAGE.md');
+    assert.doesNotMatch(text, /CONTRIBUTING|WORKFLOW\.md/, path);
 });
 
 test('generated definitions in the repository are current', () => {

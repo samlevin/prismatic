@@ -28,4 +28,4 @@ Install the Node version pinned in `.tool-versions`: with [asdf](https://asdf-vm
 
 ## Contributing
 
-[CONTRIBUTING.md](CONTRIBUTING.md) covers issues, triage, branches, pull requests, and the automation. [AGENTS.md](AGENTS.md) holds the rules for coding agents.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers setup, checks, and how to submit a change. [ISSUE_TRIAGE.md](ISSUE_TRIAGE.md) holds the triage rules, and [WORKFLOW.md](WORKFLOW.md) the work lifecycle and the tracker automation. [AGENTS.md](AGENTS.md) holds the rules for coding agents.
