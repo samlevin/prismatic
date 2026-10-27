@@ -4,25 +4,25 @@ The main thread running {{prefix}}implement follows this file for a container, s
 
 ## Build the queue
 
-Run `node scripts/delivery-queue.mjs <issue>` and `--next`. The read-only script refetches recursive native sub-issues, blocked-by edges, project items, PRs, `agent/*` branches, and claims over REST on every run. Detect cycles in the blocked-by edges and record inaccessible children and cross-repository children or blockers as BLOCKED. Order blockers before dependents, with ties by issue number. A nested container has no delivery branch or PR; its leaves join the ledger.
+Run `node scripts/delivery-queue.mjs <issue> --actor <delivery ID>` and the same with `--next`, with the delivery ID {{prefix}}implement defines. The read-only script refetches recursive native sub-issues, blocked-by edges, project items, PRs, `agent/*` branches, and claims over REST on every run. Detect cycles in the blocked-by edges and record inaccessible children and cross-repository children or blockers as BLOCKED. Order blockers before dependents, with ties by issue number. A nested container has no delivery branch or PR; its leaves join the ledger.
 
 The script prints one ledger line per leaf with state, effort, rule, evidence, reason, branch/head, PR, project state, size, and claim. Its `dispatch` JSON object holds the exact base branch/SHA, dependency edges, prerequisite PRs with stacking eligibility, the validated independence group, declared ownership, and compatible parallel candidates. In Implementation notes, `Files:` lists backticked paths and `Contracts:` or `Provides:` names comma-separated shared contracts, or `none`. Multiple unmerged prerequisite branches need a stacking decision. States apply in this order:
 
 - `done`: closed, or its closing PR merged.
 - `in review`: an open PR closes it. Record and skip it.
 - `owned elsewhere`: an unreleased claim this delivery did not create, including a claim whose worktree is missing here, because it may live elsewhere. Ask the person before taking it over. `--next` reports the earliest owned leaf and its claim instead of skipping to later ready work.
-- `resume`: requested with `--resume <issue>`, or the claim names this delivery's agent (`--actor <delivery-agent>`, never another delivery's identity) and a worktree this delivery created that `git worktree list` shows here. Reuse its pushed branch and name under {{prefix}}stack, in the old worktree when it exists; after it disappeared, check out the existing branch with `git worktree add <path> <branch>`, or `git worktree add --track -b <branch> <path> origin/<branch>` when only the remote exists. Any other claim is `owned elsewhere`.
+- `resume`: requested with `--resume <issue>`, or the claim names this delivery's ID (`--actor <delivery ID>`, never another delivery's ID) and a worktree this delivery created that `git worktree list` shows here. Reuse its pushed branch and name under {{prefix}}stack, in the old worktree when it exists; after it disappeared, check out the existing branch with `git worktree add <path> <branch>`, or `git worktree add --track -b <branch> <path> origin/<branch>` when only the remote exists. Any other claim is `owned elsewhere`.
 - `waiting`: a blocker is unmet. Closed blockers count as met; an open blocker PR must meet [delivery.md](delivery.md#gate)'s stacking rule. Cycles and inaccessible dependencies stay BLOCKED.
 - `ready`: no unmet blocker. The implementer still runs the gate before claiming.
 
-`--next` selects a `resume` leaf before `ready` leaves. Claim records use `<!-- prism-claim {"agent":"<delivery-agent>","branch":"<branch>","worktree":"<path>"} -->`; release uses the same agent with `"released":true`. Legacy claim comments are recognized too. PRs record approval as `Pre-PR review: APPROVE; base=<full SHA>; head=<full SHA>`; the older `Pre-PR review: APPROVE for base..head` form, with optional Markdown around the pair, is accepted too. Stacking needs the approval head to match the current PR head and a REST compare showing the approval base is an ancestor of it; the PR's base-branch tip may advance. Passing checks without that do not permit stacking.
+`--next` selects a `resume` leaf before `ready` leaves. Claim records use `<!-- {{prefix}}claim {"agent":"<delivery ID>","branch":"<branch>","worktree":"<path>"} -->`; release uses the same agent with `"released":true`. Legacy claim comments are recognized too. PRs record approval as `Pre-PR review: APPROVE; base=<full SHA>; head=<full SHA>`; the older `Pre-PR review: APPROVE for base..head` form, with optional Markdown around the pair, is accepted too. Stacking needs the approval head to match the current PR head and a REST compare showing the approval base is an ancestor of it; the PR's base-branch tip may advance. Passing checks without that do not permit stacking.
 
 ## Effort records
 
 The implementer includes the initial decision with its one claim comment; a missing record means medium. A default decision is:
 
 ```html
-<!-- prism-effort {"effort":"medium","rule":"default","evidence":"ticket/spec","reason":"The written plan resolves the design."} -->
+<!-- {{prefix}}effort {"effort":"medium","rule":"default","evidence":"ticket/spec","reason":"The written plan resolves the design."} -->
 ```
 
 A user override uses `rule:"user override"`, the actual selected `effort`, and its explicit constraint as `evidence` and `reason`. Every qualifying high record, initial or later, has the unresolved `question` and the matching policy rule's required `criteria` keys set to true; without them the queue reads it as medium.
@@ -30,7 +30,7 @@ A user override uses `rule:"user override"`, the actual selected `effort`, and i
 For an approved later escalation, the parent posts exactly one new decision comment before redispatch, with the explanation beside the record. It is exempt from the no-repeat-claim rule and never repeats the claim, and its record adds `later:true`:
 
 ```html
-<!-- prism-effort {"effort":"high","rule":"H3-demonstrated-limit","later":true,"question":"How can concurrent writes preserve the specified ordering?","evidence":"Reproducible case race-1 and the medium attempt","reason":"The attempt requires revising the ordering design.","criteria":{"mediumAttempt":true,"reproducibleFailureOrFinding":true,"designRevisionRequired":true,"unresolvedReasoning":true}} -->
+<!-- {{prefix}}effort {"effort":"high","rule":"H3-demonstrated-limit","later":true,"question":"How can concurrent writes preserve the specified ordering?","evidence":"Reproducible case race-1 and the medium attempt","reason":"The attempt requires revising the ordering design.","criteria":{"mediumAttempt":true,"reproducibleFailureOrFinding":true,"designRevisionRequired":true,"unresolvedReasoning":true}} -->
 ```
 
 Post with `gh api repos/{{repository}}/issues/<N>/comments -F body=@<file>`. Reruns and recovery reuse the record, preserving high and the one-transition count. A malformed claim or effort record blocks only its leaf; the script still prints the other rows.

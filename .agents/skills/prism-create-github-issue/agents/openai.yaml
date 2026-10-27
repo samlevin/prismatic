@@ -2,6 +2,6 @@
 interface:
   display_name: 'Prismatic: Create GitHub issue'
   short_description: File typed Prismatic issues with independent triage
-  default_prompt: Use $prism-create-github-issue to file this as an Prismatic issue.
+  default_prompt: Use $prism-create-github-issue to file this as a Prismatic issue.
 policy:
   allow_implicit_invocation: true

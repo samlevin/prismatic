@@ -16,7 +16,7 @@ This directory holds the sources of the delivery agents and skills this reposito
 | `../.codex/agents/prism-*.toml` | Generated Codex custom agents |
 | `../.claude/agents/prism-*.md` | Generated Claude Code subagents |
 | `../.claude/skills/prism-*/` | Generated Claude Code skills |
-| `../scripts/agent-policy.mjs` | Resolver (`resolve`), effort rubric, generator (`generate`), drift check (`check`), and `publish-review`, which posts a `prism-review-code` report as one review on an open PR |
+| `../scripts/agent-policy.mjs` | Resolver (`resolve`), implementer dispatch checked against the effort rubric (`dispatch`), generator (`generate`), drift check (`check`), and `publish-review`, which posts a `prism-review-code` report as one review on an open PR |
 | `../scripts/delivery-queue.mjs` | Read-only REST ledger of a leaf or container: dependency order, states, claims, stack readiness, and the `--next` leaf |
 | `../scripts/spec-to-issues.mjs` | Offline pre-flight of a specification's delivery plan: drafts, validation, triager edges, and the printed tree |
 | `evidence.md` | Retrieval and waiting rules for delivery owners, isolated implementers, and code reviewers |

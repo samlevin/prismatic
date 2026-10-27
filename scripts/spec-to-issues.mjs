@@ -171,6 +171,12 @@ export function buildPlan(text, { specPath, repository, labels }) {
       phase = undefined;
       continue;
     }
+    // Any other section at phase level or above, such as §20.4, ends the
+    // phase, so its Plan ID mentions never read as Backlog entries.
+    if (h.level <= 3) {
+      phase = undefined;
+      continue;
+    }
     if (phase?.deferred) {
       for (const id of (contents(h) + h.title).match(idPattern) || [])
         deferred.add(id);

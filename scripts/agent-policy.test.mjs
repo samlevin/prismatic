@@ -1874,7 +1874,7 @@ test('queue recomputes and main reads only fixed results until a blocker needs a
     for (const rule of [
       'at most one automatic medium-to-high transition',
       'end the old agent',
-      '--effort high',
+      'dispatch --decision <file>',
       'explicit spawn settings',
       'no',
       'two-round',
@@ -1957,6 +1957,69 @@ test('spec plans require offline validation, triage, confirmation and journaled 
     'utf8',
   );
   assert.match(role, /spec-to-issues for a whole delivery plan/);
+});
+
+test('the dispatch command checks a recorded decision against the rubric', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dispatch-'));
+  const rule = 'H3-demonstrated-limit';
+  const decision = {
+    effort: 'high',
+    rule,
+    later: true,
+    question: 'How can concurrent writes keep their order?',
+    evidence: 'Reproducible case race-1',
+    reason: 'The attempt requires revising the ordering design.',
+    criteria: Object.fromEntries(
+      policy.implementationEffort.rules[rule].requires.map((key) => [
+        key,
+        true,
+      ]),
+    ),
+  };
+  const run = (...args) =>
+    spawnSync(
+      process.execPath,
+      [
+        new URL('./agent-policy.mjs', import.meta.url).pathname,
+        'dispatch',
+        '--tool',
+        'claude',
+        ...args,
+      ],
+      { encoding: 'utf8' },
+    );
+  const file = (record) => {
+    const path = join(dir, `${Math.random()}.json`);
+    writeFileSync(path, JSON.stringify(record));
+    return path;
+  };
+  const high = JSON.parse(
+    run(
+      '--issue',
+      '7',
+      '--decision',
+      file(decision),
+      '--reviewer-effort',
+      'max',
+    ).stdout,
+  );
+  assert.equal(high.implementer.effort, 'high');
+  assert.equal(high.implementer.spawn.effort, 'high');
+  assert.equal(high.reviewer.effort, 'max');
+  assert.match(
+    high.announcement,
+    /^Implementation effort: medium -> high; issue: #7; rule: H3-demonstrated-limit;/,
+  );
+  // A record without a required criterion falls back to medium.
+  const weak = JSON.parse(
+    run('--issue', '7', '--decision', file({ ...decision, criteria: {} }))
+      .stdout,
+  );
+  assert.equal(weak.implementer.effort, 'medium');
+  assert.equal(weak.announcement, 'Implementation effort: medium (default)');
+  const missing = run('--decision', file(decision));
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /--issue needs a positive issue number/);
 });
 
 test('implementation is medium while every review dispatch has its own high settings', () => {

@@ -22,6 +22,7 @@ The Claude Code and Codex definitions are generated. Never edit a generated file
 | An agent's instructions, tools, isolation, color, or Codex permissions | `.agents/roles/<role>.md` (frontmatter `claude:` and `codex:` keys, body shared) |
 | A skill's instructions, description, argument hint, or invocation policy | `.agents/workflows/<name>.md` |
 | A reference a skill ships | `.agents/workflows/<name>/references/*.md` (Markdown references may carry tool-only blocks) |
+| Text that several roles, skills, or skill references carry word for word, such as the review packet | `.agents/includes/<name>.md`, inserted where a role, skill, or reference writes `\{{> name}}`; an include cannot contain another |
 | The leaf delivery procedure or the container queue | `.agents/workflows/implement/references/delivery.md` or `queue.md`; the `implement` skill and the `implementer` role only point to them |
 | A rule several roles and skills share | its one source: `.agents/evidence.md` (retrieval and waiting), `.agents/review.md` (review packets and scope), `.agents/worktree-isolation.md` (worktrees), `.agents/issue-creation.md` (drafting and pointers to the classification and filing owners), `.agents/independence-groups.md` (independence groups), or `.agents/workflows/stack.md` (stacks); everything else references it instead of restating it |
 | A new role | add `.agents/roles/<role>.md` and a `roles` entry in `policy.json` mapping it to a capability |

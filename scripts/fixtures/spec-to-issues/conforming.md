@@ -87,4 +87,4 @@ File active phases; exclude Backlog.
 
 ### 20.4 Dependency order and parallel lanes
 
-Adapters follow the port. Documentation can be written alongside the port.
+Adapters (P0.2) follow the port (P0.1). Documentation (P0.3) can be written alongside the port.

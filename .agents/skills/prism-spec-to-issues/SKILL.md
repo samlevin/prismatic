@@ -24,7 +24,7 @@ Build the whole tree offline: one root CONTAINER for the plan, one EPIC per acti
 
 After pre-flight and before printing the tree, spawn one `prism-issue-triager` for the whole plan. Resolve settings with `node scripts/agent-policy.mjs resolve --tool <tool> --role issue-triager`, adding `--model` or `--effort` only for a requested triager override. Stop on a resolver error. Send drafts (ref, title, body, parent ref, planned blocked-by refs), the spec's dependency context, the local label list, available Priority/Size options, and the reason (plan decomposition and dependency judgment). Pass each slice's Size, Priority (P2 unless the spec sets one), and labels as accepted decisions. In a plan or dry run, use the repository's documented options without writing or requiring project access. Before filing, discover the actual labels and project fields/options once through REST and stop on a mismatch instead of editing configuration.
 
-Include `Policy: tool=<tool> role=issue-triager model=<model> effort=<effort> (model: <source>, effort: <source>)` in the packet.
+Include `Policy: tool=<tool> role=prism-issue-triager model=<model> effort=<effort> (model: <source>, effort: <source>)` in the packet.
 
 Spawn with `spawn_agent`, `agent_type: prism-issue-triager`, `model` and `reasoning_effort` from the resolver's `spawn` object, and `fork_turns: "none"`. Pass both settings explicitly. An unknown agent type means the project is not trusted; report it and stop.
 

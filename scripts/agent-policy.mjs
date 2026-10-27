@@ -723,12 +723,21 @@ export function publishReview(
 
 const COMMAND_OPTIONS = {
   resolve: ['tool', 'role', 'capability', 'model', 'effort'],
+  dispatch: [
+    'tool',
+    'issue',
+    'model',
+    'effort',
+    'reviewer-model',
+    'reviewer-effort',
+    'decision',
+  ],
   generate: [],
   check: [],
   'publish-review': ['pr', 'base', 'head', 'report'],
 };
 const USAGE =
-  'Usage: node scripts/agent-policy.mjs <resolve|generate|check|publish-review> [options]';
+  'Usage: node scripts/agent-policy.mjs <resolve|dispatch|generate|check|publish-review> [options]';
 
 function main(args) {
   const [command, ...rest] = args;
@@ -758,6 +767,33 @@ function main(args) {
       effort: options.effort,
     });
     console.log(JSON.stringify(resolved, null, 2));
+    return 0;
+  }
+  if (command === 'dispatch') {
+    if (!/^[1-9]\d*$/.test(options.issue ?? ''))
+      throw cliError(cli, '--issue needs a positive issue number');
+    let decision;
+    if (options.decision)
+      try {
+        decision = JSON.parse(readFileSync(options.decision, 'utf8'));
+      } catch (error) {
+        throw new Error(
+          `cannot read the decision ${options.decision}: ${error.message}`,
+          { cause: error },
+        );
+      }
+    const packet = implementationDispatch(loadPolicy(), {
+      tool: options.tool,
+      issue: Number(options.issue),
+      model: options.model,
+      effort: options.effort,
+      reviewer: {
+        model: options['reviewer-model'],
+        effort: options['reviewer-effort'],
+      },
+      decision,
+    });
+    console.log(JSON.stringify(packet, null, 2));
     return 0;
   }
   if (command === 'generate') {

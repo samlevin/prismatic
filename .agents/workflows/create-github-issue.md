@@ -6,7 +6,7 @@ capability: issue-creation
 codex:
   display_name: "{{label}}: Create GitHub issue"
   short_description: "File typed {{label}} issues with independent triage"
-  default_prompt: "Use ${{prefix}}create-github-issue to file this as an {{label}} issue."
+  default_prompt: "Use ${{prefix}}create-github-issue to file this as a {{label}} issue."
 ---
 # {{label}} create GitHub issues
 
@@ -37,7 +37,7 @@ Spawn one `{{prefix}}issue-triager` for the batch instead when the filing needs 
 
 A filing with a single leaf and no other dependency judgment still classifies inline.
 
-Resolve the triager settings with `node scripts/agent-policy.mjs resolve --tool <tool> --role issue-triager`, adding `--model` or `--effort` only for a `triager` override in the request. If it exits non-zero, stop and report its message. Send only the drafts (ref, title, body, parent ref, and planned blocked-by refs), accepted decisions, the discovered label and option lists, which reason above applies, and the `Policy:` line (`Policy: tool=<tool> role=issue-triager model=<model> effort=<effort> (model: <source>, effort: <source>)`). Do not send the transcript or your intended verdict. Apply its severity, Priority, Size, labels, `EDGES` line, and independence groups: every returned edge joins the planned blocked-by edges, and each draft's Dependencies section names its blockers. Once you spawn it, never override its verdict with your own. On SPLIT_REQUIRED, split and re-triage only the affected drafts, plus their sibling leaves when the split changes a new container's leaves. There is no second pass otherwise. Only the triager forms independence groups.
+Resolve the triager settings with `node scripts/agent-policy.mjs resolve --tool <tool> --role issue-triager`, adding `--model` or `--effort` only for a `triager` override in the request. If it exits non-zero, stop and report its message. Send only the drafts (ref, title, body, parent ref, and planned blocked-by refs), accepted decisions, the discovered label and option lists, which reason above applies, and the `Policy:` line (`Policy: tool=<tool> role={{prefix}}issue-triager model=<model> effort=<effort> (model: <source>, effort: <source>)`). Do not send the transcript or your intended verdict. Apply its severity, Priority, Size, labels, `EDGES` line, and independence groups: every returned edge joins the planned blocked-by edges, and each draft's Dependencies section names its blockers. Once you spawn it, never override its verdict with your own. On SPLIT_REQUIRED, split and re-triage only the affected drafts, plus their sibling leaves when the split changes a new container's leaves. There is no second pass otherwise. Only the triager forms independence groups.
 
 <!-- claude-only -->
 Spawn with the Agent tool: `subagent_type: {{prefix}}issue-triager`, passing `model` and `effort` from the resolver explicitly.

@@ -9,7 +9,7 @@ codex:
 ---
 You independently triage the drafted issues you are given for `{{repository}}`. The caller sends only the drafts (ref, title, body, parent ref, and planned blocked-by refs), accepted decisions, the discovered label and project option lists, the reason it needs independent triage, and a `Policy:` line.
 
-Classify by `{{docs.triage}}`, which owns severity, Priority, Size, labels, and the LEAF, CONTAINER, and SPLIT_REQUIRED scope rules.
+Classify severity, Priority, Size, and labels by `{{docs.triage}}`, and scope (LEAF, CONTAINER, SPLIT_REQUIRED, and the epic rule) by `.agents/issue-creation.md`.
 
 When the batch has two or more leaves, check every pair of leaves in it, whether or not they share a container, and recommend a blocked-by edge for each pair whose implementation notes name an overlapping file or shared contract, or where one leaf uses an output of the other. Recommend the edge even when the pair needs no particular order, so delivery never starts both from trunk and leaves the second to rebase. Pick the order that lets the later leaf build on the earlier one; with no such order, the later draft in the batch waits on the earlier one. Skip a pair the planned blocked-by refs already link, directly or through a chain, and never recommend an edge that closes a cycle with the planned or recommended edges.
 

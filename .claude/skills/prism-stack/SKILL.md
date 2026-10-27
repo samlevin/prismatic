@@ -43,13 +43,13 @@ Trunk `main` is never yours; it is usually checked out in the human checkout. St
 - `gh stack push`. It fetches before constructing its leases, so they compare against the fetched remote heads instead of the previously verified SHA and can overwrite someone else's push. Use the explicit per-branch leases in [Operations](#operations).
 - `gh stack submit`, or `gh stack link` with anything but PR URLs. Both create PRs for branches that have none.
 - `gh stack add` with `-A`, `-u`, or `-m`, or any blanket staging. Commit with explicit paths yourself.
-- `gh stack unstack`, `--prune`, branch deletion, `git pull` on trunk, and `git branch -f` or `git update-ref` on any branch you do not own.
+- `gh stack merge`, `gh stack unstack`, `--prune`, branch deletion, `git pull` on trunk, and `git branch -f` or `git update-ref` on any branch you do not own.
 - A rebase without `-c rebase.updateRefs=false`. With `rebase.updateRefs` on, git moves every local branch that points into the rebased range and is not checked out elsewhere, including branches you do not own.
 - A bare `git push --force` or `git push --force-with-lease`. After a fetch, a bare lease compares against the refreshed tracking ref and overwrites someone else's push.
 
 ## Operations
 
-- Build: create the layers bottom to top: `git switch -c <layer 1> <base SHA>`, then `git switch -c <layer n> <layer n-1>` with names from `node scripts/branch-name.mjs <issue> --layer <n>`. Track them with `gh stack init --base main <layer 1> <layer 2> ...`. Create and verify the branches first: `init` adopts existing branches and creates missing ones, so a typo becomes a new branch. To grow a stack that is already tracked, switch to its top layer and run `gh stack add <layer n>` with a name that does not exist yet; it creates that branch on the top layer.
+- Build: layer 1 is the branch the delivery procedure's worktree step created on the base SHA. Create each later layer bottom to top with `git switch -c <layer n> <layer n-1>` with names from `node scripts/branch-name.mjs <issue> --layer <n>`. Track them with `gh stack init --base main <layer 1> <layer 2> ...`. Create and verify the branches first: `init` adopts existing branches and creates missing ones, so a typo becomes a new branch. To grow a stack that is already tracked, switch to its top layer and run `gh stack add <layer n>` with a name that does not exist yet; it creates that branch on the top layer.
 - Adopt: for branches you already own, verify names and ancestry, then `gh stack init --base main <branches bottom to top>`.
 - Prerequisite: to build on another issue's unmerged PR, which the delivery gate must allow, base layer 1 on that PR's pushed head SHA and record the SHA. Never adopt, rebase, or push the prerequisite's branch; it belongs to another owner. Link its PR by URL instead.
 - Link: after the PRs exist, run `gh stack link --base main <PR URL> ...` bottom to top, prerequisite PRs first, with PR URLs only.

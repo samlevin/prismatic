@@ -296,10 +296,39 @@ test('released, untrusted, and legacy claims follow ownership rules', () => {
     null,
   );
   const legacy = comment(
-    'Agent `delivery` claims #1 on branch `agent/1-one` in `.codex/worktrees/one`.',
+    'Claimed by agent `delivery` on branch `agent/1-one` in `.codex/worktrees/one`.',
   );
   assert.equal(claimRecord([legacy]).branch, 'agent/1-one');
-  assert.equal(claimRecord([legacy, comment('Released the claim.')]), null);
+  assert.equal(claimRecord([legacy]).agent, 'delivery');
+  for (const release of [
+    'Releasing this claim. Two pre-PR review rounds requested changes.',
+    'Claim released by agent `prism-implementer`. No PR is open yet.',
+    'Pausing this claim: the pre-PR review returned REQUEST CHANGES three times.',
+  ])
+    assert.equal(claimRecord([legacy, comment(release)]), null, release);
+  // A claim that names an earlier release is still a claim.
+  assert.ok(
+    claimRecord([
+      legacy,
+      comment('Releasing this claim.'),
+      comment(
+        'Claimed by an agent (prism-implementer), continuing the released claim.',
+      ),
+    ]),
+  );
+  for (const reclaim of [
+    'Re-claimed by agent `prism-implementer` to finish the pre-PR gate.',
+    'Claiming for the agent (re-route after the released claim).',
+  ])
+    assert.ok(claimRecord([comment(reclaim)]), reclaim);
+  // Mentioning a claim later in a comment neither claims nor releases.
+  for (const mention of [
+    "This adopts the delivery ID from the leaf's claim.",
+    'Status from `prism-implementer`: the claim stands and no PR is open.',
+  ]) {
+    assert.equal(claimRecord([comment(mention)]), null, mention);
+    assert.ok(claimRecord([legacy, comment(mention)]), mention);
+  }
 });
 
 test('the ledger reuses only qualifying effort decisions and never escalates from metadata', () => {
@@ -366,8 +395,20 @@ test('REST client follows Link pagination through gh, uses only GET, and propaga
           stderr: 'gh: secret stderr',
         });
       }).get('x'),
+    (error) => error.message === 'GET x: Not Found',
+  );
+  // execFileSync copies stderr into the message; without a GitHub error on
+  // stdout, neither reaches the report.
+  assert.throws(
+    () =>
+      restClient(() => {
+        throw Object.assign(
+          new Error('Command failed: gh api x\ngh: secret stderr'),
+          { status: 1, stdout: 'not json', stderr: 'gh: secret stderr' },
+        );
+      }).get('x'),
     (error) =>
-      error.message === 'GET x: Not Found' && !error.message.includes('secret'),
+      error.message === 'GET x: gh exited with status 1 and no GitHub error',
   );
   assert.throws(() => restClient(() => '[{}]').list('x'), /expected a list/);
   assert.deepEqual(
@@ -423,12 +464,12 @@ test('an explicit medium constraint persists across later recorded high assessme
   const high = comment(`<!-- prism-effort ${JSON.stringify(decision)} -->`);
   assert.equal(effortRecord([medium, high], policy).effort, 'medium');
   assert.equal(
-    claimRecord([comment('Agent `other` claimed #1 on `agent/1-one`.')]).agent,
+    claimRecord([comment('Claimed by agent `other` on `agent/1-one`.')]).agent,
     'other',
   );
 });
 
-test('external children and dependencies block before an Prismatic number collision is fetched', () => {
+test('external children and dependencies block before a Prismatic number collision is fetched', () => {
   for (const options of [
     {
       tree: {

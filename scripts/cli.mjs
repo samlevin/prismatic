@@ -10,20 +10,9 @@ const definitions = {
   actor: {
     type: 'string',
     alias: 'a',
-    description: 'Branch owner (defaults to agent)',
-  },
-  layer: {
-    type: 'string',
-    alias: 'l',
-    description: 'Stack layer (defaults to 1)',
+    description: "Delivery identity that wrote this delivery's claims",
   },
   issue: { type: 'string', alias: 'i', description: 'Positive issue number' },
-  'dry-run': {
-    type: 'boolean',
-    alias: 'n',
-    description: 'Preview without writing',
-  },
-  apply: { type: 'boolean', description: 'Apply tracker changes' },
   next: { type: 'boolean', description: 'Print the next delivery leaf' },
   resume: { type: 'string', description: 'Explicitly resume this issue' },
   tool: {
@@ -39,6 +28,18 @@ const definitions = {
     description: 'Requested model override',
   },
   effort: { type: 'string', description: 'Requested effort override' },
+  'reviewer-model': {
+    type: 'string',
+    description: 'Requested reviewer model override',
+  },
+  'reviewer-effort': {
+    type: 'string',
+    description: 'Requested reviewer effort override',
+  },
+  decision: {
+    type: 'string',
+    description: 'File holding a recorded effort decision as JSON',
+  },
   pr: { type: 'string', description: 'Pull request number' },
   base: { type: 'string', description: 'Full base commit SHA' },
   head: { type: 'string', description: 'Full head commit SHA' },

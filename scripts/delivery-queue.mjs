@@ -31,16 +31,18 @@ export function restClient(run = execFileSync) {
         ),
       );
     } catch (error) {
-      // gh prints GitHub's JSON error on stdout; its stderr is never read.
+      // gh prints GitHub's JSON error on stdout. Its stderr, which
+      // execFileSync also copies into error.message, is never reported.
       let detail;
       try {
         detail = JSON.parse(error.stdout).message;
       } catch {
         detail = undefined;
       }
-      throw new Error(`GET ${path}: ${redact(detail ?? error.message)}`, {
-        cause: error,
-      });
+      throw new Error(
+        `GET ${path}: ${redact(detail ?? `gh exited with status ${error.status ?? 'unknown'} and no GitHub error`)}`,
+        { cause: error },
+      );
     }
   };
   // gh follows Link headers, including the Projects v2 cursor-based endpoint.
@@ -61,35 +63,39 @@ export function restClient(run = execFileSync) {
   return { get, list };
 }
 
+// Claims written without a record open their first line with one of these
+// verbs; a comment that only mentions a claim elsewhere is neither.
+const LEGACY_RELEASE =
+  /^(?:Releasing|Released|Claim released|Pausing this claim)\b/i;
+const LEGACY_CLAIM = /^(?:Claimed|Claiming|Re-claimed|Re-claiming)\b/i;
+
 export function claimRecord(comments) {
   let active = null;
   for (const comment of comments) {
     if (!TRUSTED.has(comment.author_association)) continue;
     const body = comment.body ?? '';
+    const login = comment.user?.login;
     const record = /<!-- prism-claim ([^\n]*?) -->/.exec(body);
+    const first = body.trimStart().split('\n')[0];
     if (record) {
       const value = JSON.parse(record[1]);
       if (value.released) {
         if (active?.agent === value.agent) active = null;
-      } else active = { ...value, url: comment.html_url };
-    } else if (
-      /\b(?:claims?|claimed|claiming)\b/i.test(body) &&
-      !/\b(?:releases?|released|releasing)\b/i.test(body)
-    ) {
+      } else active = { ...value, url: comment.html_url, login };
+    } else if (LEGACY_RELEASE.test(first)) {
+      // Legacy releases belong to the GitHub account that wrote the claim.
+      if (active && login === active.login) active = null;
+    } else if (LEGACY_CLAIM.test(first)) {
       active = {
-        agent: /Agent\s+`([^`]+)`/i.exec(body)?.[1] ?? comment.user?.login,
+        agent: /Agent\s+`([^`]+)`/i.exec(body)?.[1] ?? login,
         branch: /`(agent\/[^`\s]+)`/.exec(body)?.[1],
         worktree: /`([^`]*\.(?:codex|claude)\/worktrees\/[^`]+)`/.exec(
           body,
         )?.[1],
         url: comment.html_url,
+        login,
       };
-    } else if (/\b(?:releases?|released|releasing)\b.*\bclaim\b/i.test(body)) {
-      // Legacy releases belong to the GitHub account that wrote the claim.
-      if (active && comment.user?.login === active.login) active = null;
     }
-    if (active && (record || /\b(?:claims?|claimed|claiming)\b/i.test(body)))
-      active.login = comment.user?.login;
   }
   return active;
 }
