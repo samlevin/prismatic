@@ -36,49 +36,82 @@ export function checks({ full }) {
   return commands;
 }
 
-// Runs every command, one at a time so the logs stay readable, and rejects
-// after the last one when any of them failed.
-export async function runChecks(commands, run = runCommand) {
-  const failed = [];
-  for (const [command, args] of commands)
-    if ((await run(command, args)) !== 0)
-      failed.push([command, ...args].join(' '));
-  if (failed.length) throw new Error(`CI checks failed: ${failed.join('; ')}`);
+// Starts every command at once and buffers each one's output, so each check's
+// log prints whole in its own group after all of them finish. Resolves with
+// the failed checks.
+export async function runChecks(commands, run = runCommand, log = console.log) {
+  const results = await Promise.all(
+    commands.map(([command, args]) => {
+      const line = [command, ...args].join(' ');
+      log(`Started ${line}`);
+      return run(command, args).then((result) => ({ line, ...result }));
+    }),
+  );
+  for (const { line, output } of results) {
+    log(`::group::${line}`);
+    if (output) log(output.trimEnd());
+    log('::endgroup::');
+  }
+  return results.filter(({ code }) => code !== 0);
+}
+
+export function failureReport(failed, total) {
+  return [
+    `${failed.length} of ${total} CI checks failed:`,
+    ...failed.map(({ line, code }) => `  ${line} exited with ${code}`),
+  ].join('\n');
 }
 
 function runCommand(command, args) {
-  console.log(`::group::${command} ${args.join(' ')}`);
   return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: 'inherit' });
+    let output = '';
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout.on('data', (chunk) => (output += chunk));
+    child.stderr.on('data', (chunk) => (output += chunk));
+    // A command that cannot start emits error before close, so the error wins.
     child.on('error', (error) => {
-      console.error(error);
-      console.log('::endgroup::');
-      resolve(1);
+      resolve({ code: error.code, output: `${output}${error.message}\n` });
     });
-    child.on('exit', (code) => {
-      console.log('::endgroup::');
-      resolve(code ?? 1);
+    child.on('close', (code, signal) => {
+      resolve({ code: code ?? signal, output });
     });
   });
 }
 
-export function parseFull(value) {
-  if (!['true', 'false'].includes(value))
-    throw new Error('Expected CI_FULL to be true or false');
-  return value === 'true';
+export function readEnv(env) {
+  if (env.CI_FULL === undefined)
+    throw new Error('CI_FULL is not set; expected true or false');
+  if (!['true', 'false'].includes(env.CI_FULL))
+    throw new Error(
+      `CI_FULL is ${JSON.stringify(env.CI_FULL)}; expected true or false`,
+    );
+  if (env.GITHUB_STEP_SUMMARY === '')
+    throw new Error('GITHUB_STEP_SUMMARY is empty; expected a file path');
+  return { full: env.CI_FULL === 'true', summary: env.GITHUB_STEP_SUMMARY };
 }
 
 async function main() {
-  const full = parseFull(process.env.CI_FULL);
+  const { full, summary } = readEnv(process.env);
   const scope = full ? 'every check' : 'format check and Markdown lint only';
   console.log(`Selected: ${scope}`);
-  await runChecks(checks({ full }));
-  if (process.env.GITHUB_STEP_SUMMARY)
+  const commands = checks({ full });
+  const failed = await runChecks(commands);
+  if (failed.length) {
+    console.error(failureReport(failed, commands.length));
+    return 1;
+  }
+  if (summary)
     appendFileSync(
-      process.env.GITHUB_STEP_SUMMARY,
+      summary,
       `Selected ${scope}; every selected check passed.\n`,
     );
+  return 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-  await main();
+  try {
+    process.exitCode = await main();
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }

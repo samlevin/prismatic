@@ -5,7 +5,13 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { checks, parseFull, runChecks, testFiles } from './ci-checks.mjs';
+import {
+  checks,
+  failureReport,
+  readEnv,
+  runChecks,
+  testFiles,
+} from './ci-checks.mjs';
 import { classify, selectScopes } from './ci-scope.mjs';
 import { evaluate, runScript, workflow } from './workflow-test-helpers.mjs';
 
@@ -120,41 +126,141 @@ test('the full selection runs format, lint, typecheck, agent definitions, every 
   );
 });
 
-test('every check runs even after one fails, and any failure rejects', async () => {
-  const started = [];
-  const run = async (command) => {
-    started.push(command);
-    return command === 'second' ? 1 : 0;
-  };
-  await assert.rejects(
-    runChecks(
-      [
-        ['first', []],
-        ['second', ['--flag']],
-        ['third', []],
-      ],
-      run,
-    ),
-    /CI checks failed: second --flag$/,
+test('checks start together and each log prints whole in its own group', async () => {
+  const lines = [];
+  const pending = [];
+  const run = (command) =>
+    new Promise((resolve) =>
+      pending.push(() =>
+        resolve({
+          code: command === 'second' ? 1 : 0,
+          output: `${command} output\n`,
+        }),
+      ),
+    );
+  const done = runChecks(
+    [
+      ['first', []],
+      ['second', ['--flag']],
+      ['third', []],
+    ],
+    run,
+    (line) => lines.push(line),
   );
-  assert.deepEqual(started, ['first', 'second', 'third']);
-  await runChecks([['first', []]], run);
+  // Every check has started before any of them finishes.
+  assert.equal(pending.length, 3);
+  for (const finish of pending.reverse()) finish();
+  const failed = await done;
+  assert.deepEqual(lines, [
+    'Started first',
+    'Started second --flag',
+    'Started third',
+    '::group::first',
+    'first output',
+    '::endgroup::',
+    '::group::second --flag',
+    'second output',
+    '::endgroup::',
+    '::group::third',
+    'third output',
+    '::endgroup::',
+  ]);
+  assert.deepEqual(failed, [
+    { line: 'second --flag', code: 1, output: 'second output\n' },
+  ]);
+  assert.equal(
+    failureReport(failed, 3),
+    '1 of 3 CI checks failed:\n  second --flag exited with 1',
+  );
 });
 
-test('the check runner accepts only an explicit selection', () => {
-  assert.equal(parseFull('true'), true);
-  assert.equal(parseFull('false'), false);
-  for (const value of [undefined, '', 'TRUE', '1'])
-    assert.throws(() => parseFull(value), /CI_FULL/);
-  const env = { ...process.env };
-  delete env.CI_FULL;
+test('a real command buffers stdout and stderr and reports its exit code', async () => {
+  const lines = [];
+  const node = process.execPath;
+  const failed = await runChecks(
+    [
+      [node, ['-e', 'console.log("out"); console.error("err")']],
+      [node, ['-e', 'process.exit(3)']],
+      ['no-such-ci-command', []],
+    ],
+    undefined,
+    (line) => lines.push(line),
+  );
+  assert.deepEqual(lines.slice(3, 6), [
+    `::group::${node} -e console.log("out"); console.error("err")`,
+    'out\nerr',
+    '::endgroup::',
+  ]);
+  assert.deepEqual(
+    failed.map(({ line, code }) => [line, code]),
+    [
+      [`${node} -e process.exit(3)`, 3],
+      ['no-such-ci-command', 'ENOENT'],
+    ],
+  );
+  assert.match(lines.at(-2), /ENOENT/);
+});
+
+test('failed checks end the run with a summary and no stack trace', () => {
   const result = spawnSync(
     process.execPath,
     [new URL('./ci-checks.mjs', import.meta.url).pathname],
-    { env, encoding: 'utf8' },
+    { env: { CI_FULL: 'false', PATH: '' }, encoding: 'utf8' },
   );
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /CI_FULL/);
+  assert.equal(result.status, 1);
+  assert.equal(
+    result.stderr,
+    [
+      '2 of 2 CI checks failed:',
+      '  npm run format:check exited with ENOENT',
+      '  npm run lint:md exited with ENOENT',
+      '',
+    ].join('\n'),
+  );
+  assert.match(
+    result.stdout,
+    /^Selected: format check and Markdown lint only\n/,
+  );
+});
+
+test('the check runner validates every environment variable it reads', () => {
+  assert.deepEqual(readEnv({ CI_FULL: 'true' }), {
+    full: true,
+    summary: undefined,
+  });
+  assert.deepEqual(readEnv({ CI_FULL: 'false', GITHUB_STEP_SUMMARY: '/s' }), {
+    full: false,
+    summary: '/s',
+  });
+  assert.throws(
+    () => readEnv({}),
+    /^Error: CI_FULL is not set; expected true or false$/,
+  );
+  for (const value of ['', 'TRUE', '1'])
+    assert.throws(
+      () => readEnv({ CI_FULL: value }),
+      new RegExp(`CI_FULL is "${value}"; expected true or false`),
+    );
+  assert.throws(
+    () => readEnv({ CI_FULL: 'true', GITHUB_STEP_SUMMARY: '' }),
+    /GITHUB_STEP_SUMMARY is empty; expected a file path/,
+  );
+  for (const [env, message] of [
+    [{}, 'CI_FULL is not set; expected true or false'],
+    [
+      { CI_FULL: 'true', GITHUB_STEP_SUMMARY: '' },
+      'GITHUB_STEP_SUMMARY is empty; expected a file path',
+    ],
+  ]) {
+    const result = spawnSync(
+      process.execPath,
+      [new URL('./ci-checks.mjs', import.meta.url).pathname],
+      { env, encoding: 'utf8' },
+    );
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr, `${message}\n`);
+  }
 });
 
 test('the checks job runs after detection with its selection', () => {
