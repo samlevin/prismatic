@@ -60,7 +60,7 @@ jobs:
         id: node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '24.22.0'
+          node-version-file: .tool-versions
       # An issue event reconciles only that issue and its hierarchy; a
       # scheduled or manual run sweeps the project. Each step runs even when
       # an earlier one failed, and any failure fails the job at the end.

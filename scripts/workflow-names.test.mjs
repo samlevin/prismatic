@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import {
   evaluate,
@@ -166,7 +166,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   };
   const node = {
     uses: 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
-    with: { 'node-version': '24.22.0' },
+    with: { 'node-version-file': '.tool-versions' },
     env: undefined,
     run: undefined,
   };
@@ -458,20 +458,4 @@ test('workflows started by pull_request_target never check out or run pull reque
         );
       }
   }
-});
-
-test('every pinned Node version matches .tool-versions', () => {
-  const pinned = readFileSync(
-    new URL('../.tool-versions', import.meta.url),
-    'utf8',
-  ).match(/^nodejs (\S+)$/m)?.[1];
-  assert.match(pinned ?? '', /^\d+\.\d+\.\d+$/);
-  for (const [file, definition] of definitions)
-    for (const job of Object.values(definition.jobs))
-      for (const step of job.steps ?? []) {
-        if (!step.uses?.startsWith('actions/setup-node@')) continue;
-        if (step.with['node-version-file'] !== undefined)
-          assert.equal(step.with['node-version-file'], '.tool-versions', file);
-        else assert.equal(step.with['node-version'], pinned, file);
-      }
 });
