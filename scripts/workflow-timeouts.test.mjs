@@ -1,23 +1,45 @@
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { test } from 'node:test';
-import { workflow, workflowDirectory } from './workflow-test-helpers.mjs';
+import { workflow } from './workflow-test-helpers.mjs';
 
-test('every workflow job has a timeout', () => {
-  for (const file of readdirSync(workflowDirectory))
-    for (const [id, job] of Object.entries(workflow(file).jobs)) {
-      const minutes = job['timeout-minutes'];
-      assert.ok(
-        Number.isInteger(minutes) && minutes > 0,
-        `${file} ${id} needs timeout-minutes`,
-      );
-    }
-  assert.equal(
-    workflow('ci-pr-title.yml').jobs['check-pr-title']['timeout-minutes'],
-    5,
+// A job that only calls a reusable workflow cannot set `timeout-minutes`, so
+// the called workflow's jobs carry it. Every other job needs a positive whole
+// number of minutes.
+const missingTimeouts = (definition) =>
+  Object.entries(definition.jobs)
+    .filter(
+      ([, job]) =>
+        job.uses === undefined &&
+        !(
+          Number.isInteger(job['timeout-minutes']) && job['timeout-minutes'] > 0
+        ),
+    )
+    .map(([id]) => id);
+
+test('missing timeouts are detected, except on reusable workflow calls', () => {
+  assert.deepEqual(
+    missingTimeouts({
+      jobs: {
+        bounded: { 'runs-on': 'ubuntu-latest', 'timeout-minutes': 5 },
+        unbounded: { 'runs-on': 'ubuntu-latest' },
+        zero: { 'runs-on': 'ubuntu-latest', 'timeout-minutes': 0 },
+        call: { uses: './.github/workflows/_reusable.yml' },
+      },
+    }),
+    ['unbounded', 'zero'],
   );
-  assert.equal(
-    workflow('ci-secret-scan.yml').jobs['scan-secrets']['timeout-minutes'],
-    10,
-  );
+});
+
+test('every workflow job that runs steps sets timeout-minutes', () => {
+  const files = readdirSync(
+    new URL('../.github/workflows/', import.meta.url),
+  ).filter((file) => file.endsWith('.yml'));
+  assert.ok(files.length > 0);
+  for (const file of files)
+    assert.deepEqual(
+      missingTimeouts(workflow(file)),
+      [],
+      `${file} jobs without timeout-minutes`,
+    );
 });

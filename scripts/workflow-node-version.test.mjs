@@ -1,33 +1,63 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { workflow, workflowDirectory } from './workflow-test-helpers.mjs';
+import { parse } from 'yaml';
 
-test('every workflow reads the Node version from .tool-versions', () => {
-  assert.match(
-    readFileSync(new URL('../.tool-versions', import.meta.url), 'utf8'),
-    /^nodejs \d+\.\d+\.\d+$/m,
-  );
-  const setups = [];
-  for (const file of readdirSync(workflowDirectory))
-    for (const [id, job] of Object.entries(workflow(file).jobs))
-      for (const step of job.steps ?? []) {
-        if (!step.uses?.startsWith('actions/setup-node@')) continue;
-        const where = `${file} ${id}`;
-        assert.equal(
-          step.with?.['node-version'],
-          undefined,
-          `${where} pins a Node version`,
+// `.tool-versions` is the one place the Node version is pinned. Every
+// `actions/setup-node` step reads it, so no workflow may set `node-version` or
+// point `node-version-file` anywhere else.
+const root = new URL('../', import.meta.url);
+const read = (path) => readFileSync(new URL(path, root), 'utf8');
+
+const definitions = readdirSync(new URL('.github/workflows/', root))
+  .filter((file) => /\.ya?ml$/.test(file))
+  .map((file) => `.github/workflows/${file}`)
+  .sort()
+  .map((path) => [path, parse(read(path))]);
+
+const jobsOf = (path, definition) =>
+  Object.entries(definition.jobs).map(([id, job]) => [
+    `${path} ${id}`,
+    job.steps ?? [],
+  ]);
+
+const isSetupNode = (step) =>
+  typeof step.uses === 'string' && step.uses.startsWith('actions/setup-node@');
+const isRootCheckout = (step) =>
+  typeof step.uses === 'string' &&
+  step.uses.startsWith('actions/checkout@') &&
+  step.with?.path === undefined &&
+  step.with?.['sparse-checkout-cone-mode'] !== false;
+
+test('.tool-versions pins the Node version', () => {
+  assert.match(read('.tool-versions'), /^nodejs \d+\.\d+\.\d+$/m);
+});
+
+test('every setup-node step reads the Node version from .tool-versions', () => {
+  let count = 0;
+  for (const [path, definition] of definitions) {
+    for (const [where, steps] of jobsOf(path, definition)) {
+      steps.forEach((step, index) => {
+        if (!isSetupNode(step)) return;
+        count += 1;
+        const name = `${where} step ${step.name ?? index}`;
+        assert.equal(step.with?.['node-version'], undefined, name);
+        assert.equal(step.with?.['node-version-file'], '.tool-versions', name);
+        // setup-node reads the file from the workspace, so a checkout of the
+        // repository root (sparse checkouts in cone mode keep root files) must
+        // come first.
+        assert.ok(
+          steps.slice(0, index).some(isRootCheckout),
+          `${name} runs before the repository root is checked out`,
         );
-        assert.equal(step.with?.['node-version-file'], '.tool-versions', where);
-        setups.push(file);
-      }
-  for (const file of [
-    'ci-checks.yml',
-    'tracker-issue-states.yml',
-    'tracker-pr-issue-status.yml',
-    'tracker-pr-metadata.yml',
-    'tracker-project-membership.yml',
-  ])
-    assert.ok(setups.includes(file), `${file} sets up Node`);
+      });
+    }
+  }
+  assert.ok(count > 0, 'no setup-node steps found');
+});
+
+test('no workflow sets node-version anywhere', () => {
+  for (const [path] of definitions) {
+    assert.doesNotMatch(read(path), /^\s*node-version\s*:/m, path);
+  }
 });
