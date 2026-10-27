@@ -16,10 +16,14 @@ const definitions = {
   layer: {
     type: 'string',
     alias: 'l',
-    description: 'Stack layer, 2 and up for layers after the first',
+    description: 'Stack layer (defaults to 1)',
   },
-  'dry-run': { type: 'boolean', description: 'Preview changes without writes' },
-  apply: { type: 'boolean', description: 'Write the changes' },
+  'dry-run': {
+    type: 'boolean',
+    alias: 'n',
+    description: 'Preview without writing',
+  },
+  apply: { type: 'boolean', description: 'Apply tracker changes' },
   next: { type: 'boolean', description: 'Print the next delivery leaf' },
   resume: { type: 'string', description: 'Explicitly resume this issue' },
   tool: {

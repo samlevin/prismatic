@@ -10,6 +10,7 @@ export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'none'].map(
 const PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
 const SIZES = ['XS', 'S', 'M', 'L'];
 const PAGE = 'pageInfo { hasNextPage endCursor }';
+const EMPTY = { nodes: [], pageInfo: { hasNextPage: false } };
 // Nested connections come inside their page query, so a sweep costs a few
 // GraphQL points whatever the project size. A nested connection gets its own
 // query only when it has another page.
@@ -18,7 +19,7 @@ const VALUE = `... on ProjectV2ItemFieldSingleSelectValue { optionId field {
   ... on ProjectV2SingleSelectField { id }
 } }`;
 const LABELS = `labels(first: ${NESTED}) { nodes { id name } ${PAGE} }`;
-const ITEM = `id type isArchived project { id }
+const ITEM = `id type project { id }
   fieldValues(first: ${NESTED}) { nodes { ${VALUE} } ${PAGE} }
   content { __typename ... on Issue {
     id number state repository { nameWithOwner } ${LABELS}
@@ -75,7 +76,7 @@ export async function nestedNodes(
       } } }`,
       { id, cursor },
     );
-    return data.node?.[field];
+    return data.node?.[field] ?? EMPTY;
   }, connection.pageInfo.endCursor);
   return [...nodes, ...rest];
 }
@@ -113,49 +114,18 @@ export const MISSING_ISSUE = {
     }),
 };
 
-// Thrown when a call about one issue finds it deleted or transferred.
-export class IssueGone extends Error {}
-
-// Wraps `api` for calls whose subject is one issue or its project item, such
-// as a mutation or a nested page. A NOT_FOUND at a field GitHub answered with
-// null means the subject is gone, so it throws IssueGone for the caller to
-// warn about and skip. A call's own allowErrors still applies first, and any
-// other error throws.
-export function forIssue(api, subject) {
-  return async (query, variables, options) => {
-    let gone = false;
-    const data = await api(query, variables, {
-      ...options,
-      allowErrors: (json) => {
-        if (options?.allowErrors?.(json)) return true;
-        gone = json.errors.every(
-          (error) =>
-            error?.type === 'NOT_FOUND' &&
-            Array.isArray(error.path) &&
-            error.path.reduce((value, key) => value?.[key], json.data) === null,
-        );
-        return gone;
-      },
-    });
-    if (gone)
-      throw new IssueGone(
-        `${subject} was not found; it may have been deleted or transferred. Skipping it.`,
-      );
-    return data;
-  };
+export function missingIssue(number) {
+  return `Issue #${number} no longer exists in the repository; skipping`;
 }
 
-// Runs `work` for one issue and warns instead of failing when the issue is
-// gone. Returns false when it was skipped.
-export async function skipGone(work, warn) {
-  try {
-    await work();
-    return true;
-  } catch (error) {
-    if (!(error instanceof IssueGone)) throw error;
-    warn(error.message);
-    return false;
-  }
+// The GraphQL client of the tracker scripts: a missing issue reads as null on
+// every call, and any other error still fails.
+export function trackerGraphql(query, variables, options) {
+  return ghGraphql(query, variables, {
+    ...options,
+    allowErrors: (json) =>
+      MISSING_ISSUE.allowErrors(json) || Boolean(options?.allowErrors?.(json)),
+  });
 }
 
 export async function discover(
@@ -195,8 +165,7 @@ export async function discover(
 // Turns a project item read with ITEM into the shape readItem returns: the
 // discovered fields by name and the issue's label names.
 async function itemFields(api, item, context) {
-  if (!item?.id || item.isArchived || item.project?.id !== context.projectId)
-    return null;
+  if (!item?.id || item.project?.id !== context.projectId) return null;
   const values = await nestedNodes(api, {
     id: item.id,
     type: 'ProjectV2Item',
@@ -236,8 +205,7 @@ export const SWEEP_FILTERS = [
 ];
 
 // Lists the project items that match each filter, with their field values
-// and labels, 100 items a query. An item with no readable issue, such as one
-// whose issue the token cannot see, is skipped with a warning.
+// and labels, 100 items a query.
 export async function listItems(
   api,
   context,
@@ -255,19 +223,13 @@ export async function listItems(
       return data.node?.items;
     });
     for (const item of items) {
-      if (item.content?.__typename !== 'Issue') {
-        warn(`Project item ${item.id} has no readable issue; skipping it.`);
+      if (item.type === 'ISSUE' && !item.content) {
+        warn(`Project item ${item.id} has no readable issue; skipping`);
         continue;
       }
-      await skipGone(async () => {
-        const read = await itemFields(
-          forIssue(api, `Issue #${item.content.number}`),
-          item,
-          context,
-        );
-        if (read && !result.some((listed) => listed.id === read.id))
-          result.push(read);
-      }, warn);
+      const read = await itemFields(api, item, context);
+      if (read && !result.some((listed) => listed.id === read.id))
+        result.push(read);
     }
   }
   return result;
@@ -312,19 +274,8 @@ export async function readIssue(api, number, context) {
 
 async function itemsInScope(api, context, issueNumber, warn) {
   if (issueNumber === undefined) return listItems(api, context, { warn });
-  let found;
-  await skipGone(async () => {
-    found = await readIssue(
-      forIssue(api, `Issue #${issueNumber}`),
-      issueNumber,
-      context,
-    );
-  }, warn);
+  const found = await readIssue(api, issueNumber, context);
   return found?.item ? [found.item] : [];
-}
-
-function leftProject(warn, number) {
-  warn(`Issue #${number} left the project during the run; skipping it.`);
 }
 
 export async function readItem(api, id, context) {
@@ -378,24 +329,28 @@ export async function reconcile({
       (issueNumber !== undefined && item.content.number !== issueNumber)
     )
       continue;
-    const issueApi = forIssue(api, `Issue #${item.content.number}`);
-    await skipGone(async () => {
-      // Re-read both issue and project metadata at the write boundary.
-      const fresh = await readItem(issueApi, item.id, context);
-      if (!fresh) return leftProject(warn, item.content.number);
-      if (
-        !eligible(fresh) ||
-        (issueNumber !== undefined && fresh.content.number !== issueNumber)
-      )
-        return;
-      candidates++;
-      log(
-        `${dryRun ? 'DRY_RUN would move' : 'Moving'} issue #${fresh.content.number} Inbox -> Ready`,
-      );
-      if (dryRun) return;
-      await updateProjectStatus(issueApi, context, fresh.id, 'Ready');
-      updated++;
-    }, warn);
+    // Re-read both issue and project metadata at the write boundary.
+    const fresh = await readItem(api, item.id, context);
+    if (!fresh) {
+      warn(`Issue #${item.content.number} left the project; skipping`);
+      continue;
+    }
+    if (fresh.content?.repository?.nameWithOwner !== REPOSITORY) {
+      warn(missingIssue(item.content.number));
+      continue;
+    }
+    if (
+      !eligible(fresh) ||
+      (issueNumber !== undefined && fresh.content.number !== issueNumber)
+    )
+      continue;
+    candidates++;
+    log(
+      `${dryRun ? 'DRY_RUN would move' : 'Moving'} issue #${fresh.content.number} Inbox -> Ready`,
+    );
+    if (dryRun) continue;
+    await updateProjectStatus(api, context, fresh.id, 'Ready');
+    updated++;
   }
   log(
     `Triage reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
@@ -439,21 +394,25 @@ export async function reconcileDone({
       (issueNumber !== undefined && item.content.number !== issueNumber)
     )
       continue;
-    const issueApi = forIssue(api, `Issue #${item.content.number}`);
-    await skipGone(async () => {
-      // Re-read the issue state and Status at the write boundary.
-      const fresh = await readItem(issueApi, item.id, context);
-      if (!fresh) return leftProject(warn, item.content.number);
-      const target = doneTarget(fresh.content?.state, fresh.fields.Status);
-      if (!target) return;
-      candidates++;
-      log(
-        `${dryRun ? 'DRY_RUN would move' : 'Moving'} ${target === 'Done' ? 'closed' : 'reopened'} issue #${fresh.content.number} ${fresh.fields.Status ?? 'without Status'} -> ${target}`,
-      );
-      if (dryRun) return;
-      await updateProjectStatus(issueApi, context, fresh.id, target);
-      updated++;
-    }, warn);
+    // Re-read the issue state and Status at the write boundary.
+    const fresh = await readItem(api, item.id, context);
+    if (!fresh) {
+      warn(`Issue #${item.content.number} left the project; skipping`);
+      continue;
+    }
+    if (fresh.content?.repository?.nameWithOwner !== REPOSITORY) {
+      warn(missingIssue(item.content.number));
+      continue;
+    }
+    const target = doneTarget(fresh.content?.state, fresh.fields.Status);
+    if (!target) continue;
+    candidates++;
+    log(
+      `${dryRun ? 'DRY_RUN would move' : 'Moving'} ${target === 'Done' ? 'closed' : 'reopened'} issue #${fresh.content.number} ${fresh.fields.Status ?? 'without Status'} -> ${target}`,
+    );
+    if (dryRun) continue;
+    await updateProjectStatus(api, context, fresh.id, target);
+    updated++;
   }
   log(
     `Done reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
@@ -480,7 +439,6 @@ export async function reconcileEpicLabels({
   dryRun = true,
   issueNumber,
   log = console.log,
-  warn = warning,
   epics,
 }) {
   const forbidden = new Set([
@@ -510,33 +468,30 @@ export async function reconcileEpicLabels({
       : await issueLabels(api, issueNumber);
   for (const epic of epics) {
     if (issueNumber !== undefined && epic.number !== issueNumber) continue;
-    const epicApi = forIssue(api, `Epic #${epic.number}`);
-    await skipGone(async () => {
-      const labels = Array.isArray(epic.labels)
-        ? epic.labels
-        : await nestedNodes(epicApi, {
-            id: epic.id,
-            type: 'Issue',
-            field: 'labels',
-            selection: 'id name',
-            connection: epic.labels,
-          });
-      if (!labels.some((label) => label.name === 'epic')) return;
-      const remove = labels.filter(
-        (label) => forbidden.has(label.name) || label.name.startsWith('type:'),
+    const labels = Array.isArray(epic.labels)
+      ? epic.labels
+      : await nestedNodes(api, {
+          id: epic.id,
+          type: 'Issue',
+          field: 'labels',
+          selection: 'id name',
+          connection: epic.labels,
+        });
+    if (!labels.some((label) => label.name === 'epic')) continue;
+    const remove = labels.filter(
+      (label) => forbidden.has(label.name) || label.name.startsWith('type:'),
+    );
+    if (!remove.length) continue;
+    log(
+      `${dryRun ? 'DRY_RUN would remove' : 'Removing'} ${remove.length} conflicting category labels from epic #${epic.number}`,
+    );
+    if (!dryRun)
+      await api(
+        `mutation($id: ID!, $labels: [ID!]!) {
+      removeLabelsFromLabelable(input: { labelableId: $id, labelIds: $labels }) { clientMutationId }
+    }`,
+        { id: epic.id, labels: remove.map((label) => label.id) },
       );
-      if (!remove.length) return;
-      log(
-        `${dryRun ? 'DRY_RUN would remove' : 'Removing'} ${remove.length} conflicting category labels from epic #${epic.number}`,
-      );
-      if (!dryRun)
-        await epicApi(
-          `mutation($id: ID!, $labels: [ID!]!) {
-        removeLabelsFromLabelable(input: { labelableId: $id, labelIds: $labels }) { clientMutationId }
-      }`,
-          { id: epic.id, labels: remove.map((label) => label.id) },
-        );
-    }, warn);
   }
 }
 
@@ -564,18 +519,11 @@ export async function run({
     await reconcileDone({ ...options, items });
     return;
   }
-  let found;
-  await skipGone(async () => {
-    found = await readIssue(
-      forIssue(api, `Issue #${issueNumber}`),
-      issueNumber,
-      context,
+  const found = await readIssue(api, issueNumber, context);
+  if (!found)
+    warn(
+      `Issue #${issueNumber} was not found; it may have been deleted or transferred. Nothing to triage.`,
     );
-    if (!found)
-      warn(
-        `Issue #${issueNumber} was not found; it may have been deleted or transferred. Nothing to triage.`,
-      );
-  }, warn);
   const items = found?.item ? [found.item] : [];
   await reconcileEpicLabels({ ...options, epics: found ? [found.issue] : [] });
   await reconcile({ ...options, items });
@@ -663,24 +611,29 @@ export async function withinBudget(
   return result;
 }
 
-// The command line of the tracker scripts that take --dry-run, --apply, and
-// --issue.
-export function configuration(env, args, script = 'issue-triage.mjs') {
-  const cli = defineCli(
-    `Usage: node scripts/${script} [--dry-run | --apply] [--issue <number>]`,
-    ['dry-run', 'apply', 'issue'],
-  );
-  const { options, positionals } = parseCli(args, cli);
+const CLI = defineCli(
+  'Usage: issue-triage.mjs / issue-containers.mjs [--dry-run | --apply] [--issue <number>]',
+  ['dry-run', 'apply', 'issue'],
+);
+
+export function configuration(env, args) {
+  const { options, positionals } = parseCli(args, CLI);
   if (positionals.length)
-    throw cliError(cli, `Unexpected argument ${positionals[0]}`);
+    throw cliError(
+      CLI,
+      'Use --dry-run or --apply with optional --issue <positive number>',
+    );
   if (options['dry-run'] && options.apply)
-    throw cliError(cli, 'Use --dry-run or --apply, not both');
-  if (
-    options.issue !== undefined &&
-    (!/^[1-9]\d*$/.test(options.issue) ||
-      !Number.isSafeInteger(Number(options.issue)))
-  )
-    throw cliError(cli, '--issue requires one positive safe integer');
+    throw cliError(CLI, 'Use --dry-run or --apply once');
+  let issueNumber;
+  if (options.issue !== undefined) {
+    if (
+      !/^[1-9]\d*$/.test(options.issue) ||
+      !Number.isSafeInteger(Number(options.issue))
+    )
+      throw cliError(CLI, '--issue requires one positive safe integer');
+    issueNumber = Number(options.issue);
+  }
   if (env.GITHUB_ACTIONS === 'true' && !env.PRISMATIC_PROJECT_TOKEN)
     throw new Error(
       'PRISMATIC_PROJECT_TOKEN is required for Projects access; GITHUB_TOKEN cannot access Projects.',
@@ -689,10 +642,9 @@ export function configuration(env, args, script = 'issue-triage.mjs') {
   if (!['true', 'false'].includes(setting))
     throw new Error('DRY_RUN must be true or false');
   return {
-    dryRun: options['dry-run'] || (!options.apply && setting === 'true'),
-    ...(options.issue === undefined
-      ? {}
-      : { issueNumber: Number(options.issue) }),
+    dryRun:
+      options['dry-run'] === true || (!options.apply && setting === 'true'),
+    ...(issueNumber === undefined ? {} : { issueNumber }),
   };
 }
 
@@ -704,7 +656,7 @@ if (
     const config = configuration(process.env, process.argv.slice(2));
     if (process.env.GITHUB_ACTIONS === 'true')
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
-    const options = { api: ghGraphql, ...config };
+    const options = { api: trackerGraphql, ...config };
     await withinBudget(() => run(options), { ...options, name: 'Triage' });
   } catch (error) {
     if (error instanceof CliHelp) console.log(error.message);

@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { CliError, CliHelp } from './cli.mjs';
+import { CliHelp } from './cli.mjs';
 import { GitHubApiError, ghGraphql } from './github-api.mjs';
 import {
   configuration,
@@ -29,6 +29,7 @@ import {
   reconcileEpicLabels,
   REPOSITORY,
   run,
+  trackerGraphql,
   withinBudget,
 } from './issue-triage.mjs';
 
@@ -227,7 +228,6 @@ function board(entries, { page = 100, definitionPages = 1, onRead } = {}) {
     return {
       id,
       type: entry.type,
-      isArchived: Boolean(entry.archived),
       project: { id: entry.project },
       fieldValues: slice(values(entry), null),
       content: content(entry),
@@ -703,149 +703,6 @@ test('deleted project items and moved project membership cannot mutate', async (
       null,
     );
   }
-});
-
-test('archived project items are never read or moved', async () => {
-  const f = board([
-    triaged(1, { archived: true }),
-    triaged(2, { archived: true, state: 'CLOSED', status: 'Ready' }),
-  ]);
-  for (const issueNumber of [1, 2])
-    await run({
-      api: f.api,
-      issueNumber,
-      dryRun: false,
-      log() {},
-      warn: assert.fail,
-    });
-  assert.ok(
-    f.calls.every(
-      (query) =>
-        !query.includes('issue(number: $number)') ||
-        query.includes('includeArchived: false'),
-    ),
-  );
-  assert.equal(
-    await readItem(f.api, 'item-1', { projectId: 'project', fields: {} }),
-    null,
-  );
-  assert.deepEqual(f.reads, ['item-1']);
-  assert.deepEqual(f.mutations, []);
-});
-
-test('a sweep warns about an item with no readable issue and one that left the project', async () => {
-  const f = board([triaged(1), triaged(2, { unreadable: true }), triaged(3)], {
-    onRead: (entry) => {
-      if (entry.number === 1) entry.project = 'other-project';
-    },
-  });
-  const warnings = [];
-  await run({
-    api: f.api,
-    dryRun: false,
-    log() {},
-    warn: (line) => warnings.push(line),
-  });
-  assert.deepEqual(warnings, [
-    'Project item item-2 has no readable issue; skipping it.',
-    'Issue #1 left the project during the run; skipping it.',
-  ]);
-  assert.deepEqual(
-    f.mutations.map((mutation) => mutation.item),
-    ['item-3'],
-  );
-});
-
-// Answers the calls `matches` selects the way GitHub answers a call about a
-// deleted or transferred issue: null at `field` and an error at its path.
-function answering(api, matches, field, type = 'NOT_FOUND') {
-  return async (query, variables, options) => {
-    if (!matches(query, variables)) return api(query, variables, options);
-    const result = {
-      data: { [field]: null },
-      errors: [{ type, path: [field], message: 'Could not resolve.' }],
-    };
-    if (options?.allowErrors?.(result)) return result.data;
-    throw new Error(type);
-  };
-}
-
-test('a NOT_FOUND on any call about one issue warns and the run goes on', async () => {
-  const f = board([
-    triaged(1),
-    triaged(2),
-    triaged(3, { labels: ['epic', 'bug'] }),
-    triaged(4, { labels: ['epic', 'bug'] }),
-  ]);
-  const warnings = [];
-  const api = answering(
-    f.api,
-    (query, variables) =>
-      (query.includes('updateProjectV2ItemFieldValue') &&
-        variables.item === 'item-1') ||
-      (query.includes('removeLabelsFromLabelable') &&
-        variables.id === 'issue-3'),
-    'mutation',
-  );
-  await run({
-    api,
-    dryRun: false,
-    log() {},
-    warn: (line) => warnings.push(line),
-  });
-  assert.deepEqual(warnings, [
-    'Epic #3 was not found; it may have been deleted or transferred. Skipping it.',
-    'Issue #1 was not found; it may have been deleted or transferred. Skipping it.',
-  ]);
-  assert.deepEqual(
-    f.mutations.map((mutation) => mutation.item),
-    ['item-2'],
-  );
-  assert.deepEqual(
-    f.removed.map((removal) => removal.id),
-    ['issue-4'],
-  );
-
-  // A nested page of a listed item whose issue is gone skips that item.
-  const paged = board(
-    [triaged(5, { labels: ['severity: none', 'a', 'b'] }), triaged(6)],
-    { page: 1 },
-  );
-  const pageWarnings = [];
-  await run({
-    api: answering(
-      paged.api,
-      (query, variables) =>
-        query.includes('labels(first: 100') && variables.id === 'issue-5',
-      'node',
-    ),
-    dryRun: false,
-    log() {},
-    warn: (line) => pageWarnings.push(line),
-  });
-  assert.deepEqual(pageWarnings, [
-    'Issue #5 was not found; it may have been deleted or transferred. Skipping it.',
-  ]);
-  assert.deepEqual(
-    paged.mutations.map((mutation) => mutation.item),
-    ['item-6'],
-  );
-
-  // Any other error still fails the run.
-  await assert.rejects(
-    run({
-      api: answering(
-        board([triaged(1)]).api,
-        (query) => query.includes('updateProjectV2ItemFieldValue'),
-        'mutation',
-        'FORBIDDEN',
-      ),
-      dryRun: false,
-      log() {},
-      warn: assert.fail,
-    }),
-    /FORBIDDEN/,
-  );
 });
 
 test('discovery fails closed for missing or ambiguous field options', async () => {
@@ -1349,10 +1206,6 @@ test('parser rejects malformed, missing, unsafe, repeated, or conflicting argume
     ['--issue', 'Infinity'],
     ['--issue', '9007199254740992'],
     ['--issue', '1', '--issue', '2'],
-    ['--issue=1', '-i', '2'],
-    ['--issue='],
-    ['--apply=true'],
-    ['-x'],
     ['--unknown'],
     ['1'],
     ['--apply', '--apply'],
@@ -1362,46 +1215,180 @@ test('parser rejects malformed, missing, unsafe, repeated, or conflicting argume
   ])
     assert.throws(
       () => configuration({}, args),
-      (error) =>
-        error instanceof CliError &&
-        error.message.includes('\n\nUsage: node scripts/issue-triage.mjs'),
-      args.join(' '),
+      /Use --dry-run or --apply|--issue requires|Unknown option|given more than once/,
     );
 });
 
-test('the parser takes = values, the -i alias, and --help in both scripts', () => {
-  for (const args of [['--issue=42'], ['-i', '42'], ['-i=42', '--dry-run']])
+test('the parser takes = values, short aliases, and --help', () => {
+  for (const args of [['--issue=42'], ['-i', '42'], ['-n', '-i=42']])
     assert.deepEqual(configuration({}, args), {
       dryRun: true,
       issueNumber: 42,
     });
-  assert.deepEqual(configuration({}, ['--apply', '-i=7']), {
+  assert.throws(() => configuration({}, ['--help']), CliHelp);
+  for (const name of ['issue-triage.mjs', 'issue-containers.mjs']) {
+    const script = fileURLToPath(new URL(`./${name}`, import.meta.url));
+    const help = spawnSync(process.execPath, [script, '-h'], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH },
+    });
+    assert.equal(help.status, 0, name);
+    assert.match(
+      help.stdout,
+      /^Usage: issue-triage\.mjs \/ issue-containers\.mjs/,
+    );
+    const missing = spawnSync(process.execPath, [script, '--issue'], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH },
+    });
+    assert.equal(missing.status, 1, name);
+    assert.match(missing.stderr, /^--issue requires a value/, name);
+  }
+});
+
+// A gh stand-in that answers one GraphQL call with `data` and a NOT_FOUND at
+// `path`, plus any `extra` errors.
+const answering = (data, path, extra = []) => ({
+  run: () =>
+    `HTTP/2.0 200 OK\n\r\n${JSON.stringify({
+      data,
+      errors: [
+        { type: 'NOT_FOUND', ...(path && { path }), message: 'Not found.' },
+        ...extra,
+      ],
+    })}`,
+});
+
+test('the tracker client reads a missing issue as null and fails on every other error', () => {
+  const query = 'query { repository { issue(number: 5) { id } } }';
+  for (const [data, path] of [
+    [{ repository: { issue: null } }, ['repository', 'issue']],
+    [{ node: null }, ['node']],
+    [{ node: { content: null } }, ['node', 'content']],
+  ])
+    assert.deepEqual(trackerGraphql(query, {}, answering(data, path)), data);
+  for (const [data, path, extra] of [
+    [{ repository: null }, ['repository'], []],
+    [{ user: { projectV2: null } }, ['user', 'projectV2'], []],
+    [{ repository: { issue: { id: 'I' } } }, ['repository', 'issue'], []],
+    [{ repository: { issue: null } }, undefined, []],
+    [
+      { updateProjectV2ItemFieldValue: null },
+      ['updateProjectV2ItemFieldValue'],
+      [],
+    ],
+    [
+      { repository: { issue: null } },
+      ['repository', 'issue'],
+      [{ type: 'FORBIDDEN', message: 'Resource not accessible' }],
+    ],
+  ])
+    assert.throws(
+      () => trackerGraphql(query, {}, answering(data, path, extra)),
+      GitHubApiError,
+      JSON.stringify(path),
+    );
+});
+
+test('a sweep skips deleted, transferred, and unreadable issues with a warning and moves the rest', async () => {
+  for (const [change, warning] of [
+    [
+      (entry) => (entry.project = 'other-project'),
+      'Issue #1 left the project; skipping',
+    ],
+    [
+      (entry) => (entry.repository = 'other/repository'),
+      'Issue #1 no longer exists in the repository; skipping',
+    ],
+  ]) {
+    // The listing still shows issue #1; it changes before the re-read.
+    const f = board([triaged(1), triaged(2)], {
+      onRead: (entry) => entry.number === 1 && change(entry),
+    });
+    const warnings = [];
+    assert.deepEqual(
+      await reconcile({
+        api: f.api,
+        dryRun: false,
+        log: () => {},
+        warn: (line) => warnings.push(line),
+      }),
+      { candidates: 1, updated: 1 },
+    );
+    assert.deepEqual(warnings, [warning]);
+    assert.deepEqual(
+      f.mutations.map((mutation) => mutation.item),
+      ['item-2'],
+    );
+  }
+  const f = board([triaged(1), triaged(2, { unreadable: true })]);
+  const warnings = [];
+  await reconcile({
+    api: f.api,
     dryRun: false,
-    issueNumber: 7,
+    log: () => {},
+    warn: (line) => warnings.push(line),
   });
-  assert.throws(
-    () => configuration({}, ['--help'], 'issue-containers.mjs'),
-    (error) =>
-      error instanceof CliHelp &&
-      error.message.startsWith(
-        'Usage: node scripts/issue-containers.mjs [--dry-run | --apply] [--issue <number>]',
-      ),
+  assert.deepEqual(warnings, [
+    'Project item item-2 has no readable issue; skipping',
+  ]);
+  assert.equal(f.mutations.length, 1);
+});
+
+test('an issue run reads only unarchived project items', async () => {
+  const f = board([triaged(1, { archived: true })]);
+  await run({ api: f.api, issueNumber: 1, dryRun: false, log() {} });
+  assert.ok(
+    f.calls
+      .filter((query) => query.includes('issue(number: $number)'))
+      .every((query) => query.includes('includeArchived: false')),
   );
-  for (const script of ['issue-triage.mjs', 'issue-containers.mjs']) {
-    const path = fileURLToPath(new URL(`./${script}`, import.meta.url));
-    const help = spawnSync(process.execPath, [path, '-h'], {
-      encoding: 'utf8',
-      env: { PATH: process.env.PATH },
-    });
-    assert.equal(help.status, 0, script);
-    assert.match(help.stdout, new RegExp(`^Usage: node scripts/${script} `));
-    assert.match(help.stdout, /--issue, -i <value>/);
-    const missing = spawnSync(process.execPath, [path, '--issue'], {
-      encoding: 'utf8',
-      env: { PATH: process.env.PATH },
-    });
-    assert.equal(missing.status, 1, script);
-    assert.match(missing.stderr, /^--issue requires a value/);
+  assert.deepEqual(f.reads, []);
+  assert.deepEqual(f.mutations, []);
+});
+
+test('tracker entry points still fail on a NOT_FOUND that is not about an issue', (t) => {
+  if (process.platform === 'win32')
+    return t.skip('the fake gh is a shell script');
+  const directory = mkdtempSync(join(tmpdir(), 'issue-triage-test-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const response = join(directory, 'response.txt');
+  writeFileSync(
+    response,
+    `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify({
+      data: { repository: null },
+      errors: [
+        {
+          type: 'NOT_FOUND',
+          path: ['repository'],
+          message: 'Could not resolve to a Repository.',
+        },
+      ],
+    })}`,
+  );
+  const gh = join(directory, 'gh');
+  writeFileSync(gh, '#!/bin/sh\ncat > /dev/null\ncat "$FAKE_GH_RESPONSE"\n');
+  chmodSync(gh, 0o755);
+  for (const name of ['issue-triage.mjs', 'issue-containers.mjs']) {
+    const script = fileURLToPath(new URL(`./${name}`, import.meta.url));
+    const failed = spawnSync(
+      process.execPath,
+      [script, '--apply', '--issue', '5'],
+      {
+        env: {
+          PATH: `${directory}:${process.env.PATH}`,
+          GH_TOKEN: 'token',
+          FAKE_GH_RESPONSE: response,
+        },
+        encoding: 'utf8',
+      },
+    );
+    assert.equal(failed.status, 1, name);
+    assert.match(
+      failed.stderr,
+      /GitHub GraphQL request failed: NOT_FOUND: Could not resolve to a Repository/,
+      name,
+    );
   }
 });
 

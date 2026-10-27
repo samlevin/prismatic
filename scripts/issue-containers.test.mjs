@@ -320,9 +320,9 @@ test('a reopened container keeps its marker when another run closed it again', a
   assert.deepEqual(f.issues.get(5).labels, [MARKER]);
 });
 
-test('a container that a concurrent run completes keeps its marker', async () => {
-  // Reopen: after the reopen, another run closes the open sub-issue, so it is
-  // about to close #5 again and still owns the marker.
+test('a marked container that is complete again keeps its marker', async () => {
+  // Another run is about to close #5: after this run reopens it, the open
+  // sub-issue closes before this run would remove the marker.
   let snapshots = 0;
   const reopened = repository(
     [
@@ -339,8 +339,9 @@ test('a container that a concurrent run completes keeps its marker', async () =>
   assert.deepEqual(reopened.writes, ['reopen 5', 'status 5 Ready']);
   assert.deepEqual(reopened.issues.get(5).labels, [MARKER]);
 
-  // Repair: an open marked container whose last sub-issue another run closes
-  // before the repair's read.
+  // A status repair: #24's last sub-issue closes before the read that would
+  // let the marker go.
+  snapshots = 0;
   const repaired = repository(
     [
       { number: 24, labels: [MARKER], status: 'In progress' },
@@ -348,127 +349,13 @@ test('a container that a concurrent run completes keeps its marker', async () =>
     ],
     {
       onSnapshot: (issues) => {
-        issues.get(25).state = 'CLOSED';
+        if (++snapshots === 2) issues.get(25).state = 'CLOSED';
       },
     },
   );
   await reconcileContainers({ api: repaired.api, dryRun: false, log() {} });
   assert.deepEqual(repaired.writes, ['status 24 Ready']);
   assert.deepEqual(repaired.issues.get(24).labels, [MARKER]);
-});
-
-test('a sweep does not mark a listed container that is no longer complete', async () => {
-  const f = repository(nested(), {
-    onSnapshot: (issues) => {
-      issues.get(3).state = 'OPEN';
-    },
-  });
-  await reconcileContainers({ api: f.api, dryRun: false, log() {} });
-  assert.deepEqual(f.writes, []);
-});
-
-// Answers the mutations `matches` selects the way GitHub answers a call about
-// a deleted or transferred issue, or with another error type.
-function failing(api, matches, type = 'NOT_FOUND') {
-  return async (query, variables, options) => {
-    if (!matches(query, variables)) return api(query, variables, options);
-    const result = {
-      data: { mutation: null },
-      errors: [{ type, path: ['mutation'], message: 'Could not resolve.' }],
-    };
-    if (options?.allowErrors?.(result)) return result.data;
-    throw new Error(type);
-  };
-}
-
-test('a NOT_FOUND on a container write warns and the sweep goes on', async () => {
-  const f = repository([
-    ...nested(),
-    { number: 30 },
-    { number: 31, parent: 30, state: 'CLOSED' },
-  ]);
-  const warnings = [];
-  await reconcileContainers({
-    api: failing(
-      f.api,
-      (query, variables) =>
-        query.includes('closeIssue') && variables.id === 'issue-2',
-    ),
-    dryRun: false,
-    log() {},
-    warn: (line) => warnings.push(line),
-  });
-  assert.deepEqual(warnings, [
-    'Container #2 was not found; it may have been deleted or transferred. Skipping it.',
-  ]);
-  assert.deepEqual(f.writes, [
-    'mark 2',
-    'mark 30',
-    'close 30',
-    'status 30 Done',
-  ]);
-  // A status write that finds the project item gone still counts the close,
-  // so the parent closes in the same run.
-  const item = repository(nested());
-  const itemWarnings = [];
-  assert.deepEqual(
-    await reconcileContainers({
-      api: failing(
-        item.api,
-        (query, variables) =>
-          query.includes('updateProjectV2ItemFieldValue') &&
-          variables.item === 'item-2',
-      ),
-      dryRun: false,
-      log() {},
-      warn: (line) => itemWarnings.push(line),
-    }),
-    { updated: 2 },
-  );
-  assert.deepEqual(itemWarnings, [
-    'Container #2 project item was not found; it may have been deleted or transferred. Skipping it.',
-  ]);
-  assert.deepEqual(item.writes, [
-    'mark 2',
-    'close 2',
-    'mark 1',
-    'close 1',
-    'status 1 Done',
-  ]);
-  // An issue run whose chain meets a gone issue on a nested page warns too.
-  const paged = repository(nested(), { page: 1 });
-  const chainWarnings = [];
-  assert.deepEqual(
-    await reconcileContainers({
-      api: failing(
-        paged.api,
-        (query, variables) =>
-          query.includes('subIssues(first: 100') && variables.id === 'issue-1',
-      ),
-      issueNumber: 1,
-      dryRun: false,
-      log() {},
-      warn: (line) => chainWarnings.push(line),
-    }),
-    { updated: 0 },
-  );
-  assert.deepEqual(chainWarnings, [
-    'Issue #1 was not found; it may have been deleted or transferred. Skipping it.',
-  ]);
-  assert.deepEqual(paged.writes, []);
-  await assert.rejects(
-    reconcileContainers({
-      api: failing(
-        repository(nested()).api,
-        (query) => query.includes('closeIssue'),
-        'FORBIDDEN',
-      ),
-      dryRun: false,
-      log() {},
-      warn: assert.fail,
-    }),
-    /FORBIDDEN/,
-  );
 });
 
 test('a container deleted during a sweep is skipped with a warning', async () => {
@@ -483,7 +370,7 @@ test('a container deleted during a sweep is skipped with a warning', async () =>
     warn: (line) => warnings.push(line),
   });
   assert.deepEqual(warnings, [
-    'Container #2 was not found; it may have been deleted or transferred. Skipping it.',
+    'Issue #2 no longer exists in the repository; skipping',
   ]);
   // The sweep reads the listed container again before marking it.
   assert.deepEqual(f.writes, []);
@@ -511,8 +398,9 @@ test('marked containers get their Status repaired only when it is wrong', async 
     'status 24 Ready',
     'unmark 24',
   ]);
-  // Only the two containers that need a write are re-read; 22 is not.
-  assert.equal(f.count(SNAPSHOT), 2);
+  // Only the two containers that need a write are re-read, and 24 again
+  // before its marker comes off; 22 is not.
+  assert.equal(f.count(SNAPSHOT), 3);
   assert.equal(f.count('projectItems(first: 100'), 0);
 });
 

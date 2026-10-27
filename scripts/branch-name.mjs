@@ -56,19 +56,19 @@ export function branchName({ issue, title, actor = 'agent', layer = 1 }) {
   return name;
 }
 
-const cli = defineCli(
-  'Usage: node scripts/branch-name.mjs <issue> [--layer <n>] [--actor <login>]',
-  ['layer', 'actor'],
+const CLI = defineCli(
+  'Usage: branch-name.mjs <issue> [--layer <n>] [--actor <login>]',
+  ['actor', 'layer'],
 );
 
 export function parseArguments(argv) {
-  const { options, positionals } = parseCli(argv, cli);
-  if (positionals.length > 1) throw cliError(cli, 'Too many arguments');
+  const { options, positionals } = parseCli(argv, CLI);
+  if (positionals.length > 1) throw cliError(CLI, 'Too many arguments');
   if (options.layer !== undefined && !POSITIVE_INTEGER.test(options.layer))
-    throw cliError(cli, '--layer requires a positive integer');
+    throw cliError(CLI, '--layer requires a positive integer');
   return {
     actor: options.actor ?? 'agent',
-    layer: options.layer === undefined ? 1 : Number(options.layer),
+    layer: Number(options.layer ?? 1),
     value: positionals[0],
   };
 }
@@ -94,7 +94,10 @@ function lookupIssue(api, number) {
 
 export function run(argv, { api = ghRest } = {}) {
   const options = parseArguments(argv);
-  if (!options.value) throw cliError(cli, 'Give an issue number');
+  if (!options.value)
+    throw new Error(
+      'Usage: branch-name.mjs <issue> [--layer <n>] [--actor <login>]',
+    );
   if (!POSITIVE_INTEGER.test(options.value))
     throw new Error('Issue must be a positive number');
   const { title } = lookupIssue(api, options.value);

@@ -136,7 +136,7 @@ test('options take = values and short aliases, and --help prints the usage', () 
     encoding: 'utf8',
   });
   assert.equal(help.status, 0);
-  assert.match(help.stdout, /^Usage: node scripts\/branch-name\.mjs <issue>/);
+  assert.match(help.stdout, /^Usage: branch-name\.mjs <issue>/);
   assert.match(help.stdout, /--layer, -l <value>/);
   const missing = spawnSync(process.execPath, [script, '5', '--layer'], {
     encoding: 'utf8',
