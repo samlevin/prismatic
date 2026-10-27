@@ -1401,8 +1401,7 @@ test('publish-review rejects bad input before calling gh, and the command report
     assert.equal(result.status, 1);
     assert.match(result.stderr, message);
   }
-  // A copy of the scripts beside a broken policy file. The real path keeps
-  // the script's entry-point check true where the temp directory is a symlink.
+  // realpath keeps the entry-point check true when tmpdir is a symlink.
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'agent-policy-')));
   mkdirSync(join(base, 'scripts'));
   mkdirSync(join(base, '.agents'));
