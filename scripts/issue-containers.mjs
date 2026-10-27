@@ -355,14 +355,18 @@ export async function reconcileContainers({
             : `mutation($id: ID!) { reopenIssue(input: { issueId: $id }) { issue { id } } }`,
           { id },
         );
-        await repairStatus(
-          issueApi,
-          fresh,
-          close ? 'Done' : 'Ready',
-          await project(),
-        );
         changed.add(id);
         updated++;
+        await skipGone(
+          async () =>
+            repairStatus(
+              forIssue(api, `Container #${listed.number} project item`),
+              fresh,
+              close ? 'Done' : 'Ready',
+              await project(),
+            ),
+          warn,
+        );
         if (reopen) await unmarkIfDue(await snapshot(issueApi, id));
         return;
       }

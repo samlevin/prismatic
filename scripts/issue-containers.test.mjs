@@ -407,6 +407,34 @@ test('a NOT_FOUND on a container write warns and the sweep goes on', async () =>
     'close 30',
     'status 30 Done',
   ]);
+  // A status write that finds the project item gone still counts the close,
+  // so the parent closes in the same run.
+  const item = repository(nested());
+  const itemWarnings = [];
+  assert.deepEqual(
+    await reconcileContainers({
+      api: failing(
+        item.api,
+        (query, variables) =>
+          query.includes('updateProjectV2ItemFieldValue') &&
+          variables.item === 'item-2',
+      ),
+      dryRun: false,
+      log() {},
+      warn: (line) => itemWarnings.push(line),
+    }),
+    { updated: 2 },
+  );
+  assert.deepEqual(itemWarnings, [
+    'Container #2 project item was not found; it may have been deleted or transferred. Skipping it.',
+  ]);
+  assert.deepEqual(item.writes, [
+    'mark 2',
+    'close 2',
+    'mark 1',
+    'close 1',
+    'status 1 Done',
+  ]);
   // An issue run whose chain meets a gone issue on a nested page warns too.
   const paged = repository(nested(), { page: 1 });
   const chainWarnings = [];

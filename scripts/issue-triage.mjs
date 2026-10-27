@@ -120,7 +120,7 @@ export class IssueGone extends Error {}
 // as a mutation or a nested page. A NOT_FOUND at a field GitHub answered with
 // null means the subject is gone, so it throws IssueGone for the caller to
 // warn about and skip. A call's own allowErrors still applies first, and any
-// other error fails as before.
+// other error throws.
 export function forIssue(api, subject) {
   return async (query, variables, options) => {
     let gone = false;
