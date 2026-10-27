@@ -1138,9 +1138,6 @@ function fakeGh(overrides = {}) {
   return { run, calls, posts };
 }
 
-const body = (note, text) =>
-  `**${policy.binding.label} review-code** of base \`${BASE}\` and head \`${HEAD}\`\n\n> ${note}\n\n${text}`;
-
 const publish = (text, github, fields = {}) =>
   publishReview(
     policy,
@@ -1177,79 +1174,124 @@ test('a review report yields its verdict and reviewed SHAs', () => {
   );
 });
 
-test('publish-review requests changes only when the poster is not the PR author', () => {
-  const github = fakeGh();
-  const text = report('REQUEST CHANGES');
-  const result = publish(text, github);
-  assert.equal(result.event, 'REQUEST_CHANGES');
-  assert.equal(result.url, URL_POSTED);
-  assert.deepEqual(
-    github.calls.map((args) =>
-      args.find((arg) => arg === 'user' || arg.startsWith('repos/')),
-    ),
-    [
-      `repos/${REPO}/pulls/7`,
-      `repos/${REPO}/compare/${TIP}...${HEAD}?per_page=1`,
-      'user',
-      `repos/${REPO}/pulls/7/reviews`,
-    ],
+test('only a change request from another account requests changes, and nothing approves', () => {
+  for (const verdict of REVIEW_VERDICTS) {
+    const other = reviewEvent({ verdict, viewer: 'bob', author: 'alice' });
+    assert.equal(
+      other.event,
+      verdict === 'REQUEST CHANGES' ? 'REQUEST_CHANGES' : 'COMMENT',
+      verdict,
+    );
+    // Logins compare as GitHub does, whatever agent or model is reviewing.
+    const same = reviewEvent({ verdict, viewer: 'Alice', author: 'alice' });
+    assert.equal(same.event, 'COMMENT', verdict);
+    const unknown = reviewEvent({
+      verdict,
+      viewer: null,
+      author: 'alice',
+      identityError: 'HTTP 403',
+    });
+    assert.equal(unknown.event, 'COMMENT', verdict);
+    assert.match(unknown.note, /could not be compared.*HTTP 403/);
+  }
+  assert.match(
+    reviewEvent({ verdict: 'REQUEST CHANGES', viewer: 'a', author: 'a' }).note,
+    /rather than a change request.*share the GitHub account @a/,
   );
+  assert.match(
+    reviewEvent({ verdict: 'APPROVE', viewer: 'a', author: 'b' }).note,
+    /never submits a GitHub approval/,
+  );
+  assert.equal(
+    reviewEvent({ verdict: 'BLOCKED', viewer: 'a', author: 'b' }).note,
+    null,
+  );
+  assert.throws(
+    () => reviewEvent({ verdict: 'LGTM', viewer: 'a', author: 'b' }),
+    /Unknown review verdict/,
+  );
+  assert.deepEqual(REVIEW_VERDICTS, ['APPROVE', 'REQUEST CHANGES', 'BLOCKED']);
+});
+
+test('every manual PR review posts exactly one review with the right event', () => {
+  const pull = (login) => ({
+    [`repos/${REPO}/pulls/7`]: {
+      state: 'open',
+      merged_at: null,
+      head: { sha: HEAD },
+      base: { sha: TIP, ref: 'main' },
+      user: { login },
+    },
+  });
+  for (const [verdict, viewer, author, event] of [
+    ['REQUEST CHANGES', 'reviewer', 'author', 'REQUEST_CHANGES'],
+    ['APPROVE', 'reviewer', 'author', 'COMMENT'],
+    ['BLOCKED', 'reviewer', 'author', 'COMMENT'],
+    ['REQUEST CHANGES', 'samelogin', 'SameLogin', 'COMMENT'],
+    ['APPROVE', 'samelogin', 'samelogin', 'COMMENT'],
+    ['BLOCKED', 'samelogin', 'samelogin', 'COMMENT'],
+  ]) {
+    const github = fakeGh({ user: { login: viewer }, ...pull(author) });
+    const result = publish(report(verdict), github);
+    const label = `${verdict} ${viewer}/${author}`;
+    assert.equal(github.posts.length, 1, label);
+    const [payload] = github.posts;
+    assert.equal(payload.event, event, label);
+    assert.equal(payload.commit_id, HEAD, label);
+    assert.equal(result.event, event, label);
+    assert.equal(result.url, URL_POSTED, label);
+    // The posted body names the reviewed pair and carries the whole report.
+    assert.ok(
+      payload.body.startsWith(
+        `${policy.binding.label} code review of \`${BASE}..${HEAD}\`, requested through \`${PREFIX}review-code\`.\n\n`,
+      ),
+      label,
+    );
+    assert.ok(payload.body.includes(report(verdict)), label);
+    if (result.note)
+      assert.ok(payload.body.includes(`\n\n> ${result.note}\n\n`), label);
+    if (verdict === 'REQUEST CHANGES' && event === 'COMMENT')
+      assert.match(payload.body, /rather than a change request/, label);
+  }
+  const github = fakeGh();
+  publish(report('REQUEST CHANGES'), github);
+  // The body goes on stdin as JSON, never as a command-line argument.
+  assert.deepEqual(github.calls.at(-1).slice(-2), ['--input', '-']);
   // gh filters the compare response so its file patches never reach the buffer.
   assert.deepEqual(github.calls[1].slice(1), [
     '--jq',
     '{sha: .merge_base_commit.sha}',
   ]);
-  // The body goes on stdin as JSON, never as a command-line argument.
-  assert.deepEqual(github.calls[3].slice(-2), ['--input', '-']);
-  assert.deepEqual(github.posts, [
-    {
-      commit_id: HEAD,
-      event: 'REQUEST_CHANGES',
-      body: body(
-        'Verdict REQUEST CHANGES is posted as a change request because reviewer is not the pull request author author.',
-        text,
-      ),
-    },
-  ]);
-
-  for (const login of ['author', 'AUTHOR']) {
-    const own = fakeGh({ user: { login } });
-    assert.equal(publish(text, own).event, 'COMMENT');
-    assert.equal(
-      own.posts[0].body,
-      body(
-        'Verdict REQUEST CHANGES is posted as a comment because GitHub does not let author request changes on their own pull request.',
-        text,
-      ),
-    );
-  }
 });
 
-test('publish-review comments with the reason when an identity is unknown', () => {
-  const unknown = (reason) =>
-    `Verdict REQUEST CHANGES is posted as a comment because the posting account could not be identified (${reason}) and may be the pull request author.`;
-  for (const [user, note] of [
-    [
-      null,
-      unknown(
-        'gh api user failed: GitHub API request failed: HTTP 404: Not Found. It does not exist, or the token cannot see it; check the token and Projects access.',
-      ),
-    ],
-    [
-      403,
-      unknown(
-        'gh api user failed: GitHub API request failed: HTTP 403: Unprocessable Entity. Check the token and Projects access.',
-      ),
-    ],
-    [{}, unknown('gh api user returned no login')],
+test('an unknown publishing identity posts a comment that says why', () => {
+  for (const overrides of [
+    { user: 403 },
+    { user: {} },
+    {
+      [`repos/${REPO}/pulls/7`]: {
+        state: 'open',
+        merged_at: null,
+        head: { sha: HEAD },
+        base: { sha: TIP, ref: 'main' },
+        user: null,
+      },
+    },
   ]) {
-    const github = fakeGh({ user });
+    const github = fakeGh(overrides);
     const result = publish(report('REQUEST CHANGES'), github);
+    assert.equal(github.posts.length, 1);
+    assert.equal(github.posts[0].event, 'COMMENT');
+    assert.match(github.posts[0].body, /could not be compared/);
     assert.equal(result.event, 'COMMENT');
-    assert.equal(result.note, note);
-    assert.equal(github.posts[0].body, body(note, report('REQUEST CHANGES')));
   }
-  const github = fakeGh({
+  const github = fakeGh({ user: 403 });
+  publish(report('APPROVE'), github);
+  assert.match(
+    github.posts[0].body,
+    /gh api user failed: GitHub API request failed: HTTP 403: Unprocessable Entity/,
+  );
+  const authorless = fakeGh({
     [`repos/${REPO}/pulls/7`]: {
       state: 'open',
       merged_at: null,
@@ -1258,57 +1300,42 @@ test('publish-review comments with the reason when an identity is unknown', () =
       user: null,
     },
   });
-  const result = publish(report('REQUEST CHANGES'), github);
-  assert.equal(result.event, 'COMMENT');
-  assert.equal(
-    result.note,
-    'Verdict REQUEST CHANGES is posted as a comment because the pull request author is an unknown identity and may be reviewer.',
+  publish(report('APPROVE'), authorless);
+  assert.match(
+    authorless.posts[0].body,
+    /GitHub returned no pull request author/,
   );
-  assert.equal(result.author, null);
 });
 
-test('publish-review never approves and says why the event differs', () => {
-  for (const [verdict, reason] of [
-    ['APPROVE', /because agent reviews never approve\./],
-    ['BLOCKED', /because it is not a review decision\./],
-  ]) {
-    const github = fakeGh();
-    const result = publish(report(verdict), github);
-    assert.equal(result.event, 'COMMENT');
-    assert.match(result.note, reason);
-    assert.equal(github.posts[0].commit_id, HEAD);
-    assert.equal(github.posts[0].body, body(result.note, report(verdict)));
-  }
-  assert.throws(
-    () => reviewEvent({ verdict: 'LGTM' }),
-    /Unknown review verdict/,
-  );
-  assert.deepEqual(REVIEW_VERDICTS, ['APPROVE', 'REQUEST CHANGES', 'BLOCKED']);
-});
-
-test('publish-review posts nothing to a pull request that is not open', () => {
-  for (const [state, merged, reason] of [
-    ['closed', '2026-10-01T00:00:00Z', 'pull request is merged'],
-    ['closed', null, 'pull request is closed'],
-    ['locked', null, 'pull request state is locked, not open'],
-  ]) {
-    const github = fakeGh({
-      [`repos/${REPO}/pulls/7`]: {
-        state,
-        merged_at: merged,
-        head: { sha: HEAD },
-        base: { sha: TIP, ref: 'gone' },
-        user: { login: 'author' },
-      },
-    });
-    assert.throws(
-      () => publish(report('REQUEST CHANGES'), github),
-      new RegExp(
-        `Review not posted: ${reason}; reviews post only to open pull requests$`,
-      ),
-    );
-    assert.deepEqual(github.posts, []);
-  }
+test('a merged or closed pull request gets no review and says why', () => {
+  for (const [fields, reason] of [
+    [{ state: 'closed', merged: true }, 'pull request is merged'],
+    [
+      { state: 'closed', merged_at: '2026-10-01T00:00:00Z' },
+      'pull request is merged',
+    ],
+    [{ state: 'closed' }, 'pull request is closed'],
+    [{ state: 'locked' }, 'pull request state is locked, not open'],
+  ])
+    for (const verdict of REVIEW_VERDICTS) {
+      const github = fakeGh({
+        [`repos/${REPO}/pulls/7`]: {
+          merged_at: null,
+          head: { sha: HEAD },
+          base: { sha: TIP, ref: 'gone' },
+          user: { login: 'author' },
+          ...fields,
+        },
+      });
+      assert.throws(
+        () => publish(report(verdict), github),
+        (error) =>
+          error.name === 'ReviewNotPosted' &&
+          error.message === `Review not posted: ${reason}`,
+        `${verdict} ${reason}`,
+      );
+      assert.equal(github.posts.length, 0, `${verdict} ${reason}`);
+    }
 });
 
 test('publish-review posts nothing when the head or merge base moved', () => {
@@ -1348,7 +1375,7 @@ test('publish-review posts nothing for a report without the reviewed pair', () =
     ],
     [
       report('APPROVE', `${BASE}..${'f'.repeat(40)}`),
-      /the report names a+\.\.f+, not the reviewed/,
+      /the report reviewed a+\.\.f+, not a+\.\.b+\. Run a fresh review\./,
     ],
     [report('APPROVE').replace(/^Verdict:.*\n/m, ''), /no Verdict: line/],
   ]) {
@@ -1386,7 +1413,7 @@ test('publish-review rejects bad input before calling gh, and the command report
     [['--pr', '7'], /^Review not posted: --report <file> is required/],
     [
       ['--pr', '7', '--report', join(tmpdir(), 'missing-review.md')],
-      /^Review not posted: cannot read the report .*missing-review\.md: ENOENT: no such file or directory/,
+      /^Review not posted: cannot read .*missing-review\.md: ENOENT: no such file or directory/,
     ],
   ]) {
     const result = spawnSync(
@@ -1428,7 +1455,7 @@ test('publish-review rejects bad input before calling gh, and the command report
   assert.equal(broken.status, 1);
   assert.equal(
     broken.stderr,
-    'Review not posted: cannot load the policy: policy.json binding is missing binding\n',
+    'Review not posted: cannot load .agents/policy.json: policy.json binding is missing binding\n',
   );
 });
 

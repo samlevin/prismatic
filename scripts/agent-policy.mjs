@@ -602,40 +602,39 @@ export function parseReviewReport(text) {
 // GitHub rejects REQUEST_CHANGES and APPROVE from a pull request's own
 // author, so a change request goes out only when the publishing account is
 // known and differs from the author. Logins compare case-insensitively, as
-// GitHub treats them. Every other case is a COMMENT review, and nothing here
-// ever approves. `viewerError` says why the posting account is unknown.
-export function reviewEvent({ verdict, viewer, author, viewerError }) {
+// GitHub treats them. Agent names and models never enter the comparison.
+// Every other case is a COMMENT review, and nothing here ever approves.
+export function reviewEvent({ verdict, viewer, author, identityError }) {
   if (!REVIEW_VERDICTS.includes(verdict))
     throw new Error(`Unknown review verdict: ${verdict}`);
+  if (!viewer || !author)
+    return {
+      event: 'COMMENT',
+      note: `The publishing GitHub account could not be compared with the pull request author (${identityError ?? 'GitHub returned no login'}), so this review is posted as a comment and cannot request changes.`,
+    };
+  const same = viewer.toLowerCase() === author.toLowerCase();
+  if (verdict === 'REQUEST CHANGES')
+    return same
+      ? {
+          event: 'COMMENT',
+          note: `The verdict is REQUEST CHANGES, but it is posted as a comment rather than a change request because the reviewer and the pull request author share the GitHub account @${author}, and GitHub does not let an account request changes on its own pull request.`,
+        }
+      : { event: 'REQUEST_CHANGES', note: null };
   if (verdict === 'APPROVE')
     return {
       event: 'COMMENT',
-      note: 'Verdict APPROVE is posted as a comment because agent reviews never approve.',
+      note: 'This workflow never submits a GitHub approval, so the APPROVE verdict is posted as a comment.',
     };
-  if (verdict === 'BLOCKED')
-    return {
-      event: 'COMMENT',
-      note: 'Verdict BLOCKED is posted as a comment because it is not a review decision.',
-    };
-  if (!viewer)
-    return {
-      event: 'COMMENT',
-      note: `Verdict REQUEST CHANGES is posted as a comment because the posting account could not be identified (${viewerError ?? 'gh api user returned no login'}) and may be the pull request author.`,
-    };
-  if (!author)
-    return {
-      event: 'COMMENT',
-      note: `Verdict REQUEST CHANGES is posted as a comment because the pull request author is an unknown identity and may be ${viewer}.`,
-    };
-  if (viewer.toLowerCase() === author.toLowerCase())
-    return {
-      event: 'COMMENT',
-      note: `Verdict REQUEST CHANGES is posted as a comment because GitHub does not let ${author} request changes on their own pull request.`,
-    };
-  return {
-    event: 'REQUEST_CHANGES',
-    note: `Verdict REQUEST CHANGES is posted as a change request because ${viewer} is not the pull request author ${author}.`,
-  };
+  return { event: 'COMMENT', note: null };
+}
+
+export function reviewBody(policy, { report, base, head, note }) {
+  const parts = [
+    `${binding(policy).label} code review of \`${base}..${head}\`, requested through \`${prefix(policy)}review-code\`.`,
+  ];
+  if (note) parts.push(`> ${note}`);
+  parts.push(String(report).trim());
+  return `${parts.join('\n\n')}\n`;
 }
 
 // Posts a code review report to an open pull request as one review pinned to
@@ -656,7 +655,7 @@ export function publishReview(
   const reviewed = parseReviewReport(report);
   if (!base.startsWith(reviewed.base) || !head.startsWith(reviewed.head))
     throw new ReviewNotPosted(
-      `the report names ${reviewed.base}..${reviewed.head}, not the reviewed ${base}..${head}`,
+      `the report reviewed ${reviewed.base}..${reviewed.head}, not ${base}..${head}. Run a fresh review.`,
     );
   const api = (args, input) => {
     try {
@@ -666,15 +665,15 @@ export function publishReview(
     }
   };
   const pull = api([`repos/${repository}/pulls/${pr}`]);
-  if (pull.state !== 'open')
+  // A review posts only to an open pull request. A merged or closed one
+  // still gets its report, but nothing is written to it.
+  if (pull?.merged === true || pull?.merged_at)
+    throw new ReviewNotPosted('pull request is merged');
+  if (pull?.state !== 'open')
     throw new ReviewNotPosted(
-      `${
-        pull.merged_at
-          ? 'pull request is merged'
-          : pull.state === 'closed'
-            ? 'pull request is closed'
-            : `pull request state is ${pull.state}, not open`
-      }; reviews post only to open pull requests`,
+      pull?.state === 'closed'
+        ? 'pull request is closed'
+        : `pull request state is ${pull?.state ?? 'unknown'}, not open`,
     );
   if (pull.head.sha !== head)
     throw new ReviewNotPosted(
@@ -692,19 +691,21 @@ export function publishReview(
     throw new ReviewNotPosted(
       `pull request #${pr} now has merge base ${mergeBase} with ${pull.base.ref}, not the reviewed ${base}`,
     );
-  let viewer;
-  let viewerError;
+  let viewer = null;
+  let identityError;
   try {
-    viewer = JSON.parse(ghRest(['user'], { run })).login;
+    viewer = JSON.parse(ghRest(['user'], { run }))?.login || null;
   } catch (error) {
-    viewerError = `gh api user failed: ${failureMessage(error)}`;
+    identityError = `gh api user failed: ${failureMessage(error)}`;
   }
-  const author = pull.user?.login;
+  const author = pull.user?.login || null;
+  if (!identityError && !author)
+    identityError = 'GitHub returned no pull request author';
   const { event, note } = reviewEvent({
     verdict: reviewed.verdict,
     viewer,
     author,
-    viewerError,
+    identityError,
   });
   const posted = api(
     [
@@ -717,7 +718,7 @@ export function publishReview(
     JSON.stringify({
       commit_id: head,
       event,
-      body: `**${binding(policy).label} review-code** of base \`${base}\` and head \`${head}\`\n\n> ${note}\n\n${report}`,
+      body: reviewBody(policy, { report, base, head, note }),
     }),
   );
   if (!posted?.html_url)
@@ -730,8 +731,8 @@ export function publishReview(
     verdict: reviewed.verdict,
     note,
     url: posted.html_url,
-    reviewer: viewer ?? null,
-    author: author ?? null,
+    reviewer: viewer,
+    author,
     base,
     head,
   };
@@ -823,15 +824,15 @@ function main(args) {
     try {
       report = readFileSync(reportPath, 'utf8');
     } catch (error) {
-      throw new ReviewNotPosted(
-        `cannot read the report ${reportPath}: ${error.message}`,
-      );
+      throw new ReviewNotPosted(`cannot read ${reportPath}: ${error.message}`);
     }
     let policy;
     try {
       policy = loadPolicy();
     } catch (error) {
-      throw new ReviewNotPosted(`cannot load the policy: ${error.message}`);
+      throw new ReviewNotPosted(
+        `cannot load ${SOURCES.policy}: ${error.message}`,
+      );
     }
     const result = publishReview(policy, {
       pr: options.pr,
