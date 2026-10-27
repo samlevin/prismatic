@@ -4,7 +4,7 @@ This file is the one source for delivering a leaf issue or reworking one of its 
 
 ## Inputs
 
-The assignment from {{prefix}}implement's Dispatch supplies the target, trunk and base SHAs, ledger line, ownership exclusions, and effort decision, and may add acceptance criteria, accepted decisions, verified prerequisites, validation requirements, and `reviewer` overrides. Confirm the dispatched effort and the same rule/reason in your first progress message. Return BLOCKED when you cannot establish the issue or its acceptance criteria.
+The assignment from {{prefix}}implement's Dispatch supplies the delivery ID, the target, trunk and base SHAs, ledger line, ownership exclusions, and effort decision, and may add acceptance criteria, accepted decisions, verified prerequisites, validation requirements, and `reviewer` overrides. Confirm the dispatched effort and the same rule/reason in your first progress message. Return BLOCKED when you cannot establish the issue or its acceptance criteria.
 
 ## Read
 
