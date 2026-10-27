@@ -538,9 +538,9 @@ test('every role and workflow renders for both tools with matching bodies', () =
       readFileSync(new URL(`../${source}`, import.meta.url), 'utf8'),
       policy,
     );
-    const body = source.includes('/references/')
-      ? text
-      : parseSource(text).body;
+    const body = /^\.agents\/(roles|workflows)\/[^/]+\.md$/.test(source)
+      ? parseSource(text).body
+      : text;
     for (const line of sharedLines(body))
       for (const output of outputs)
         assert.ok(
@@ -1785,73 +1785,102 @@ test('queue recomputes and main reads only fixed results until a blocker needs a
   }
 });
 
-test('spec plans require offline validation, triage, confirmation and journaled resume in both tools', () => {
+// A file of a generated skill, in the Claude Code and the Codex skill.
+function inBoth(file) {
+  return [`.claude/skills/${PREFIX}${file}`, `.agents/skills/${PREFIX}${file}`];
+}
+
+test('specification filing asks the triager for independence groups only', () => {
   const files = render();
-  for (const tool of ['claude', 'codex']) {
-    const directory = tool === 'claude' ? '.claude/skills' : '.agents/skills';
-    const path = `${directory}/${PREFIX}spec-to-issues`;
-    const skill = files.get(`${path}/SKILL.md`);
-    for (const rule of [
-      'Before any GitHub write',
-      'scripts/spec-to-issues.mjs plan',
-      'duplicate Plan IDs or titles',
-      'dependency cycles',
-      'unknown labels',
-      'After pre-flight and before printing the tree',
-      'for the whole plan',
-      '--role issue-triager',
-      'as accepted decisions',
-      'never override them',
-      'Only the triager forms independence groups',
-      '`EDGES` line',
-      'scripts/spec-to-issues.mjs edges <drafts.json>',
-      'applyEdges(plan, edgesLine)',
-      'including every edge the triager returned',
-      'Never form, extend, or merge groups yourself',
-      'only as context',
-      'Wait for explicit confirmation',
-      'plan or dry run makes no GitHub writes',
-      'phase epic or split-slice container whose direct leaf children',
-      'root container gets no record',
-      'reuses the saved triager verdict and groups without spawning the triager again',
-      'finish every missing independence record',
-      'spec change since the confirmed plan requires a new pre-flight, triage, and confirmation',
-      'Never edit labels, project settings, or project Status',
-      'Never touch an issue this run did not create',
-      'issue-triage.mjs --apply --issue N',
-      'issue-containers.mjs --apply --issue N',
-    ])
-      assert.ok(skill.includes(rule), `${path}: ${rule}`);
-    const state = files.get(`${path}/references/state.md`);
-    for (const rule of [
-      'outside the repository',
-      'Full triager report',
-      'Persist the groups',
-      'before sending the POST',
-      'at least one second',
-      'Never blindly retry a POST',
-      'exact marker',
-      'without another POST',
-      'without spawning the triager again',
-      'Resume must finish every record',
-      'voids confirmation',
-    ])
-      assert.ok(state.includes(rule), `${path}/state: ${rule}`);
-    const operations = files.get(`${path}/references/github-operations.md`);
-    for (const rule of [
-      'REST through `gh api`',
-      'sub_issue_id',
-      'dependencies/blocked_by',
-      'Never include Status',
-      'Never put a record on the root',
-    ])
-      assert.ok(operations.includes(rule), `${path}/operations: ${rule}`);
+  for (const path of inBoth('spec-to-issues/SKILL.md')) {
+    const skill = files.get(path);
+    const groups = section(skill, '3. Independence groups');
+    assert.match(
+      groups,
+      /^Only the triager forms independence groups, by the definition in `\.agents\/independence-groups\.md`\./m,
+      path,
+    );
+    assert.match(groups, /resolve --tool <tool> --role issue-triager`/, path);
+    assert.match(
+      groups,
+      /`dependency judgment: independence groups only; metadata comes from the specification`/,
+      path,
+    );
+    assert.match(
+      groups,
+      /Apply only its `GROUPS` lines and ignore its `EDGES` line/,
+      path,
+    );
+    // The record lives in the epic's rendered body, so every fill and patch,
+    // including a resumed run's refill, carries it.
+    assert.match(
+      groups,
+      /append the epic's independence record to `bodies\/<epic>\.md` with `@@issue:KEY@@` placeholders, as body-shapes\.md describes, so every fill and patch in \[File\]\(#5-file\) carries it\./,
+      path,
+    );
+    assert.match(
+      groups,
+      /On resume, append the recorded groups to the rebuilt epic bodies the same way and never spawn the triager again\./,
+      path,
+    );
+    assert.match(
+      section(skill, 'Resume'),
+      /confirm its `planSha256` matches, computed before the recorded groups are appended/,
+      path,
+    );
+    assert.doesNotMatch(
+      skill,
+      /Record groups|groupsRecorded|so no triager runs/,
+      path,
+    );
   }
-  const role = readFileSync(
-    new URL('../.agents/roles/issue-triager.md', import.meta.url),
-    'utf8',
+  for (const path of inBoth('spec-to-issues/references/body-shapes.md'))
+    assert.match(
+      section(files.get(path), 'Epic'),
+      /appends the section that `\.agents\/independence-groups\.md` shows to the end of `bodies\/<epic>\.md`, one list item per group, with `@@issue:<Plan ID>@@` for each leaf in place of an issue number\. The record then goes through every fill and patch like the rest of the body\./,
+      path,
+    );
+  for (const path of inBoth('spec-to-issues/references/state-file.md')) {
+    const state = files.get(path);
+    assert.match(state, /before the independence records are appended/, path);
+    assert.doesNotMatch(state, /groupsRecorded/, path);
+  }
+  assert.match(
+    files.get(`.agents/skills/${PREFIX}spec-to-issues/SKILL.md`),
+    new RegExp(
+      `Spawn with \`spawn_agent\`: \`agent_type: ${PREFIX}issue-triager\`[^\\n]*\`fork_turns: "none"\``,
+    ),
   );
-  assert.match(role, /spec-to-issues for a whole delivery plan/);
+  assert.match(
+    files.get(`.claude/skills/${PREFIX}spec-to-issues/SKILL.md`),
+    new RegExp(
+      `Spawn with the Agent tool: \`subagent_type: ${PREFIX}issue-triager\``,
+    ),
+  );
+});
+
+test('the heading and size checks allow for the independence record on an epic', () => {
+  const files = render();
+  for (const path of inBoth('spec-to-issues/references/body-shapes.md')) {
+    const shapes = files.get(path);
+    assert.match(
+      section(shapes, 'Heading check (rule `template-headings`)'),
+      /The only other headings allowed are on an epic: `Contracts`, then `Independence groups`, which the groups step appends after pre-flight and which always comes last\./,
+      path,
+    );
+    assert.match(
+      section(shapes, 'Size check (rule `body-size`)'),
+      /an epic with two or more direct leaf children also counts the largest record that step can append: the section `\.agents\/independence-groups\.md` shows, with each of those leaves as `#9999999` in a group of its own\./,
+      path,
+    );
+  }
+  assert.match(
+    readFileSync(
+      new URL('../.agents/spec-slicing.md', import.meta.url),
+      'utf8',
+    ),
+    /^\| `body-size` \| [^\n]*an epic's counts its largest possible independence record \|$/m,
+  );
 });
 
 test('implementation is medium while every review dispatch has its own high settings', () => {

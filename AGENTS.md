@@ -32,7 +32,7 @@ Version-controlled agents and skills under `.claude/agents/` and `.claude/skills
 | `implement #N`, an issue URL, or a PR URL | `/prism-implement` | `$prism-implement` | `prism-implementer` per leaf or rework (`inline` keeps a small one here); `prism-code-reviewer` for the pre-PR gate |
 | Build, link, rebase, or sync stacked branches during delivery | `/prism-stack` | `$prism-stack` | none; the agent that created the worktree runs it |
 | File or draft issues | `/prism-create-github-issue` | `$prism-create-github-issue` | none by default; `prism-issue-triager` (read-only) when a batch needs independent judgment |
-| File a spec delivery plan | `/prism-spec-to-issues` | `$prism-spec-to-issues` | `prism-issue-triager` for the whole plan after offline pre-flight; confirmation before filing |
+| File a specification's delivery plan as a root container, epics, and leaves | `/prism-spec-to-issues` | `$prism-spec-to-issues` | `prism-issue-triager` (read-only) for independence groups only; follows `.agents/spec-slicing.md` |
 | Review a pushed branch or PR | `/prism-review-code` | `$prism-review-code` | `prism-code-reviewer` (read-only, reports to you; the skill posts the report to a target PR) |
 | Security review, only when a person asks | `/prism-review-security` | `$prism-review-security` | `prism-security-reviewer` (read-only) |
 | Write a PR body, issue body, comment, or doc | `/prism-plain-language` | `$prism-plain-language` | none |

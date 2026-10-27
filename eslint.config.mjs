@@ -127,12 +127,4 @@ export default [
     language: 'markdown/gfm',
     languageOptions: { frontmatter: 'yaml' },
   })),
-  {
-    // The template has its own title, then the specification an author
-    // copies, whose title is a second H1 placeholder (`# <Component name>`).
-    files: ['specs/TEMPLATE.md'],
-    rules: {
-      'markdown/no-multiple-h1': 'off',
-    },
-  },
 ];

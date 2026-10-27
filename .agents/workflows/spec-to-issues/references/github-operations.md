@@ -1,21 +1,70 @@
-# REST filing operations
+# GitHub operations
 
-Use only REST through `gh api` for your GitHub calls. The one exception is the repository's membership script, which makes its own GraphQL calls, about 2 points per issue. Pass structured JSON payload files with `--input`; write prose payloads with literal newlines. Discover metadata once per batch and reuse it. Do not publish anything until offline pre-flight, triage and confirmation succeed. Before first creation, search for duplicates by spec link and draft title, and reconcile any existing run state.
+Every call is REST through `gh api`. Pass JSON bodies from a file outside the repository with `--input FILE`, and integers with `-F` (not `-f`). Projects v2 paths below use `users/{{project.owner}}`; for a project owned by an organization use `orgs/<org>` instead. R is `{{repository}}`, P is `{{project.number}}`.
 
-| Operation | REST call / payload |
+## Pacing and retries
+
+- Leave at least 3 seconds between issue creates and at least 1 second between any other writes (POST, PATCH, DELETE). Reads need no gap. Chain the wait into the same shell command as the call (`gh api ... && sleep 3`).
+- GitHub's secondary rate limit answers a write with HTTP 403 or 429 and a message about a secondary rate limit, sometimes with a `retry-after` header (see it with `gh api --include`). Wait `retry-after` seconds, or 60 seconds without one, then retry. Double the wait on each further limit, and stop after five retries; the state file lets a later run resume.
+- A create that fails any other way, or times out, may still have created the issue. Run the title lookup under [Resume lookup](#resume-lookup) before retrying it.
+
+## Reads before filing
+
+| Purpose | Call |
 | --- | --- |
-| Discover live labels | GET `repos/{{repository}}/labels` with `--paginate` |
-| Discover project options | GET `users/{{project.owner}}/projectsV2/{{project.number}}/fields` |
-| Create issue | POST `repos/{{repository}}/issues` with title, body including run marker, confirmed labels, and assignees required by the person's policy. Save numeric `id`, `number`, `html_url` immediately. |
-| Recover uncertain creation | GET `repos/{{repository}}/issues?state=all&per_page=100` with `--paginate`, excluding pull requests, checking exact markers and creator |
-| Read/add parent link | GET `repos/{{repository}}/issues/<parent>/sub_issues` with `--paginate`; POST there with `{"sub_issue_id": <child id>}` only when absent. Verify the child's `/parent` too. |
-| Read/add dependency | GET `repos/{{repository}}/issues/<waiting>/dependencies/blocked_by` with `--paginate`; POST there with `{"issue_id": <blocker id>}` only when absent. Never invert the edge. |
-| Rewrite body | PATCH `repos/{{repository}}/issues/<number>` with `{"body": "<final body>"}` only when different and current content is the run's expected content |
-| Add project item | `CONTENT_TYPE=issue CONTENT_NUMBER=<number> DRY_RUN=false node scripts/issue-project-membership.mjs`; read the numeric item ID from its `in Prismatic delivery as item <id>.` line. It prints the existing item when the membership workflow already added the issue. Never POST to the project's items. |
-| Set metadata | PATCH `users/{{project.owner}}/projectsV2/{{project.number}}/items/<id>` with `{"fields":[{"id":<Priority field id>,"value":"<option id>"},{"id":<Size field id>,"value":"<option id>"}]}`. Omit Size when the triager leaves it unset for a container. Never include Status. |
+| Authenticated login | `gh api user --jq .login` |
+| Labels that exist | `gh api 'repos/R/labels?per_page=100' --paginate --jq '.[].name'` |
+| Assignee is assignable | `gh api repos/R/assignees/LOGIN` succeeds (HTTP 204); a 404 means not assignable |
+| Project fields | `gh api users/{{project.owner}}/projectsV2/P/fields --jq '.[] \| select(.name=="Priority" or .name=="Size") \| {id, name, options: [.options[] \| {id, name: .name.raw}]}'` |
+| Latest issue or PR number | `gh api 'repos/R/issues?state=all&sort=created&direction=desc&per_page=1' --jq '.[0].number'` |
 
-Create the root, phase epics and split containers before their children. After all issues exist, render the saved reference map into bodies, attach native parents, then add blocked-by edges. Once relationships are verified, append the independence record from `.agents/independence-groups.md` to each eligible phase epic or split container. Keep the rest of each body and its recovery marker. Never put a record on the root.
+The issues list includes pull requests, which share the number sequence. Discussions share it too and do not appear there, which is one reason a prediction can miss.
 
-Journal and pace every write, including membership script runs, PATCH calls, and post-create script attempts. At least one second separates writes. Honor GitHub's rate-limit response; on an ambiguous failure reconcile with GET before retrying. Do not create or edit labels, project fields/options, settings, or project Status. Do not PATCH an issue outside this run's marker-verified mapping.
+## Create
 
-If the membership script exits non-zero or prints no item line, report the issue and pending metadata/post-create steps with the state path, and rerun the script on resume. Never add the item any other way. After all items, metadata, bodies and relationships exist, run `node scripts/issue-triage.mjs --apply --issue N` for each created issue, then `node scripts/issue-containers.mjs --apply --issue N` for the root. These adapters can update tracker state under their existing repository policy; do not change their behavior. On resume verify script effects before re-running an unfinished attempt, and never repeat a completed invocation without evidence it is needed. Read back final bodies, labels, parent links, dependency direction, records, and project fields. Report partial results instead of hiding them.
+```console
+gh api -X POST repos/R/issues --input /abs/state/create.json --jq '{number, id, node_id, html_url}'
+```
+
+`create.json` is `{"title": "...", "body": "<filled body>", "labels": [...], "assignees": ["LOGIN"]}`, with `assignees` left out when there is no assignee. Build it with a JSON tool (`jq -n --rawfile body sent/KEY.md ...`), never by pasting the body into a shell string.
+
+## Body patch
+
+```console
+gh api -X PATCH repos/R/issues/N --input /abs/state/patch.json --jq .number
+```
+
+`patch.json` is `{"body": "<filled body>"}`. Patch only issues recorded in the state file.
+
+## Sub-issues
+
+- List: `gh api 'repos/R/issues/PARENT/sub_issues?per_page=100' --paginate --jq '.[].number'`
+- Add: `gh api -X POST repos/R/issues/PARENT/sub_issues -F sub_issue_id=CHILD_ID`, where CHILD_ID is the child's REST `id`, not its number.
+
+## Blocked-by dependencies
+
+- List: `gh api 'repos/R/issues/N/dependencies/blocked_by?per_page=100' --paginate --jq '.[].number'`
+- Add: `gh api -X POST repos/R/issues/N/dependencies/blocked_by -F issue_id=BLOCKER_ID`. N is the blocked issue; BLOCKER_ID is the blocker's REST `id`. Do not reverse the direction.
+
+## Project items
+
+- Find: `gh api 'users/{{project.owner}}/projectsV2/P/items?per_page=100' --paginate --jq '.[] | select(.content_type=="Issue") | {item: .id, issue: .content.id}'`, then match `issue` to every recorded issue `id`. One listing covers the whole batch; re-list, never list per issue.
+- Add, only for issues still missing after the batch's single 3-minute wait: `gh api -X POST users/{{project.owner}}/projectsV2/P/items -f type=Issue -F id=ISSUE_ID`.
+- Set Priority and Size: `gh api -X PATCH users/{{project.owner}}/projectsV2/P/items/ITEM --input fields.json`, with `fields.json` as `{"fields": [{"id": PRIORITY_FIELD_ID, "value": "OPTION_ID"}, {"id": SIZE_FIELD_ID, "value": "OPTION_ID"}]}`. Field IDs are the numeric `id` values from the fields read; option IDs are the option `id` strings.
+- Never set Status. The repository automation sets Inbox, and `scripts/issue-triage.mjs` moves an issue to Ready. An item you added yourself has no Status, so triage skips it; report it as unfinished.
+
+## Resume lookup
+
+```console
+gh api 'repos/R/issues?creator=LOGIN&state=all&since=STARTED_AT&per_page=100' --paginate \
+  --jq '.[] | select(.pull_request | not) | {number, id, node_id, title, created_at}'
+```
+
+An issue in this list whose title equals an item's title, created at or after `startedAt` (which state-file.md sets 5 minutes before the first create), is that item. Adopt it: record its number and IDs, and record `sentSha256` as the hash of its current body (`gh api repos/R/issues/N --jq .body`). Two matches for one title means a duplicate already exists; stop and report both numbers instead of choosing.
+
+## Read back
+
+- Body, labels, assignees: `gh api repos/R/issues/N --jq '{title, labels: [.labels[].name], assignees: [.assignees[].login], body}'`
+- Parent: `gh api repos/R/issues/N --jq .parent_issue_url` when present, or the sub-issue list of the parent.
+- Dependencies: the blocked-by list above.
+- Project fields: `gh api 'users/{{project.owner}}/projectsV2/P/items/ITEM?fields=PRIORITY_FIELD_ID,SIZE_FIELD_ID,STATUS_FIELD_ID' --jq '[.fields[] | {name, value: .value.name.raw}]'`
