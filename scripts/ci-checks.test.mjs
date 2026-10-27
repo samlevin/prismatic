@@ -179,18 +179,21 @@ test('a real command buffers stdout and stderr and reports its exit code', async
   const node = process.execPath;
   const failed = await runChecks(
     [
-      [node, ['-e', 'console.log("out"); console.error("err")']],
+      [
+        node,
+        [
+          '-e',
+          'process.stdout.write(Buffer.from([0xe2, 0x9c])); setTimeout(() => { process.stdout.write(Buffer.from([0x93, 0x0a])); console.error("err"); }, 50)',
+        ],
+      ],
       [node, ['-e', 'process.exit(3)']],
       ['no-such-ci-command', []],
     ],
     undefined,
     (line) => lines.push(line),
   );
-  assert.deepEqual(lines.slice(3, 6), [
-    `::group::${node} -e console.log("out"); console.error("err")`,
-    'out\nerr',
-    '::endgroup::',
-  ]);
+  // The check mark arrives split across two writes and still decodes.
+  assert.deepEqual(lines.slice(4, 6), ['\u2713\nerr', '::endgroup::']);
   assert.deepEqual(
     failed.map(({ line, code }) => [line, code]),
     [

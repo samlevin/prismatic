@@ -36,9 +36,7 @@ export function checks({ full }) {
   return commands;
 }
 
-// Starts every command at once and buffers each one's output, so each check's
-// log prints whole in its own group after all of them finish. Resolves with
-// the failed checks.
+// Buffers each check's output so its log prints whole in one group.
 export async function runChecks(commands, run = runCommand, log = console.log) {
   const results = await Promise.all(
     commands.map(([command, args]) => {
@@ -66,6 +64,9 @@ function runCommand(command, args) {
   return new Promise((resolve) => {
     let output = '';
     const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    // Decoding per stream keeps a character split across chunks intact.
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => (output += chunk));
     child.stderr.on('data', (chunk) => (output += chunk));
     // A command that cannot start emits error before close, so the error wins.
