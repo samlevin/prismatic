@@ -126,12 +126,12 @@ test('the full selection runs format, lint, typecheck, agent definitions, every 
   );
 });
 
-test('checks start together and each log prints whole in its own group', async () => {
+test('checks start together and each log prints whole when its check finishes', async () => {
   const lines = [];
-  const pending = [];
+  const pending = new Map();
   const run = (command) =>
     new Promise((resolve) =>
-      pending.push(() =>
+      pending.set(command, () =>
         resolve({
           code: command === 'second' ? 1 : 0,
           output: `${command} output\n`,
@@ -148,21 +148,29 @@ test('checks start together and each log prints whole in its own group', async (
     (line) => lines.push(line),
   );
   // Every check has started before any of them finishes.
-  assert.equal(pending.length, 3);
-  for (const finish of pending.reverse()) finish();
-  const failed = await done;
+  assert.deepEqual([...pending.keys()], ['first', 'second', 'third']);
   assert.deepEqual(lines, [
     'Started first',
     'Started second --flag',
     'Started third',
+  ]);
+  // A finished check prints its group while the others are still running.
+  pending.get('third')();
+  await new Promise(setImmediate);
+  assert.deepEqual(lines.slice(3), [
+    '::group::third',
+    'third output',
+    '::endgroup::',
+  ]);
+  pending.get('first')();
+  pending.get('second')();
+  const failed = await done;
+  assert.deepEqual(lines.slice(6), [
     '::group::first',
     'first output',
     '::endgroup::',
     '::group::second --flag',
     'second output',
-    '::endgroup::',
-    '::group::third',
-    'third output',
     '::endgroup::',
   ]);
   assert.deepEqual(failed, [
@@ -177,23 +185,23 @@ test('checks start together and each log prints whole in its own group', async (
 test('a real command buffers stdout and stderr and reports its exit code', async () => {
   const lines = [];
   const node = process.execPath;
+  const split =
+    'process.stdout.write(Buffer.from([0xe2, 0x9c])); setTimeout(() => { process.stdout.write(Buffer.from([0x93, 0x0a])); console.error("err"); }, 50)';
   const failed = await runChecks(
     [
-      [
-        node,
-        [
-          '-e',
-          'process.stdout.write(Buffer.from([0xe2, 0x9c])); setTimeout(() => { process.stdout.write(Buffer.from([0x93, 0x0a])); console.error("err"); }, 50)',
-        ],
-      ],
+      [node, ['-e', split]],
       [node, ['-e', 'process.exit(3)']],
       ['no-such-ci-command', []],
     ],
     undefined,
     (line) => lines.push(line),
   );
+  const group = (header) => {
+    const start = lines.indexOf(`::group::${header}`);
+    return lines.slice(start + 1, lines.indexOf('::endgroup::', start));
+  };
   // The check mark arrives split across two writes and still decodes.
-  assert.deepEqual(lines.slice(4, 6), ['\u2713\nerr', '::endgroup::']);
+  assert.deepEqual(group(`${node} -e ${split}`), ['\u2713\nerr']);
   assert.deepEqual(
     failed.map(({ line, code }) => [line, code]),
     [
@@ -201,7 +209,7 @@ test('a real command buffers stdout and stderr and reports its exit code', async
       ['no-such-ci-command', 'ENOENT'],
     ],
   );
-  assert.match(lines.at(-2), /ENOENT/);
+  assert.match(group('no-such-ci-command').join('\n'), /ENOENT/);
 });
 
 test('failed checks end the run with a summary and no stack trace', () => {

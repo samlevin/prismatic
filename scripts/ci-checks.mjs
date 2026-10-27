@@ -36,20 +36,20 @@ export function checks({ full }) {
   return commands;
 }
 
-// Buffers each check's output so its log prints whole in one group.
+// Prints each check's buffered output in one group as soon as it finishes.
 export async function runChecks(commands, run = runCommand, log = console.log) {
   const results = await Promise.all(
     commands.map(([command, args]) => {
       const line = [command, ...args].join(' ');
       log(`Started ${line}`);
-      return run(command, args).then((result) => ({ line, ...result }));
+      return run(command, args).then((result) => {
+        log(`::group::${line}`);
+        if (result.output) log(result.output.trimEnd());
+        log('::endgroup::');
+        return { line, ...result };
+      });
     }),
   );
-  for (const { line, output } of results) {
-    log(`::group::${line}`);
-    if (output) log(output.trimEnd());
-    log('::endgroup::');
-  }
   return results.filter(({ code }) => code !== 0);
 }
 
