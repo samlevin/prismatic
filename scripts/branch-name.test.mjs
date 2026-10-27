@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { branchName, isCanonicalBranch, run, slugify } from './branch-name.mjs';
+import { CliHelp } from './cli.mjs';
 
 // Adapts a number-to-issue stub to the ghRest call shape.
 const asApi = (fetch) => (args) =>
@@ -110,8 +113,36 @@ test('run prints the name from the issue title', () => {
 
 test('run rejects non-numeric issues before calling GitHub', () => {
   const api = asApi(() => assert.fail('GitHub must not be called'));
-  for (const value of ['-w', 'abc', '0', '1x'])
+  for (const value of ['abc', '0', '1x'])
     assert.throws(() => run([value], { api }), /Issue must be a positive/);
+  assert.throws(() => run(['-w'], { api }), /Unknown option -w/);
+});
+
+test('options take = values and short aliases, and --help prints the usage', () => {
+  const api = asApi(issue('Do a Thing'));
+  for (const argv of [
+    ['5', '--actor=sam', '--layer=2'],
+    ['5', '-a', 'sam', '-l', '2'],
+    ['-l=2', '5', '-a=sam'],
+  ])
+    assert.equal(run(argv, { api }), 'sam/5-do-a-thing-part-2', argv.join(' '));
+  assert.throws(
+    () => run(['5', '--layer', '2', '-l', '3'], { api }),
+    /more than once/,
+  );
+  assert.throws(() => run(['--help'], { api }), CliHelp);
+  const script = fileURLToPath(new URL('./branch-name.mjs', import.meta.url));
+  const help = spawnSync(process.execPath, [script, '-h'], {
+    encoding: 'utf8',
+  });
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /^Usage: node scripts\/branch-name\.mjs <issue>/);
+  assert.match(help.stdout, /--layer, -l <value>/);
+  const missing = spawnSync(process.execPath, [script, '5', '--layer'], {
+    encoding: 'utf8',
+  });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /^--layer requires a value/);
 });
 
 test('options that need a value reject a missing one', () => {

@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { CliHelp, cliError, defineCli, parseCli } from './cli.mjs';
 import { failureMessage, ghGraphql, ghRest } from './github-api.mjs';
 
 export const REPOSITORY = 'samlevin/prismatic';
@@ -17,7 +18,7 @@ const VALUE = `... on ProjectV2ItemFieldSingleSelectValue { optionId field {
   ... on ProjectV2SingleSelectField { id }
 } }`;
 const LABELS = `labels(first: ${NESTED}) { nodes { id name } ${PAGE} }`;
-const ITEM = `id type project { id }
+const ITEM = `id type isArchived project { id }
   fieldValues(first: ${NESTED}) { nodes { ${VALUE} } ${PAGE} }
   content { __typename ... on Issue {
     id number state repository { nameWithOwner } ${LABELS}
@@ -62,7 +63,7 @@ export async function paginate(fetchPage, cursor = null) {
 // the pages after the first through `node(id)` only when there are more.
 export async function nestedNodes(
   api,
-  { id, type, field, selection, connection },
+  { id, type, field, selection, connection, args = '' },
 ) {
   if (!connection) throw new Error(`Missing GraphQL connection ${field}`);
   const nodes = connection.nodes.filter(Boolean);
@@ -70,7 +71,7 @@ export async function nestedNodes(
   const rest = await paginate(async (cursor) => {
     const data = await api(
       `query($id: ID!, $cursor: String) { node(id: $id) { ... on ${type} {
-        ${field}(first: 100, after: $cursor) { nodes { ${selection} } ${PAGE} }
+        ${field}(first: 100, after: $cursor${args}) { nodes { ${selection} } ${PAGE} }
       } } }`,
       { id, cursor },
     );
@@ -112,6 +113,51 @@ export const MISSING_ISSUE = {
     }),
 };
 
+// Thrown when a call about one issue finds it deleted or transferred.
+export class IssueGone extends Error {}
+
+// Wraps `api` for calls whose subject is one issue or its project item, such
+// as a mutation or a nested page. A NOT_FOUND at a field GitHub answered with
+// null means the subject is gone, so it throws IssueGone for the caller to
+// warn about and skip. A call's own allowErrors still applies first, and any
+// other error fails as before.
+export function forIssue(api, subject) {
+  return async (query, variables, options) => {
+    let gone = false;
+    const data = await api(query, variables, {
+      ...options,
+      allowErrors: (json) => {
+        if (options?.allowErrors?.(json)) return true;
+        gone = json.errors.every(
+          (error) =>
+            error?.type === 'NOT_FOUND' &&
+            Array.isArray(error.path) &&
+            error.path.reduce((value, key) => value?.[key], json.data) === null,
+        );
+        return gone;
+      },
+    });
+    if (gone)
+      throw new IssueGone(
+        `${subject} was not found; it may have been deleted or transferred. Skipping it.`,
+      );
+    return data;
+  };
+}
+
+// Runs `work` for one issue and warns instead of failing when the issue is
+// gone. Returns false when it was skipped.
+export async function skipGone(work, warn) {
+  try {
+    await work();
+    return true;
+  } catch (error) {
+    if (!(error instanceof IssueGone)) throw error;
+    warn(error.message);
+    return false;
+  }
+}
+
 export async function discover(
   api,
   required = { Status: ['Inbox', 'Ready'], Priority: PRIORITIES, Size: SIZES },
@@ -149,7 +195,8 @@ export async function discover(
 // Turns a project item read with ITEM into the shape readItem returns: the
 // discovered fields by name and the issue's label names.
 async function itemFields(api, item, context) {
-  if (!item?.id || item.project?.id !== context.projectId) return null;
+  if (!item?.id || item.isArchived || item.project?.id !== context.projectId)
+    return null;
   const values = await nestedNodes(api, {
     id: item.id,
     type: 'ProjectV2Item',
@@ -189,8 +236,13 @@ export const SWEEP_FILTERS = [
 ];
 
 // Lists the project items that match each filter, with their field values
-// and labels, 100 items a query.
-export async function listItems(api, context, filters = SWEEP_FILTERS) {
+// and labels, 100 items a query. An item with no readable issue, such as one
+// whose issue the token cannot see, is skipped with a warning.
+export async function listItems(
+  api,
+  context,
+  { filters = SWEEP_FILTERS, warn = warning } = {},
+) {
   const result = [];
   for (const filter of filters) {
     const items = await paginate(async (cursor) => {
@@ -203,9 +255,19 @@ export async function listItems(api, context, filters = SWEEP_FILTERS) {
       return data.node?.items;
     });
     for (const item of items) {
-      const read = await itemFields(api, item, context);
-      if (read && !result.some((listed) => listed.id === read.id))
-        result.push(read);
+      if (item.content?.__typename !== 'Issue') {
+        warn(`Project item ${item.id} has no readable issue; skipping it.`);
+        continue;
+      }
+      await skipGone(async () => {
+        const read = await itemFields(
+          forIssue(api, `Issue #${item.content.number}`),
+          item,
+          context,
+        );
+        if (read && !result.some((listed) => listed.id === read.id))
+          result.push(read);
+      }, warn);
     }
   }
   return result;
@@ -218,7 +280,7 @@ export async function readIssue(api, number, context) {
   const data = await api(
     `query($number: Int!) { repository(owner: "samlevin", name: "prismatic") {
       issue(number: $number) { id number state repository { nameWithOwner }
-        ${LABELS} projectItems(first: 20) { nodes { ${ITEM} } ${PAGE} }
+        ${LABELS} projectItems(first: 20, includeArchived: false) { nodes { ${ITEM} } ${PAGE} }
       }
     } }`,
     { number },
@@ -239,6 +301,7 @@ export async function readIssue(api, number, context) {
     field: 'projectItems',
     selection: ITEM,
     connection: issue.projectItems,
+    args: ', includeArchived: false',
   });
   const listed = items.find((item) => item.project?.id === context.projectId);
   return {
@@ -247,10 +310,21 @@ export async function readIssue(api, number, context) {
   };
 }
 
-async function itemsInScope(api, context, issueNumber) {
-  if (issueNumber === undefined) return listItems(api, context);
-  const found = await readIssue(api, issueNumber, context);
+async function itemsInScope(api, context, issueNumber, warn) {
+  if (issueNumber === undefined) return listItems(api, context, { warn });
+  let found;
+  await skipGone(async () => {
+    found = await readIssue(
+      forIssue(api, `Issue #${issueNumber}`),
+      issueNumber,
+      context,
+    );
+  }, warn);
   return found?.item ? [found.item] : [];
+}
+
+function leftProject(warn, number) {
+  warn(`Issue #${number} left the project during the run; skipping it.`);
 }
 
 export async function readItem(api, id, context) {
@@ -289,12 +363,13 @@ export async function reconcile({
   dryRun = true,
   issueNumber,
   log = console.log,
+  warn = warning,
   context,
   items,
 }) {
   checkIssueNumber(issueNumber);
   context ??= await discover(api);
-  items ??= await itemsInScope(api, context, issueNumber);
+  items ??= await itemsInScope(api, context, issueNumber, warn);
   let candidates = 0;
   let updated = 0;
   for (const item of items) {
@@ -303,21 +378,24 @@ export async function reconcile({
       (issueNumber !== undefined && item.content.number !== issueNumber)
     )
       continue;
-    // Re-read both issue and project metadata at the write boundary.
-    const fresh = await readItem(api, item.id, context);
-    if (
-      !fresh ||
-      !eligible(fresh) ||
-      (issueNumber !== undefined && fresh.content.number !== issueNumber)
-    )
-      continue;
-    candidates++;
-    log(
-      `${dryRun ? 'DRY_RUN would move' : 'Moving'} issue #${fresh.content.number} Inbox -> Ready`,
-    );
-    if (dryRun) continue;
-    await updateProjectStatus(api, context, fresh.id, 'Ready');
-    updated++;
+    const issueApi = forIssue(api, `Issue #${item.content.number}`);
+    await skipGone(async () => {
+      // Re-read both issue and project metadata at the write boundary.
+      const fresh = await readItem(issueApi, item.id, context);
+      if (!fresh) return leftProject(warn, item.content.number);
+      if (
+        !eligible(fresh) ||
+        (issueNumber !== undefined && fresh.content.number !== issueNumber)
+      )
+        return;
+      candidates++;
+      log(
+        `${dryRun ? 'DRY_RUN would move' : 'Moving'} issue #${fresh.content.number} Inbox -> Ready`,
+      );
+      if (dryRun) return;
+      await updateProjectStatus(issueApi, context, fresh.id, 'Ready');
+      updated++;
+    }, warn);
   }
   log(
     `Triage reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
@@ -343,12 +421,13 @@ export async function reconcileDone({
   dryRun = true,
   issueNumber,
   log = console.log,
+  warn = warning,
   context,
   items,
 }) {
   checkIssueNumber(issueNumber);
   context ??= await discover(api, { Status: ['Ready', 'Done'] });
-  items ??= await itemsInScope(api, context, issueNumber);
+  items ??= await itemsInScope(api, context, issueNumber, warn);
   let candidates = 0;
   let updated = 0;
   for (const item of items) {
@@ -360,18 +439,21 @@ export async function reconcileDone({
       (issueNumber !== undefined && item.content.number !== issueNumber)
     )
       continue;
-    // Re-read the issue state and Status at the write boundary.
-    const fresh = await readItem(api, item.id, context);
-    const target =
-      fresh && doneTarget(fresh.content?.state, fresh.fields.Status);
-    if (!target) continue;
-    candidates++;
-    log(
-      `${dryRun ? 'DRY_RUN would move' : 'Moving'} ${target === 'Done' ? 'closed' : 'reopened'} issue #${fresh.content.number} ${fresh.fields.Status ?? 'without Status'} -> ${target}`,
-    );
-    if (dryRun) continue;
-    await updateProjectStatus(api, context, fresh.id, target);
-    updated++;
+    const issueApi = forIssue(api, `Issue #${item.content.number}`);
+    await skipGone(async () => {
+      // Re-read the issue state and Status at the write boundary.
+      const fresh = await readItem(issueApi, item.id, context);
+      if (!fresh) return leftProject(warn, item.content.number);
+      const target = doneTarget(fresh.content?.state, fresh.fields.Status);
+      if (!target) return;
+      candidates++;
+      log(
+        `${dryRun ? 'DRY_RUN would move' : 'Moving'} ${target === 'Done' ? 'closed' : 'reopened'} issue #${fresh.content.number} ${fresh.fields.Status ?? 'without Status'} -> ${target}`,
+      );
+      if (dryRun) return;
+      await updateProjectStatus(issueApi, context, fresh.id, target);
+      updated++;
+    }, warn);
   }
   log(
     `Done reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
@@ -398,6 +480,7 @@ export async function reconcileEpicLabels({
   dryRun = true,
   issueNumber,
   log = console.log,
+  warn = warning,
   epics,
 }) {
   const forbidden = new Set([
@@ -427,30 +510,33 @@ export async function reconcileEpicLabels({
       : await issueLabels(api, issueNumber);
   for (const epic of epics) {
     if (issueNumber !== undefined && epic.number !== issueNumber) continue;
-    const labels = Array.isArray(epic.labels)
-      ? epic.labels
-      : await nestedNodes(api, {
-          id: epic.id,
-          type: 'Issue',
-          field: 'labels',
-          selection: 'id name',
-          connection: epic.labels,
-        });
-    if (!labels.some((label) => label.name === 'epic')) continue;
-    const remove = labels.filter(
-      (label) => forbidden.has(label.name) || label.name.startsWith('type:'),
-    );
-    if (!remove.length) continue;
-    log(
-      `${dryRun ? 'DRY_RUN would remove' : 'Removing'} ${remove.length} conflicting category labels from epic #${epic.number}`,
-    );
-    if (!dryRun)
-      await api(
-        `mutation($id: ID!, $labels: [ID!]!) {
-      removeLabelsFromLabelable(input: { labelableId: $id, labelIds: $labels }) { clientMutationId }
-    }`,
-        { id: epic.id, labels: remove.map((label) => label.id) },
+    const epicApi = forIssue(api, `Epic #${epic.number}`);
+    await skipGone(async () => {
+      const labels = Array.isArray(epic.labels)
+        ? epic.labels
+        : await nestedNodes(epicApi, {
+            id: epic.id,
+            type: 'Issue',
+            field: 'labels',
+            selection: 'id name',
+            connection: epic.labels,
+          });
+      if (!labels.some((label) => label.name === 'epic')) return;
+      const remove = labels.filter(
+        (label) => forbidden.has(label.name) || label.name.startsWith('type:'),
       );
+      if (!remove.length) return;
+      log(
+        `${dryRun ? 'DRY_RUN would remove' : 'Removing'} ${remove.length} conflicting category labels from epic #${epic.number}`,
+      );
+      if (!dryRun)
+        await epicApi(
+          `mutation($id: ID!, $labels: [ID!]!) {
+        removeLabelsFromLabelable(input: { labelableId: $id, labelIds: $labels }) { clientMutationId }
+      }`,
+          { id: epic.id, labels: remove.map((label) => label.id) },
+        );
+    }, warn);
   }
 }
 
@@ -470,19 +556,26 @@ export async function run({
     Priority: PRIORITIES,
     Size: SIZES,
   });
-  const options = { api, dryRun, issueNumber, log, context };
+  const options = { api, dryRun, issueNumber, log, warn, context };
   if (issueNumber === undefined) {
-    const items = await listItems(api, context);
+    const items = await listItems(api, context, { warn });
     await reconcileEpicLabels(options);
     await reconcile({ ...options, items });
     await reconcileDone({ ...options, items });
     return;
   }
-  const found = await readIssue(api, issueNumber, context);
-  if (!found)
-    warn(
-      `Issue #${issueNumber} was not found; it may have been deleted or transferred. Nothing to triage.`,
+  let found;
+  await skipGone(async () => {
+    found = await readIssue(
+      forIssue(api, `Issue #${issueNumber}`),
+      issueNumber,
+      context,
     );
+    if (!found)
+      warn(
+        `Issue #${issueNumber} was not found; it may have been deleted or transferred. Nothing to triage.`,
+      );
+  }, warn);
   const items = found?.item ? [found.item] : [];
   await reconcileEpicLabels({ ...options, epics: found ? [found.issue] : [] });
   await reconcile({ ...options, items });
@@ -570,39 +663,36 @@ export async function withinBudget(
   return result;
 }
 
-export function configuration(env, args) {
+// The command line of the tracker scripts that take --dry-run, --apply, and
+// --issue.
+export function configuration(env, args, script = 'issue-triage.mjs') {
+  const cli = defineCli(
+    `Usage: node scripts/${script} [--dry-run | --apply] [--issue <number>]`,
+    ['dry-run', 'apply', 'issue'],
+  );
+  const { options, positionals } = parseCli(args, cli);
+  if (positionals.length)
+    throw cliError(cli, `Unexpected argument ${positionals[0]}`);
+  if (options['dry-run'] && options.apply)
+    throw cliError(cli, 'Use --dry-run or --apply, not both');
+  if (
+    options.issue !== undefined &&
+    (!/^[1-9]\d*$/.test(options.issue) ||
+      !Number.isSafeInteger(Number(options.issue)))
+  )
+    throw cliError(cli, '--issue requires one positive safe integer');
   if (env.GITHUB_ACTIONS === 'true' && !env.PRISMATIC_PROJECT_TOKEN)
     throw new Error(
       'PRISMATIC_PROJECT_TOKEN is required for Projects access; GITHUB_TOKEN cannot access Projects.',
     );
-  let mode;
-  let issueNumber;
-  for (let index = 0; index < args.length; index++) {
-    const arg = args[index];
-    if (arg === '--dry-run' || arg === '--apply') {
-      if (mode) throw new Error('Use --dry-run or --apply once');
-      mode = arg;
-    } else if (arg === '--issue') {
-      const number = args[++index];
-      if (
-        issueNumber !== undefined ||
-        !/^[1-9]\d*$/.test(number ?? '') ||
-        !Number.isSafeInteger(Number(number))
-      )
-        throw new Error('--issue requires one positive safe integer');
-      issueNumber = Number(number);
-    } else {
-      throw new Error(
-        'Use --dry-run or --apply with optional --issue <positive number>',
-      );
-    }
-  }
   const setting = env.DRY_RUN ?? 'true';
   if (!['true', 'false'].includes(setting))
     throw new Error('DRY_RUN must be true or false');
   return {
-    dryRun: mode === '--dry-run' || (mode !== '--apply' && setting === 'true'),
-    ...(issueNumber === undefined ? {} : { issueNumber }),
+    dryRun: options['dry-run'] || (!options.apply && setting === 'true'),
+    ...(options.issue === undefined
+      ? {}
+      : { issueNumber: Number(options.issue) }),
   };
 }
 
@@ -617,7 +707,10 @@ if (
     const options = { api: ghGraphql, ...config };
     await withinBudget(() => run(options), { ...options, name: 'Triage' });
   } catch (error) {
-    console.error(failureMessage(error));
-    process.exitCode = 1;
+    if (error instanceof CliHelp) console.log(error.message);
+    else {
+      console.error(failureMessage(error));
+      process.exitCode = 1;
+    }
   }
 }

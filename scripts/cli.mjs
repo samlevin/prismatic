@@ -13,6 +13,13 @@ const definitions = {
     description: "Delivery identity that wrote this delivery's claims",
   },
   issue: { type: 'string', alias: 'i', description: 'Positive issue number' },
+  layer: {
+    type: 'string',
+    alias: 'l',
+    description: 'Stack layer, 2 and up for layers after the first',
+  },
+  'dry-run': { type: 'boolean', description: 'Preview changes without writes' },
+  apply: { type: 'boolean', description: 'Write the changes' },
   next: { type: 'boolean', description: 'Print the next delivery leaf' },
   resume: { type: 'string', description: 'Explicitly resume this issue' },
   tool: {
