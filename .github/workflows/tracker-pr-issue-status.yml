@@ -15,7 +15,9 @@ concurrency:
 jobs:
   mark-issues-in-review:
     name: Move closing issues to In review
-    if: github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft
+    # A title or base edit cannot change the closing issues, so only a body
+    # edit starts a run.
+    if: github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft && (github.event.action != 'edited' || github.event.changes.body)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

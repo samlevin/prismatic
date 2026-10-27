@@ -213,22 +213,6 @@ async function setStatus(api, context, item, status) {
   );
 }
 
-async function projectStatus(api, id, status, context) {
-  const items = await paginate(async (cursor) => {
-    const data = await api(
-      `query($id: ID!, $cursor: String) { node(id: $id) { ... on Issue {
-      projectItems(first: 100, after: $cursor) { nodes { id project { id } } ${PAGE} }
-    } } }`,
-      { id, cursor },
-    );
-    return data.node?.projectItems;
-  });
-  const item = items.find((item) => item.project.id === context.projectId);
-  if (item) await setStatus(api, context, item.id, status);
-}
-
-// Sets the Status of a marked container whose project update may have failed
-// after its state change. An item that already has the Status is left alone.
 // The Status a marked container should have for its state.
 function markedStatus(issue) {
   return issue.state === 'CLOSED' ? 'Done' : 'Ready';
@@ -244,8 +228,9 @@ function needsRepair(issue, context) {
   return Boolean(item) && item.fieldValueByName?.name !== markedStatus(issue);
 }
 
+// Sets the Status of an issue read with FULL. An item that already has the
+// Status is left alone.
 async function repairStatus(api, issue, status, context) {
-  if (!issue.projectItems) return projectStatus(api, issue.id, status, context);
   const item = issue.projectItems.find(
     (item) => item.project?.id === context.projectId,
   );
@@ -273,7 +258,14 @@ export async function reconcileContainers({
   }
   const { label, issues } = loaded;
   const ordered = childrenFirst(issues);
-  const context = await discover(api, { Status: ['Ready', 'Done'] });
+  // Discovered on the first write, so a run with nothing to change skips it.
+  let context;
+  const project = async () =>
+    (context ??= await discover(api, { Status: ['Ready', 'Done'] }));
+  const gone = (number) =>
+    warn(
+      `Container #${number} was not found; it may have been deleted or transferred. Skipping it.`,
+    );
   const removeMarker = (id) =>
     api(
       `mutation($id: ID!, $label: ID!) {
@@ -289,8 +281,11 @@ export async function reconcileContainers({
     const current = listed.children.some((child) => changed.has(child.id))
       ? await snapshot(api, id)
       : listed;
+    if (!current) {
+      gone(listed.number);
+      continue;
+    }
     if (
-      !current ||
       current.repository.nameWithOwner !== REPOSITORY ||
       !current.subIssuesSummary.total
     )
@@ -314,6 +309,10 @@ export async function reconcileContainers({
           { id, label },
         );
       const fresh = await snapshot(api, id);
+      if (!fresh) {
+        gone(current.number);
+        continue;
+      }
       const stillComplete =
         fresh?.subIssuesSummary.total > 0 &&
         fresh.subIssuesSummary.total === fresh.subIssuesSummary.completed;
@@ -329,20 +328,25 @@ export async function reconcileContainers({
           : `mutation($id: ID!) { reopenIssue(input: { issueId: $id }) { issue { id } } }`,
         { id },
       );
-      await projectStatus(api, id, close ? 'Done' : 'Ready', context);
+      await repairStatus(api, fresh, close ? 'Done' : 'Ready', await project());
       changed.add(id);
       updated++;
-      // A reopened container is open and still marked.
-      if (reopen) await removeMarker(id);
+      if (reopen) {
+        // Another run may have closed it again since the reopen; that run
+        // still owns the marker.
+        const reopened = await snapshot(api, id);
+        if (reopened?.state === 'OPEN' && reopened.marked)
+          await removeMarker(id);
+      }
       continue;
     }
-    if (!marked || dryRun || !needsRepair(current, context)) continue;
+    if (!marked || dryRun || !needsRepair(current, await project())) continue;
     // Repair status if a prior state mutation succeeded but its project
     // update failed. Another run may have changed the container since it was
     // listed, so act on a fresh read.
     const fresh = await snapshot(api, id);
     if (!fresh?.marked) continue;
-    await repairStatus(api, fresh, markedStatus(fresh), context);
+    await repairStatus(api, fresh, markedStatus(fresh), await project());
     if (fresh.state === 'OPEN') await removeMarker(id);
   }
   log(`Container reconciliation: ${updated} state changes; DRY_RUN=${dryRun}`);

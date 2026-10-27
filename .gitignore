@@ -1,7 +1,36 @@
-.claude/scheduled_tasks.lock
-.claude/worktrees/
-CLAUDE.local.md
+# Dependencies
 node_modules/
-.codex/worktrees/
-coverage/
+
+# Build outputs
 dist/
+coverage/
+*.tsbuildinfo
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+.envrc
+.envrc.*
+!.envrc.example
+.direnv/
+*.local.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# Agent-owned linked worktrees
+.claude/worktrees/
+.codex/worktrees/
+
+# Local agent files: personal instructions, scheduler locks, and Playwright MCP output
+CLAUDE.local.md
+.claude/scheduled_tasks.lock
+.playwright-mcp/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

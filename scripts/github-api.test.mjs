@@ -198,7 +198,7 @@ test('REST rate limits are reported as rate limits, with the reset when GitHub s
             'You have exceeded a secondary rate limit. Please wait a few minutes.',
         },
       ),
-      'GitHub API request failed: HTTP 403: You have exceeded a secondary rate limit. Please wait a few minutes. GitHub rate limit reached; wait for it to reset before retrying.',
+      'GitHub API request failed: HTTP 403: You have exceeded a secondary rate limit. Please wait a few minutes. GitHub secondary rate limit reached; wait for it to reset before retrying.',
     ],
   ];
   for (const [output, message] of cases) {
@@ -402,6 +402,38 @@ test('messages never include the token, request headers, or gh stderr', () => {
   );
 });
 
+test('anything shaped like a GitHub token is redacted, even outside the environment', () => {
+  const classic = `ghp_${'a'.repeat(36)}`;
+  const fineGrained = `github_pat_${'b'.repeat(40)}`;
+  const error = responseError(
+    parseResponse(
+      include(
+        401,
+        {},
+        { message: `Bad credentials ${classic} ${fineGrained}` },
+      ),
+    ),
+    { env: {} },
+  );
+  assert.equal(
+    error.message,
+    'GitHub API request failed: HTTP 401: Bad credentials *** ***. Check the token and Projects access.',
+  );
+});
+
+test('a response with many GraphQL errors lists the first five and counts the rest', () => {
+  const errors = Array.from({ length: 7 }, (_, index) => ({
+    type: 'NOT_FOUND',
+    message: `Missing ${index}`,
+  }));
+  const error = responseError(
+    parseResponse(include(200, {}, { data: null, errors })),
+    { graphql: true, env: {} },
+  );
+  assert.match(error.message, /NOT_FOUND: Missing 4; 2 more errors\./);
+  assert.doesNotMatch(error.message, /Missing 5/);
+});
+
 test('every script that calls GitHub prints the shared message and exits non-zero', (t) => {
   if (process.platform === 'win32')
     return t.skip('the fake gh is a shell script');
@@ -418,7 +450,7 @@ test('every script that calls GitHub prints the shared message and exits non-zer
   const scripts = [
     ['issue-triage.mjs', []],
     ['issue-containers.mjs', []],
-    ['issue-project-membership.mjs', [], { ISSUE_NUMBER: '12' }],
+    ['issue-project-membership.mjs', ['--sweep']],
     ['issue-pr-metadata.mjs', [], { PR_NUMBER: '10' }],
     ['issue-pr-status.mjs', [], { PR_NUMBER: '10' }],
     ['branch-name.mjs', ['33']],

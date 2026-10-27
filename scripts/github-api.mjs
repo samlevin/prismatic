@@ -11,9 +11,18 @@ const AUTH_TYPES = new Set([
   'FORBIDDEN',
   'INSUFFICIENT_SCOPES',
   'UNAUTHORIZED',
+  'UNAUTHENTICATED',
+]);
+const RATE_LIMIT_TYPES = new Set([
+  'RATE_LIMIT',
+  'RATE_LIMITED',
+  'GRAPHQL_RATE_LIMIT',
 ]);
 const RATE_LIMIT = /rate.?limit/i;
+const SECONDARY_LIMIT = /secondary rate limit|abuse detection/i;
 const MAX_DETAIL = 300;
+const MAX_ERRORS = 5;
+const TOKEN_PATTERN = /\b(?:gh[opsru]_[A-Za-z0-9]{20,}|github_pat_\w{20,})/g;
 // gh exits with status 4 when it has no credentials at all.
 const GH_AUTH_REQUIRED = 4;
 
@@ -27,15 +36,15 @@ export class GitHubApiError extends Error {
   }
 }
 
-// Removes token values that appear in the environment, in case GitHub ever
-// echoes one back.
+// Removes token values that appear in the environment, and anything shaped
+// like a GitHub token, in case GitHub ever echoes one back.
 export function redact(text, env = process.env) {
   let result = String(text);
   for (const name of ['GH_TOKEN', 'GITHUB_TOKEN', 'PRISMATIC_PROJECT_TOKEN']) {
     const token = env[name];
-    if (token && token.length >= 4) result = result.split(token).join('***');
+    if (token && token.length >= 8) result = result.split(token).join('***');
   }
-  return result;
+  return result.replace(TOKEN_PATTERN, '***');
 }
 
 function clean(text) {
@@ -79,8 +88,7 @@ export function parseResponse(output) {
 function graphqlKind(error) {
   const type = String(error?.type ?? error?.extensions?.code ?? '');
   if (
-    type === 'RATE_LIMIT' ||
-    type === 'RATE_LIMITED' ||
+    RATE_LIMIT_TYPES.has(type) ||
     RATE_LIMIT.test(String(error?.code ?? '')) ||
     RATE_LIMIT.test(String(error?.message ?? ''))
   )
@@ -106,30 +114,33 @@ function httpKind(status, headers, message) {
   return 'other';
 }
 
-function rateLimitHint(headers, now) {
+function rateLimitHint(headers, now, secondary) {
+  const limit = secondary ? 'GitHub secondary rate limit' : 'GitHub rate limit';
   const retryAfter = Number(headers['retry-after']);
   if (headers['retry-after'] !== undefined && Number.isFinite(retryAfter)) {
     const resetAt = new Date(now + retryAfter * 1000);
     return {
       resetAt,
-      hint: `GitHub rate limit reached; retry after ${retryAfter} seconds (${iso(resetAt)}).`,
+      hint: `${limit} reached; retry after ${retryAfter} seconds (${iso(resetAt)}).`,
     };
   }
   const reset = Number(headers['x-ratelimit-reset']);
   const remaining = headers['x-ratelimit-remaining'];
+  // The reset header times the primary limit, so a secondary limit uses it
+  // only when the primary limit is spent too.
   if (
     headers['x-ratelimit-reset'] !== undefined &&
     Number.isFinite(reset) &&
-    (remaining === undefined || remaining === '0')
+    (remaining === '0' || (remaining === undefined && !secondary))
   ) {
     const resetAt = new Date(reset * 1000);
     return {
       resetAt,
-      hint: `GitHub rate limit reached; it resets at ${iso(resetAt)}.`,
+      hint: `${limit} reached; it resets at ${iso(resetAt)}.`,
     };
   }
   return {
-    hint: 'GitHub rate limit reached; wait for it to reset before retrying.',
+    hint: `${limit} reached; wait for it to reset before retrying.`,
   };
 }
 
@@ -155,7 +166,7 @@ export function responseError(
   const kinds = errors.map(graphqlKind);
   let details;
   if (errors.length) {
-    details = [
+    const listed = [
       ...new Set(
         errors.map((error) => {
           const label = error?.type ?? error?.code ?? error?.extensions?.code;
@@ -163,7 +174,10 @@ export function responseError(
           return label ? `${clean(label)}: ${message}` : message;
         }),
       ),
-    ].join('; ');
+    ];
+    details = listed.slice(0, MAX_ERRORS).join('; ');
+    if (listed.length > MAX_ERRORS)
+      details += `; ${listed.length - MAX_ERRORS} more errors`;
   }
   if (status !== undefined && status >= 400) {
     kinds.push(httpKind(status, headers, json?.message));
@@ -188,7 +202,12 @@ export function responseError(
   const kind = KINDS.find((candidate) => kinds.includes(candidate)) ?? 'other';
   let hint = HINTS[kind];
   let resetAt;
-  if (kind === 'rate_limit') ({ hint, resetAt } = rateLimitHint(headers, now));
+  if (kind === 'rate_limit') {
+    const secondary = [json?.message, ...errors.map((error) => error?.message)]
+      .filter((text) => typeof text === 'string')
+      .some((text) => SECONDARY_LIMIT.test(text));
+    ({ hint, resetAt } = rateLimitHint(headers, now, secondary));
+  }
   const message = `${prefix}: ${details.replace(/\.$/, '')}.${hint ? ` ${hint}` : ''}`;
   return new GitHubApiError(redact(message, env), {
     kind,

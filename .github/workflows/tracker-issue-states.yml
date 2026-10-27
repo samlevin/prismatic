@@ -2,14 +2,20 @@ name: 'Tracker: reconcile issue states'
 run-name: "Reconcile issue states (${{ github.event_name == 'issues' && format('issue #{0} {1}', github.event.issue.number, github.event.action) || github.event_name }})"
 
 on:
+  # Title and body edits change neither triage nor containers, so `edited`
+  # starts no run. tracker-project-membership.yml triages a new issue once its
+  # project item exists, so `opened` starts no run either.
   issues:
-    types: [opened, reopened, closed, labeled, unlabeled]
+    types: [reopened, closed, labeled, unlabeled]
+  # The hourly sweep adds open issues still missing from the project, then
+  # catches project field and hierarchy changes, which have no Actions
+  # trigger, and any issue event whose run was skipped.
   schedule:
     - cron: '7 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Preview metadata and container completion without writes
+        description: Preview project membership, metadata, and container completion without writes
         type: boolean
         default: true
 
@@ -25,9 +31,24 @@ concurrency:
 jobs:
   reconcile-issues:
     name: Reconcile issue project states
-    if: github.repository == 'samlevin/prismatic' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # A label event runs only when the label can change triage or container
+    # state: a severity label, `epic`, the container-closed marker, or any label
+    # on an epic, whose conflicting labels triage removes.
+    if: >-
+      github.repository == 'samlevin/prismatic' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      (github.event_name != 'issues' ||
+      github.event.action == 'reopened' ||
+      github.event.action == 'closed' ||
+      startsWith(github.event.label.name, 'severity:') ||
+      github.event.label.name == 'epic' ||
+      github.event.label.name == 'automation: container-closed' ||
+      contains(github.event.issue.labels.*.name, 'epic'))
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
     steps:
       - name: Check out default-branch scripts
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -36,17 +57,29 @@ jobs:
           persist-credentials: false
           sparse-checkout: scripts
       - name: Set up Node.js
+        id: node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24.22.0'
-      - name: Triage issues and close finished containers
+      # An issue event reconciles only that issue and its hierarchy; a
+      # scheduled or manual run sweeps the project. Each step runs even when
+      # an earlier one failed, and any failure fails the job at the end.
+      - name: Add missing open issues to Prismatic delivery
+        if: ${{ github.event_name != 'issues' && !cancelled() && steps.node.outcome == 'success' }}
         env:
           PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        # An issue event reconciles only that issue; the schedule and manual
-        # runs sweep the whole project.
+        run: node scripts/issue-project-membership.mjs --sweep
+      - name: Triage issues
+        if: ${{ !cancelled() && steps.node.outcome == 'success' }}
+        env:
+          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = issues ]; then set -- --issue "$ISSUE_NUMBER"; fi
+          if [ -n "$ISSUE_NUMBER" ]; then set -- --issue "$ISSUE_NUMBER"; fi
           node scripts/issue-triage.mjs "$@"
+      - name: Close finished containers
+        if: ${{ !cancelled() && steps.node.outcome == 'success' }}
+        env:
+          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
+        run: |
+          if [ -n "$ISSUE_NUMBER" ]; then set -- --issue "$ISSUE_NUMBER"; fi
           node scripts/issue-containers.mjs "$@"

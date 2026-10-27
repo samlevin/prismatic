@@ -142,6 +142,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
       permissions: definition.permissions,
       concurrency: definition.concurrency,
       if: job.if,
+      ...(job.env && { env: job.env }),
       steps: job.steps.map(
         ({ if: condition, uses, with: inputs, env, run }) => ({
           ...(condition && { if: condition }),
@@ -172,17 +173,24 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   const token = '${{ secrets.PRISMATIC_PROJECT_TOKEN }}';
   const dispatchDryRun =
     "${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}";
+  const scoped = (script) =>
+    [
+      'if [ -n "$ISSUE_NUMBER" ]; then set -- --issue "$ISSUE_NUMBER"; fi',
+      `node scripts/${script} "$@"`,
+      '',
+    ].join('\n');
+  const afterNode = "${{ !cancelled() && steps.node.outcome == 'success' }}";
   assert.deepEqual(contract('tracker-issue-states.yml'), {
     on: {
       issues: {
-        types: ['opened', 'reopened', 'closed', 'labeled', 'unlabeled'],
+        types: ['reopened', 'closed', 'labeled', 'unlabeled'],
       },
       schedule: [{ cron: '7 * * * *' }],
       workflow_dispatch: {
         inputs: {
           dry_run: {
             description:
-              'Preview metadata and container completion without writes',
+              'Preview project membership, metadata, and container completion without writes',
             type: 'boolean',
             default: true,
           },
@@ -195,30 +203,52 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
         "prismatic-issue-triage-${{ github.event.issue.number || 'sweep' }}",
       'cancel-in-progress': false,
     },
-    if: "github.repository == 'samlevin/prismatic' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)",
+    if: [
+      "github.repository == 'samlevin/prismatic' &&",
+      "github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&",
+      "(github.event_name != 'issues' ||",
+      "github.event.action == 'reopened' ||",
+      "github.event.action == 'closed' ||",
+      "startsWith(github.event.label.name, 'severity:') ||",
+      "github.event.label.name == 'epic' ||",
+      "github.event.label.name == 'automation: container-closed' ||",
+      "contains(github.event.issue.labels.*.name, 'epic'))",
+    ].join(' '),
+    env: {
+      DRY_RUN: dispatchDryRun,
+      ISSUE_NUMBER: '${{ github.event.issue.number }}',
+    },
     steps: [
       checkout,
       node,
       {
+        if: "${{ github.event_name != 'issues' && !cancelled() && steps.node.outcome == 'success' }}",
         uses: undefined,
         with: undefined,
-        env: {
-          PRISMATIC_PROJECT_TOKEN: token,
-          DRY_RUN: dispatchDryRun,
-          ISSUE_NUMBER: '${{ github.event.issue.number }}',
-        },
-        run: [
-          'if [ "$GITHUB_EVENT_NAME" = issues ]; then set -- --issue "$ISSUE_NUMBER"; fi',
-          'node scripts/issue-triage.mjs "$@"',
-          'node scripts/issue-containers.mjs "$@"',
-          '',
-        ].join('\n'),
+        env: { PRISMATIC_PROJECT_TOKEN: token },
+        run: 'node scripts/issue-project-membership.mjs --sweep',
+      },
+      {
+        if: afterNode,
+        uses: undefined,
+        with: undefined,
+        env: { PRISMATIC_PROJECT_TOKEN: token },
+        run: scoped('issue-triage.mjs'),
+      },
+      {
+        if: afterNode,
+        uses: undefined,
+        with: undefined,
+        env: { PRISMATIC_PROJECT_TOKEN: token },
+        run: scoped('issue-containers.mjs'),
       },
     ],
   });
   const prEvents = {
     types: ['opened', 'edited', 'reopened', 'ready_for_review'],
   };
+  const bodyEdits =
+    "(github.event.action != 'edited' || github.event.changes.body)";
   assert.deepEqual(contract('tracker-pr-issue-status.yml'), {
     on: { pull_request_target: prEvents },
     permissions: { contents: 'read' },
@@ -226,7 +256,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
       group: 'pr-issue-status-${{ github.event.pull_request.number }}',
       'cancel-in-progress': false,
     },
-    if: "github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft",
+    if: `github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft && ${bodyEdits}`,
     steps: [
       checkout,
       node,
@@ -270,7 +300,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
         'pr-issue-metadata-${{ github.event.pull_request.number || inputs.pull_request }}',
       'cancel-in-progress': false,
     },
-    if: "github.repository == 'samlevin/prismatic' && (github.event_name == 'pull_request_target' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))",
+    if: `github.repository == 'samlevin/prismatic' && (github.event_name == 'pull_request_target' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && ${bodyEdits}`,
     steps: [
       checkout,
       node,
@@ -290,7 +320,6 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   assert.deepEqual(contract('tracker-project-membership.yml'), {
     on: {
       issues: { types: ['opened'] },
-      schedule: [{ cron: '37 * * * *' }],
       workflow_dispatch: {
         inputs: {
           dry_run: {
@@ -322,6 +351,13 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
         run: 'node scripts/issue-project-membership.mjs',
       },
       {
+        if: "github.event_name == 'issues'",
+        uses: undefined,
+        with: undefined,
+        env: { PRISMATIC_PROJECT_TOKEN: token, ISSUE_NUMBER: eventNumber },
+        run: 'node scripts/issue-triage.mjs --apply --issue "$ISSUE_NUMBER"',
+      },
+      {
         if: "github.event_name != 'issues'",
         uses: undefined,
         with: undefined,
@@ -332,7 +368,7 @@ test('tracker workflows keep their triggers, permissions, secrets, concurrency, 
   });
 });
 
-test('project membership adds one issue when it opens and sweeps on a schedule or dispatch', () => {
+test('project membership adds and triages one issue when it opens and sweeps on dispatch', () => {
   const definition = definitions.get('tracker-project-membership.yml');
   const job = definition.jobs['add-to-project'];
   const format = (template, ...values) =>
@@ -362,7 +398,9 @@ test('project membership adds one issue when it opens and sweeps on a schedule o
         .filter((step) => step.if && evaluate(step.if, values))
         .map((step) => ({
           run: step.run,
-          dryRun: interpolate(step.env.DRY_RUN, values),
+          ...(step.env.DRY_RUN && {
+            dryRun: interpolate(step.env.DRY_RUN, values),
+          }),
         })),
     };
   };
@@ -372,15 +410,10 @@ test('project membership adds one issue when it opens and sweeps on a schedule o
     runs: true,
     steps: [
       { run: 'node scripts/issue-project-membership.mjs', dryRun: 'false' },
+      { run: 'node scripts/issue-triage.mjs --apply --issue "$ISSUE_NUMBER"' },
     ],
   });
   const sweep = 'node scripts/issue-project-membership.mjs --sweep';
-  assert.deepEqual(start('schedule'), {
-    name: 'Add missing issues to the project (schedule)',
-    group: 'project-membership-sweep',
-    runs: true,
-    steps: [{ run: sweep, dryRun: 'false' }],
-  });
   for (const [dryRunInput, dryRun] of [
     [true, 'true'],
     [false, 'false'],

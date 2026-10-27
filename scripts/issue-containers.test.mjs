@@ -256,8 +256,9 @@ test('a sweep costs one query per 100 issues and a few more', async () => {
   await reconcileContainers({ api: f.api, dryRun: false, log() {} });
   assert.equal(f.issues.size, 288);
   assert.equal(f.count(LISTING), 3);
-  // The marker listing, three issue pages, and field discovery.
-  assert.equal(f.calls.length, 5);
+  // The marker listing and three issue pages; with nothing to change, no
+  // field discovery.
+  assert.equal(f.calls.length, 4);
   assert.deepEqual(f.writes, []);
 });
 
@@ -288,6 +289,42 @@ test('a marked container that gains an open sub-issue reopens; one a person clos
   );
   assert.deepEqual(f.writes, ['reopen 5', 'status 5 Ready', 'unmark 5']);
   assert.equal(f.issues.get(7).state, 'CLOSED');
+});
+
+test('a reopened container keeps its marker when another run closed it again', async () => {
+  let snapshots = 0;
+  const f = repository(
+    [
+      { number: 5, state: 'CLOSED', labels: [MARKER], status: 'Done' },
+      { number: 6, parent: 5 },
+    ],
+    {
+      // The second read follows the reopen; another run has closed #5 since.
+      onSnapshot: (issues) => {
+        if (++snapshots === 2) issues.get(5).state = 'CLOSED';
+      },
+    },
+  );
+  await reconcileContainers({ api: f.api, dryRun: false, log() {} });
+  assert.deepEqual(f.writes, ['reopen 5', 'status 5 Ready']);
+  assert.deepEqual(f.issues.get(5).labels, [MARKER]);
+});
+
+test('a container deleted during a sweep is skipped with a warning', async () => {
+  const f = repository(nested(), {
+    onSnapshot: (issues) => issues.delete(2),
+  });
+  const warnings = [];
+  await reconcileContainers({
+    api: f.api,
+    dryRun: false,
+    log() {},
+    warn: (line) => warnings.push(line),
+  });
+  assert.deepEqual(warnings, [
+    'Container #2 was not found; it may have been deleted or transferred. Skipping it.',
+  ]);
+  assert.deepEqual(f.writes, ['mark 2']);
 });
 
 test('marked containers get their Status repaired only when it is wrong', async () => {
@@ -403,8 +440,9 @@ test('an issue run costs the same few queries whatever the repository size', asy
       ...Array.from({ length: size }, (_, index) => ({ number: index + 100 })),
     ]);
     await reconcileContainers({ api: f.api, issueNumber: 3, log() {} });
-    // The issue, its two parents, and field discovery.
-    assert.equal(f.calls.length, 4, `repository of ${size + 6}`);
+    // The issue and its two parents; with nothing to change, no field
+    // discovery.
+    assert.equal(f.calls.length, 3, `repository of ${size + 6}`);
   }
 });
 

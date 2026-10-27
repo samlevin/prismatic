@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { failureMessage, ghGraphql } from './github-api.mjs';
+import { failureMessage, ghGraphql, ghRest } from './github-api.mjs';
 
 export const REPOSITORY = 'samlevin/prismatic';
 export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'none'].map(
@@ -8,9 +9,6 @@ export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'none'].map(
 const PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
 const SIZES = ['XS', 'S', 'M', 'L'];
 const PAGE = 'pageInfo { hasNextPage endCursor }';
-const CONTENT = `id type project { id } content {
-  __typename ... on Issue { id number state repository { nameWithOwner } }
-}`;
 // Nested connections come inside their page query, so a sweep costs a few
 // GraphQL points whatever the project size. A nested connection gets its own
 // query only when it has another page.
@@ -89,17 +87,29 @@ export function checkIssueNumber(issueNumber) {
     throw new Error('--issue requires a positive safe integer');
 }
 
-// Lets a query for one issue by number succeed when GitHub answers NOT_FOUND
-// for it, as it does for a deleted or transferred issue, so the issue reads
-// as null. Any other error still throws.
+// GitHub answers a read of an issue that was deleted or transferred out of
+// the repository with a null `issue`, `issueOrPullRequest`, `node`, or
+// `content` field and a NOT_FOUND error at that field's path. This lets such
+// a read return the null; any other error, including a missing repository or
+// project, still throws.
+const ISSUE_FIELDS = new Set([
+  'issue',
+  'issueOrPullRequest',
+  'node',
+  'content',
+]);
 export const MISSING_ISSUE = {
   allowErrors: (json) =>
-    json.errors.every(
-      (error) =>
-        error?.type === 'NOT_FOUND' &&
-        Array.isArray(error.path) &&
-        error.path.join('.') === 'repository.issue',
-    ),
+    json.errors.every((error) => {
+      const path = error?.path;
+      if (
+        error?.type !== 'NOT_FOUND' ||
+        !Array.isArray(path) ||
+        !ISSUE_FIELDS.has(path.at(-1))
+      )
+        return false;
+      return path.reduce((value, key) => value?.[key], json.data) === null;
+    }),
 };
 
 export async function discover(
@@ -170,22 +180,33 @@ async function itemFields(api, item, context) {
   return read;
 }
 
-// Lists every project item with its field values and labels, 100 items a
-// query.
-export async function listItems(api, context) {
-  const items = await paginate(async (cursor) => {
-    const data = await api(
-      `query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2 {
-        items(first: 100, after: $cursor) { nodes { ${ITEM} } ${PAGE} }
-      } } }`,
-      { id: context.projectId, cursor },
-    );
-    return data.node?.items;
-  });
+// GitHub filters a sweep's listing to the items a pass can act on: closed
+// issues outside Done, and open issues in Inbox or Done. Each pass still
+// checks every condition itself.
+export const SWEEP_FILTERS = [
+  'is:issue is:closed -status:Done',
+  'is:issue is:open status:Inbox,Done',
+];
+
+// Lists the project items that match each filter, with their field values
+// and labels, 100 items a query.
+export async function listItems(api, context, filters = SWEEP_FILTERS) {
   const result = [];
-  for (const item of items) {
-    const read = await itemFields(api, item, context);
-    if (read) result.push(read);
+  for (const filter of filters) {
+    const items = await paginate(async (cursor) => {
+      const data = await api(
+        `query($id: ID!, $cursor: String, $filter: String!) { node(id: $id) { ... on ProjectV2 {
+          items(first: 100, after: $cursor, query: $filter) { nodes { ${ITEM} } ${PAGE} }
+        } } }`,
+        { id: context.projectId, cursor, filter },
+      );
+      return data.node?.items;
+    });
+    for (const item of items) {
+      const read = await itemFields(api, item, context);
+      if (read && !result.some((listed) => listed.id === read.id))
+        result.push(read);
+    }
   }
   return result;
 }
@@ -233,45 +254,12 @@ async function itemsInScope(api, context, issueNumber) {
 }
 
 export async function readItem(api, id, context) {
-  let item;
-  const values = await paginate(async (cursor) => {
-    const data = await api(
-      `query($id: ID!, $cursor: String) { node(id: $id) { ... on ProjectV2Item {
-        ${CONTENT} fieldValues(first: 100, after: $cursor) { nodes {
-          ${VALUE}
-        } ${PAGE} }
-      } } }`,
-      { id, cursor },
-    );
-    item = data.node;
-    return item?.fieldValues ?? { nodes: [], pageInfo: { hasNextPage: false } };
-  });
-  if (!item?.id || item.project?.id !== context.projectId) return null;
-  item.fields = {};
-  for (const [name, field] of Object.entries(context.fields)) {
-    const value = values.find((value) => value.field?.id === field.id);
-    item.fields[name] = field.options.find(
-      (option) => option.id === value?.optionId,
-    )?.name;
-  }
-  item.labels = [];
-  if (item.type !== 'ISSUE' || item.content?.__typename !== 'Issue')
-    return item;
-  let issue;
-  item.labels = await paginate(async (cursor) => {
-    const data = await api(
-      `query($id: ID!, $cursor: String) { node(id: $id) { ... on Issue {
-        id number state __typename repository { nameWithOwner }
-        labels(first: 100, after: $cursor) { nodes { name } ${PAGE} }
-      } } }`,
-      { id: item.content.id, cursor },
-    );
-    issue = data.node;
-    return issue?.labels ?? { nodes: [], pageInfo: { hasNextPage: false } };
-  });
-  item.labels = item.labels.map((label) => label.name);
-  item.content = issue;
-  return item;
+  const data = await api(
+    `query($id: ID!) { node(id: $id) { ... on ProjectV2Item { ${ITEM} } } }`,
+    { id },
+    MISSING_ISSUE,
+  );
+  return itemFields(api, data.node, context);
 }
 
 export async function updateProjectStatus(api, context, itemId, status) {
@@ -501,58 +489,85 @@ export async function run({
   await reconcileDone({ ...options, items });
 }
 
-export async function rateLimit(api) {
-  const data = await api(
-    'query { rateLimit { limit remaining used resetAt } }',
-    {},
-  );
-  if (!data?.rateLimit)
-    throw new Error('GitHub returned no GraphQL rate limit');
-  return data.rateLimit;
-}
-
 // A GitHub Actions warning annotation, which shows on the run summary.
 export function warning(message) {
   console.log(`::warning::${message}`);
 }
 
-// Runs `work` within the GraphQL budget. A sweep (no issue number) reads the
-// rate limit first, skips with a warning when fewer than MIN_REMAINING points
-// remain, and logs the points before and after; any error fails it. A run for
-// one issue skips the rate-limit reads, and when it hits the rate limit it
-// warns and returns, because the next sweep applies the same change. Its other
-// errors still throw.
+// The REST rate_limit endpoint reports the GraphQL budget without spending
+// any of it.
+export function graphqlBudget(run = execFileSync) {
+  let graphql;
+  try {
+    graphql = JSON.parse(ghRest(['rate_limit'], { run }))?.resources?.graphql;
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+  }
+  for (const key of ['limit', 'remaining', 'used', 'reset'])
+    if (!Number.isSafeInteger(graphql?.[key]))
+      throw new Error('GitHub returned no GraphQL rate limit');
+  const { limit, remaining, used, reset } = graphql;
+  return {
+    limit,
+    remaining,
+    used,
+    resetAt: new Date(reset * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+  };
+}
+
+// Runs `work` between two readings of the GraphQL budget and logs the points
+// it used. A sweep (no issue number) skips with a warning when fewer than
+// MIN_REMAINING points remain, and fails on any error. A run for one issue
+// warns and returns when it hits the rate limit, because the next sweep
+// applies the same change; its other errors still throw. A budget that cannot
+// be read is a warning, never a failure.
 export async function withinBudget(
   work,
-  { api, issueNumber, name, log = console.log, warn = warning },
+  {
+    budget = graphqlBudget,
+    issueNumber,
+    name,
+    log = console.log,
+    warn = warning,
+  },
 ) {
-  if (issueNumber !== undefined) {
+  const read = () => {
     try {
-      await work();
-      return 'done';
+      return budget();
     } catch (error) {
-      if (error?.kind !== 'rate_limit') throw error;
       warn(
-        `${name} skipped issue #${issueNumber}: ${failureMessage(error)} The next scheduled sweep reconciles it.`,
+        `${name} could not read the GraphQL budget: ${failureMessage(error)}`,
       );
-      return 'rate-limited';
+      return null;
     }
-  }
-  const before = await rateLimit(api);
-  if (before.remaining < MIN_REMAINING) {
+  };
+  const sweep = issueNumber === undefined;
+  const subject = sweep ? `${name} sweep` : `${name} issue #${issueNumber}`;
+  const before = read();
+  if (sweep && before && before.remaining < MIN_REMAINING) {
     warn(
       `${name} sweep skipped: ${before.remaining} GraphQL points remain, under ${MIN_REMAINING}. The budget resets at ${before.resetAt}.`,
     );
     return 'skipped';
   }
-  await work();
-  const after = await rateLimit(api);
-  log(
-    after.resetAt === before.resetAt
-      ? `${name} sweep GraphQL points: ${before.remaining} remaining before, ${after.remaining} after, ${before.remaining - after.remaining} used, counting other clients of the token`
-      : `${name} sweep GraphQL points: ${before.remaining} remaining before, ${after.remaining} after the budget reset at ${before.resetAt}`,
-  );
-  return 'done';
+  let result = 'done';
+  try {
+    await work();
+  } catch (error) {
+    if (sweep || error?.kind !== 'rate_limit') throw error;
+    warn(
+      `${name} skipped issue #${issueNumber}: ${failureMessage(error)} The next scheduled sweep reconciles it.`,
+    );
+    result = 'rate-limited';
+  }
+  const after = read();
+  if (before && after)
+    log(
+      after.resetAt === before.resetAt
+        ? `${subject} GraphQL points: ${before.remaining} remaining before, ${after.remaining} after, ${after.used - before.used} used, counting other clients of the token`
+        : `${subject} GraphQL points: ${before.remaining} remaining before, ${after.remaining} after the budget reset at ${before.resetAt}`,
+    );
+  return result;
 }
 
 export function configuration(env, args) {

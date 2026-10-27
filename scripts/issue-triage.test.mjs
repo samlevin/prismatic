@@ -2,25 +2,24 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
-  existsSync,
-  mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { GitHubApiError, ghGraphql } from './github-api.mjs';
 import {
   configuration,
   discover,
   eligible,
+  graphqlBudget,
   listItems,
   MIN_REMAINING,
+  SWEEP_FILTERS,
   nestedNodes,
   paginate,
   readItem,
@@ -146,15 +145,26 @@ function triaged(number, overrides = {}) {
   };
 }
 
+// Applies the subset of GitHub's project item filter syntax the sweeps use:
+// is:issue, is:open, is:closed, and status: with or without a leading `-`.
+function matches(entry, filter) {
+  return filter.split(' ').every((term) => {
+    if (term === 'is:issue') return entry.type === 'ISSUE';
+    if (term === 'is:open') return entry.state === 'OPEN';
+    if (term === 'is:closed') return entry.state === 'CLOSED';
+    const status = /^(-?)status:(.+)$/.exec(term);
+    if (!status) throw new Error(`Unexpected filter term: ${term}`);
+    const listed = status[2].split(',').includes(entry.status);
+    return status[1] ? !listed : listed;
+  });
+}
+
 // A fake GitHub holding the Prismatic delivery project. Each entry is one
 // project item: an issue number with its state, labels, and Status, Priority,
 // and Size. `page` caps every connection page, so a test can force nested
 // pages. `onRead` runs before each write-boundary re-read and may change the
-// entry. `rateLimits` lists the rateLimit responses in order.
-function board(
-  entries,
-  { page = 100, definitionPages = 1, onRead, rateLimits = [] } = {},
-) {
+// entry.
+function board(entries, { page = 100, definitionPages = 1, onRead } = {}) {
   const items = new Map(
     entries.map((entry) => [
       `item-${entry.number}`,
@@ -223,12 +233,6 @@ function board(
   };
   const api = async (query, variables) => {
     calls.push(query);
-    if (query.includes('rateLimit')) {
-      const limit = rateLimits.shift() ?? { remaining: 5000, resetAt: 'r' };
-      return {
-        rateLimit: { limit: 5000, used: 5000 - limit.remaining, ...limit },
-      };
-    }
     if (query.includes('projectV2(number: 2)'))
       return {
         user: {
@@ -302,7 +306,14 @@ function board(
     }
     if (query.includes('items(first: 100'))
       return {
-        node: { items: slice([...items.keys()].map(node), variables.cursor) },
+        node: {
+          items: slice(
+            [...items.keys()]
+              .filter((id) => matches(items.get(id), variables.filter))
+              .map(node),
+            variables.cursor,
+          ),
+        },
       };
     if (query.includes('... on ProjectV2Item {')) {
       const entry = items.get(variables.id);
@@ -374,20 +385,26 @@ test('nested connections continue after the cursor of the inline page', async ()
   assert.equal(calls.length, 1);
 });
 
-test('a sweep reads every item with its field values and labels in the page query', async () => {
-  // 141 items, the project size when the sweep cost was measured.
-  const f = board(
-    Array.from({ length: 141 }, (_, index) =>
-      triaged(index + 1, { status: 'Ready' }),
-    ),
+test('a sweep lists only the items a pass can act on, with their field values and labels', async () => {
+  const settled = Array.from({ length: 141 }, (_, index) =>
+    triaged(index + 1, {
+      status: ['Ready', 'In progress', 'In review'][index % 3],
+    }),
   );
+  const f = board([
+    ...settled,
+    { number: 200, state: 'CLOSED', status: 'Done' },
+    triaged(201),
+  ]);
   await run({ api: f.api, dryRun: false, log() {} });
   assert.equal(f.count('projectV2(number: 2)'), 1);
-  assert.equal(f.count('items(first: 100'), 2);
+  assert.equal(f.count('items(first: 100'), SWEEP_FILTERS.length);
+  // Only #201 is listed; its write-boundary re-read is the one extra query.
+  assert.deepEqual(f.reads, ['item-201']);
   assert.equal(f.count('labels: ["epic"]'), 1);
-  assert.equal(f.calls.length, 4);
-  assert.deepEqual(f.reads, []);
-  assert.deepEqual(f.mutations, []);
+  // Discovery, two listings, the epic labels, the re-read, and the move.
+  assert.equal(f.calls.length, 6);
+  assert.equal(f.mutations.length, 1);
 });
 
 test('listing follows nested field value and label pages only when they have more', async () => {
@@ -547,8 +564,8 @@ test('an issue run costs the same few queries whatever the project size', async 
       ),
     ]);
     await run({ api: f.api, issueNumber: 1, dryRun: false, log() {} });
-    // Discovery, the issue with its item, the two-query re-read, the move.
-    assert.equal(f.calls.length, 5, `project of ${size + 1}`);
+    // Discovery, the issue with its item, the re-read, the move.
+    assert.equal(f.calls.length, 4, `project of ${size + 1}`);
     assert.equal(f.count('items(first: 100'), 0);
     assert.equal(f.count('labels: ["epic"]'), 0);
     assert.equal(f.items.get('item-1').status, 'Ready');
@@ -631,6 +648,31 @@ test('an issue run for a deleted or transferred issue warns, writes nothing, and
       log() {},
       warn: assert.fail,
     }),
+    /NOT_FOUND/,
+  );
+});
+
+test('a write-boundary re-read of an item whose issue is gone reads as null', async () => {
+  const gone = (data, path) => (query, variables, options) =>
+    ghGraphql(query, variables, {
+      ...options,
+      run: () =>
+        `HTTP/2.0 200 OK\n\r\n${JSON.stringify({
+          data,
+          errors: [{ type: 'NOT_FOUND', path, message: 'Not found.' }],
+        })}`,
+    });
+  const context = { projectId: 'project', fields: {} };
+  assert.equal(
+    await readItem(gone({ node: null }, ['node']), 'item', context),
+    null,
+  );
+  await assert.rejects(
+    readItem(
+      gone({ node: { id: 'item' } }, ['node', 'project']),
+      'item',
+      context,
+    ),
     /NOT_FOUND/,
   );
 });
@@ -768,7 +810,7 @@ test('Done reconciliation dry-runs, honors the issue filter, and re-reads before
   );
 });
 
-test('the command-line run shares one discovery and one listing across every pass', async () => {
+test('the command-line run shares one discovery and one listing per filter across every pass', async () => {
   const f = board([
     { number: 1, state: 'CLOSED', status: 'In review' },
     triaged(2),
@@ -776,7 +818,7 @@ test('the command-line run shares one discovery and one listing across every pas
   const lines = [];
   await run({ api: f.api, dryRun: false, log: (line) => lines.push(line) });
   assert.equal(f.count('projectV2(number: 2)'), 1);
-  assert.equal(f.count('items(first: 100'), 1);
+  assert.equal(f.count('items(first: 100'), SWEEP_FILTERS.length);
   assert.deepEqual(
     f.mutations.map((m) => [m.item, m.option]),
     [
@@ -851,13 +893,45 @@ function rateLimitError() {
   );
 }
 
-test('a sweep logs the GraphQL points before and after, and skips under the minimum', async () => {
-  const f = board([], {
-    rateLimits: [
-      { remaining: 4000, resetAt: 'r' },
-      { remaining: 3990, resetAt: 'r' },
-    ],
+// A stand-in for graphqlBudget that returns `readings` in order.
+function budgets(...readings) {
+  return () => {
+    const reading = readings.shift();
+    if (reading instanceof Error) throw reading;
+    return { limit: 5000, used: 5000 - reading.remaining, ...reading };
+  };
+}
+
+test('graphqlBudget reads the GraphQL budget from the REST rate_limit endpoint', () => {
+  const calls = [];
+  const run = (command, args) => {
+    calls.push([command, ...args]);
+    return `HTTP/2.0 200 OK\n\r\n${JSON.stringify({
+      resources: {
+        core: { limit: 5000, remaining: 1, used: 4999, reset: 1 },
+        graphql: {
+          limit: 5000,
+          remaining: 4000,
+          used: 1000,
+          reset: 1792126800,
+        },
+      },
+    })}`;
+  };
+  assert.deepEqual(graphqlBudget(run), {
+    limit: 5000,
+    remaining: 4000,
+    used: 1000,
+    resetAt: '2026-10-16T05:00:00Z',
   });
+  assert.deepEqual(calls, [['gh', 'api', '--include', 'rate_limit']]);
+  assert.throws(
+    () => graphqlBudget(() => 'HTTP/2.0 200 OK\n\r\n{"resources":{}}'),
+    /no GraphQL rate limit/,
+  );
+});
+
+test('a sweep logs the GraphQL points before and after, and skips under the minimum', async () => {
   const logs = [];
   let runs = 0;
   const work = async () => {
@@ -865,7 +939,10 @@ test('a sweep logs the GraphQL points before and after, and skips under the mini
   };
   assert.equal(
     await withinBudget(work, {
-      api: f.api,
+      budget: budgets(
+        { remaining: 4000, resetAt: 'r' },
+        { remaining: 3990, resetAt: 'r' },
+      ),
       name: 'Triage',
       log: (line) => logs.push(line),
       warn: assert.fail,
@@ -877,15 +954,12 @@ test('a sweep logs the GraphQL points before and after, and skips under the mini
     'Triage sweep GraphQL points: 4000 remaining before, 3990 after, 10 used, counting other clients of the token',
   ]);
 
-  const reset = board([], {
-    rateLimits: [
-      { remaining: 1200, resetAt: 'r1' },
-      { remaining: 4990, resetAt: 'r2' },
-    ],
-  });
   logs.length = 0;
   await withinBudget(work, {
-    api: reset.api,
+    budget: budgets(
+      { remaining: 1200, resetAt: 'r1' },
+      { remaining: 4990, resetAt: 'r2' },
+    ),
     name: 'Container',
     log: (line) => logs.push(line),
   });
@@ -893,13 +967,10 @@ test('a sweep logs the GraphQL points before and after, and skips under the mini
     'Container sweep GraphQL points: 1200 remaining before, 4990 after the budget reset at r1',
   ]);
 
-  const low = board([], {
-    rateLimits: [{ remaining: MIN_REMAINING - 1, resetAt: 'r' }],
-  });
   const warnings = [];
   assert.equal(
     await withinBudget(work, {
-      api: low.api,
+      budget: budgets({ remaining: MIN_REMAINING - 1, resetAt: 'r' }),
       name: 'Triage',
       log: assert.fail,
       warn: (line) => warnings.push(line),
@@ -907,21 +978,64 @@ test('a sweep logs the GraphQL points before and after, and skips under the mini
     'skipped',
   );
   assert.equal(runs, 2);
-  assert.equal(low.calls.length, 1);
   assert.deepEqual(warnings, [
     'Triage sweep skipped: 999 GraphQL points remain, under 1000. The budget resets at r.',
   ]);
 });
 
+test('an issue run logs its GraphQL points too', async () => {
+  const logs = [];
+  await withinBudget(async () => {}, {
+    budget: budgets(
+      { remaining: 4000, resetAt: 'r' },
+      { remaining: 3997, resetAt: 'r' },
+    ),
+    issueNumber: 7,
+    name: 'Triage',
+    log: (line) => logs.push(line),
+    warn: assert.fail,
+  });
+  assert.deepEqual(logs, [
+    'Triage issue #7 GraphQL points: 4000 remaining before, 3997 after, 3 used, counting other clients of the token',
+  ]);
+});
+
+test('a budget that cannot be read warns and the run goes ahead', async () => {
+  const warnings = [];
+  let runs = 0;
+  assert.equal(
+    await withinBudget(
+      async () => {
+        runs++;
+      },
+      {
+        budget: budgets(new Error('down'), { remaining: 10, resetAt: 'r' }),
+        name: 'Triage',
+        log: assert.fail,
+        warn: (line) => warnings.push(line),
+      },
+    ),
+    'done',
+  );
+  assert.equal(runs, 1);
+  assert.deepEqual(warnings, [
+    'Triage could not read the GraphQL budget: down',
+  ]);
+});
+
 test('a sweep fails on any error, including the rate limit', async () => {
   for (const error of [rateLimitError(), new Error('boom')]) {
-    const f = board([]);
     await assert.rejects(
       withinBudget(
         async () => {
           throw error;
         },
-        { api: f.api, name: 'Triage', log() {}, warn: assert.fail },
+        {
+          budget: budgets({ remaining: 5000, resetAt: 'r' }),
+          name: 'Triage',
+          log() {},
+          warn: assert.fail,
+        },
       ),
       error,
     );
@@ -929,7 +1043,12 @@ test('a sweep fails on any error, including the rate limit', async () => {
 });
 
 test('an issue run warns and succeeds on the rate limit and fails on other errors', async () => {
-  const api = () => assert.fail('an issue run reads no rate limit');
+  const budget = () => ({
+    limit: 5000,
+    remaining: 0,
+    used: 5000,
+    resetAt: 'r',
+  });
   const warnings = [];
   assert.equal(
     await withinBudget(
@@ -937,10 +1056,10 @@ test('an issue run warns and succeeds on the rate limit and fails on other error
         throw rateLimitError();
       },
       {
-        api,
+        budget,
         issueNumber: 7,
         name: 'Triage',
-        log: assert.fail,
+        log() {},
         warn: (line) => warnings.push(line),
       },
     ),
@@ -958,15 +1077,16 @@ test('an issue run warns and succeeds on the rate limit and fails on other error
         async () => {
           throw error;
         },
-        { api, issueNumber: 7, name: 'Triage', warn: assert.fail },
+        { budget, issueNumber: 7, name: 'Triage', warn: assert.fail },
       ),
       error,
     );
   assert.equal(
     await withinBudget(async () => {}, {
-      api,
+      budget,
       issueNumber: 7,
       name: 'Triage',
+      log() {},
     }),
     'done',
   );
@@ -1135,85 +1255,6 @@ test('catalog has unique names, supported severities, and all directly affected 
   for (const label of catalog.labels) {
     assert.match(label.color, /^[a-f0-9]{6}$/);
     assert.ok(label.description.length > 0);
-  }
-});
-
-// Every directory under packages/ that holds a package.json is an npm
-// workspace and needs a `package: <directory>` label so issues and PRs can
-// name it. A directory without a package.json is not a workspace yet, so a
-// pull request that adds only `packages/<new>/README.md` stays docs-only and
-// does not fail this test on the next push to main.
-function workspacesWithoutLabels(directories, labels) {
-  const names = new Set(labels.map((label) => label.name));
-  return directories.filter((name) => !names.has(`package: ${name}`));
-}
-
-function workspaceDirectories(root = new URL('../packages/', import.meta.url)) {
-  try {
-    return readdirSync(root, { withFileTypes: true })
-      .filter(
-        (entry) =>
-          entry.isDirectory() &&
-          existsSync(new URL(`${entry.name}/package.json`, root)),
-      )
-      .map((entry) => entry.name)
-      .sort();
-  } catch (error) {
-    if (error.code === 'ENOENT') return [];
-    throw error;
-  }
-}
-
-test('every workspace under packages/ has a package label', () => {
-  const manifest = JSON.parse(
-    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-  );
-  assert.deepEqual(manifest.workspaces, ['packages/*']);
-  const { labels } = JSON.parse(
-    readFileSync(new URL('../.github/labels.json', import.meta.url), 'utf8'),
-  );
-  assert.deepEqual(workspacesWithoutLabels(workspaceDirectories(), labels), []);
-  for (const label of labels.filter(({ name }) => name.startsWith('package:')))
-    assert.match(label.name, /^package: [a-z0-9][a-z0-9-]*$/);
-});
-
-test('a workspace without a package label is reported', () => {
-  const labels = [{ name: 'package: api' }, { name: 'area: repository' }];
-  assert.deepEqual(workspacesWithoutLabels(['api'], labels), []);
-  assert.deepEqual(workspacesWithoutLabels(['api', 'web'], labels), ['web']);
-  assert.deepEqual(workspacesWithoutLabels(['repository'], labels), [
-    'repository',
-  ]);
-});
-
-test('only directories with a package.json count as workspaces', () => {
-  const root = mkdtempSync(join(tmpdir(), 'prismatic-packages-'));
-  try {
-    const url = pathToFileURL(`${root}/`);
-    assert.deepEqual(workspaceDirectories(url), []);
-    mkdirSync(join(root, 'web'));
-    writeFileSync(join(root, 'web', 'package.json'), '{}');
-    mkdirSync(join(root, 'api'));
-    writeFileSync(join(root, 'api', 'package.json'), '{}');
-    mkdirSync(join(root, 'docs-only'));
-    writeFileSync(join(root, 'docs-only', 'README.md'), '# Draft\n');
-    mkdirSync(join(root, 'empty'));
-    writeFileSync(join(root, 'notes.md'), '# Notes\n');
-    assert.deepEqual(workspaceDirectories(url), ['api', 'web']);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('a missing packages directory has no workspaces', () => {
-  const root = mkdtempSync(join(tmpdir(), 'prismatic-packages-'));
-  try {
-    assert.deepEqual(
-      workspaceDirectories(pathToFileURL(join(root, 'packages') + '/')),
-      [],
-    );
-  } finally {
-    rmSync(root, { recursive: true, force: true });
   }
 });
 

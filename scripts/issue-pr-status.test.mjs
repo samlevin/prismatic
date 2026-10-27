@@ -110,7 +110,10 @@ function fixture({
           id: 'item',
           type: 'ISSUE',
           project: { id: 'project' },
-          content: content(reads > 1),
+          content: {
+            ...content(reads > 1),
+            labels: { nodes: [], pageInfo: { hasNextPage: false } },
+          },
           fieldValues: {
             nodes: vars.cursor
               ? [
@@ -129,13 +132,6 @@ function fixture({
         },
       };
     }
-    if (query.includes('labels('))
-      return {
-        node: {
-          ...content(reads > 1),
-          labels: { nodes: [], pageInfo: { hasNextPage: false } },
-        },
-      };
     throw new Error(`Unexpected query ${query}`);
   };
   const logs = [];

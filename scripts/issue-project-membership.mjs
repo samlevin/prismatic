@@ -10,20 +10,26 @@ import { pathToFileURL } from 'node:url';
 import { failureMessage, ghGraphql } from './github-api.mjs';
 import {
   discover,
+  MISSING_ISSUE,
   paginate,
   readItem,
   REPOSITORY,
   updateProjectStatus,
+  warning,
+  withinBudget,
 } from './issue-triage.mjs';
 
 export const PROJECT = { owner: 'samlevin', number: 2 };
 export const INITIAL_STATUS = 'Inbox';
 
+// `context` lets a sweep share one field discovery across its issues.
 export async function addToProject({
   api,
   number,
   dryRun = true,
   log = console.log,
+  warn = warning,
+  context,
 }) {
   if (!Number.isSafeInteger(number) || number < 1)
     throw new Error('A positive issue number is required');
@@ -37,9 +43,16 @@ export async function addToProject({
       user(login: $login) { projectV2(number: $project) { id closed } }
     }`,
     { owner, name, number, login: PROJECT.owner, project: PROJECT.number },
+    MISSING_ISSUE,
   );
-  const content = data.repository?.issueOrPullRequest;
-  if (!content?.id) throw new Error(`#${number} not found in ${REPOSITORY}`);
+  if (!data.repository) throw new Error(`${REPOSITORY} is unavailable`);
+  const content = data.repository.issueOrPullRequest;
+  if (!content?.id) {
+    warn(
+      `Issue #${number} was not found; it may have been deleted or transferred. Nothing to add.`,
+    );
+    return null;
+  }
   if (content.__typename !== 'Issue') {
     log(`Skipped pull request #${number}; only issues go on the board.`);
     return null;
@@ -49,7 +62,7 @@ export async function addToProject({
     throw new Error('Prismatic delivery project is unavailable');
   // Resolve the Status field and its Inbox option by name before any write, so
   // a renamed field or option fails the run before it adds anything.
-  const context = await discover(api, { Status: [INITIAL_STATUS] });
+  context ??= await discover(api, { Status: [INITIAL_STATUS] });
   if (context.projectId !== project.id)
     throw new Error('Prismatic delivery project changed during the run');
   if (dryRun) {
@@ -71,17 +84,19 @@ export async function addToProject({
     return null;
   }
   // GitHub returns the existing item when the content is already in the
-  // project, so reruns and duplicate events add nothing.
+  // project, so reruns and duplicate events add nothing. The item's full
+  // database ID is the one the REST `projectsV2/<n>/items/<id>` endpoints
+  // take, so the log line gives issue filers the item without another read.
   const result = await api(
     `mutation($project: ID!, $content: ID!) {
-      addProjectV2ItemById(input: { projectId: $project, contentId: $content }) { item { id } }
+      addProjectV2ItemById(input: { projectId: $project, contentId: $content }) { item { id fullDatabaseId } }
     }`,
     { project: project.id, content: content.id },
   );
-  const item = result.addProjectV2ItemById?.item?.id;
-  if (!item)
+  const { id: item, fullDatabaseId } = result.addProjectV2ItemById?.item ?? {};
+  if (!item || !/^[1-9]\d*$/.test(String(fullDatabaseId ?? '')))
     throw new Error(`GitHub did not return a project item for #${number}`);
-  log(`Added issue #${number} to Prismatic delivery as item ${item}.`);
+  log(`Issue #${number} is in Prismatic delivery as item ${fullDatabaseId}.`);
   const current = await readItem(api, item, context);
   if (!current)
     throw new Error(`Could not read project item ${item} for #${number}`);
@@ -137,9 +152,13 @@ export async function addMissingIssues({
     .map((issue) => issue.number);
   let added = 0;
   const failed = [];
+  const context = missing.length
+    ? await discover(api, { Status: [INITIAL_STATUS] })
+    : undefined;
   for (const number of missing) {
     try {
-      if ((await addToProject({ api, number, dryRun, log })) !== null) added++;
+      if ((await addToProject({ api, number, dryRun, log, context })) !== null)
+        added++;
     } catch (error) {
       failed.push(number);
       log(`Could not add issue #${number}: ${failureMessage(error)}`);
@@ -187,10 +206,14 @@ if (
     );
     if (process.env.GITHUB_ACTIONS === 'true')
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
-    await (sweep ? addMissingIssues : addToProject)({
-      api: ghGraphql,
-      ...config,
-    });
+    await withinBudget(
+      () =>
+        (sweep ? addMissingIssues : addToProject)({
+          api: ghGraphql,
+          ...config,
+        }),
+      { issueNumber: config.number, name: 'Project membership' },
+    );
   } catch (error) {
     console.error(failureMessage(error));
     process.exitCode = 1;

@@ -51,9 +51,10 @@ function fixture({
         throw new Error('API rate limit exceeded');
       if (!items.has(variables.content))
         items.set(variables.content, { id: `PVTI_${items.size + 1}` });
+      const { id } = items.get(variables.content);
       return {
         addProjectV2ItemById: {
-          item: { id: items.get(variables.content).id },
+          item: { id, fullDatabaseId: id.slice('PVTI_'.length) },
         },
       };
     }
@@ -129,7 +130,11 @@ function fixture({
           id: item.id,
           type: 'ISSUE',
           project: { id: project.id },
-          content: { __typename: 'Issue', id: content.id },
+          content: {
+            __typename: 'Issue',
+            id: content.id,
+            labels: { nodes: [], pageInfo: PAGE },
+          },
           fieldValues: {
             nodes: item.status
               ? [{ optionId: item.status, field: { id: 'FIELD_STATUS' } }]
@@ -139,14 +144,7 @@ function fixture({
         },
       };
     }
-    assert.match(query, /labels\(first: 100/);
-    return {
-      node: {
-        id: variables.id,
-        __typename: 'Issue',
-        labels: { nodes: [], pageInfo: PAGE },
-      },
-    };
+    throw new Error(`Unexpected mock query: ${query}`);
   };
   const lines = [];
   return { api, calls, writes, items, lines, log: (line) => lines.push(line) };
@@ -177,7 +175,7 @@ test('adds a new issue by node ID and sets its Status to Inbox', async () => {
   ]);
   assert.equal(f.items.get('I_1').status, 'OPT_INBOX');
   assert.deepEqual(f.lines, [
-    'Added issue #7 to Prismatic delivery as item PVTI_1.',
+    'Issue #7 is in Prismatic delivery as item 1.',
     'Set Status Inbox on issue #7.',
   ]);
 });
@@ -193,7 +191,7 @@ test('an issue already on the board keeps its Status', async () => {
   assert.deepEqual(statusWrites(f), []);
   assert.equal(f.items.get('I_1').status, 'OPT_READY');
   assert.deepEqual(f.lines, [
-    'Added issue #7 to Prismatic delivery as item PVTI_5.',
+    'Issue #7 is in Prismatic delivery as item 5.',
     'Kept Status Ready on issue #7.',
   ]);
 });
@@ -285,9 +283,26 @@ test('a missing Status field or Inbox option fails an issue before writing', asy
   assert.deepEqual(f.writes, []);
 });
 
-test('missing content, a missing or closed project, and bad numbers fail before writing', async () => {
+test('a deleted or transferred issue warns and writes nothing', async () => {
+  const f = fixture({ content: null });
+  const warnings = [];
+  assert.equal(
+    await addToProject({
+      ...f,
+      number: 7,
+      dryRun: false,
+      warn: (line) => warnings.push(line),
+    }),
+    null,
+  );
+  assert.deepEqual(warnings, [
+    'Issue #7 was not found; it may have been deleted or transferred. Nothing to add.',
+  ]);
+  assert.deepEqual(f.writes, []);
+});
+
+test('a missing or closed project and bad numbers fail before writing', async () => {
   for (const [options, message] of [
-    [{ content: null }, /#7 not found in samlevin\/prismatic/],
     [{ project: null }, /project is unavailable/],
     [{ project: { id: 'PVT_1', closed: true } }, /project is unavailable/],
   ]) {
@@ -372,6 +387,11 @@ test('a sweep adds only open issues missing from the project, across pages', asy
   assert.equal(f.items.get('I_4').status, undefined);
   assert.equal(f.items.has('PR_6'), false);
   assert.equal(f.items.has('I_5'), false);
+  // One field discovery serves every issue the sweep adds.
+  assert.equal(
+    f.calls.filter(({ query }) => /fields\(first: 100/.test(query)).length,
+    1,
+  );
   assert.equal(
     f.lines.at(-1),
     'Project membership sweep: 5 open, 3 missing, 3 added, 0 failed; DRY_RUN=false',
