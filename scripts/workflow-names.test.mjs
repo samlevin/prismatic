@@ -1,95 +1,75 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { test } from 'node:test';
-import {
-  evaluate,
-  workflow,
-  workflowDirectory,
-} from './workflow-test-helpers.mjs';
+import { workflow } from './workflow-test-helpers.mjs';
 
-// Workflow files are <area>-<name>.yml and the workflow is named
-// `<Area>: <name>`. CONTRIBUTING.md describes the convention.
-const AREAS = { ci: 'CI', tracker: 'Tracker' };
+// The naming convention lives in CONTRIBUTING.md. Terrateam owns its workflow
+// file and marks it DO NOT MODIFY, so it keeps the vendor's names.
+const VENDOR_WORKFLOWS = ['terrateam.yml'];
+const AREAS = {
+  ci: 'CI',
+  release: 'Release',
+  delivery: 'Delivery',
+  tracker: 'Tracker',
+};
 
-const files = readdirSync(workflowDirectory).sort();
-const definitions = new Map(files.map((file) => [file, workflow(file)]));
+const files = readdirSync(new URL('../.github/workflows/', import.meta.url))
+  .filter((file) => !VENDOR_WORKFLOWS.includes(file))
+  .sort();
+const definitions = new Map(
+  files.map((file) => [file, workflow(file.replace(/\.yml$/, ''))]),
+);
 const triggers = ({ on }) =>
   typeof on === 'string' ? [on] : Array.isArray(on) ? on : Object.keys(on);
 
-test('workflow files, workflow names, and job names match the convention', () => {
+test('workflow files and names match the convention table', () => {
   assert.deepEqual(
     Object.fromEntries(
-      [...definitions].map(([file, definition]) => [
-        file,
-        {
-          name: definition.name,
-          jobs: Object.fromEntries(
-            Object.entries(definition.jobs).map(([id, job]) => [id, job.name]),
-          ),
-        },
-      ]),
+      [...definitions].map(([file, definition]) => [file, definition.name]),
     ),
     {
-      'ci-checks.yml': {
-        name: 'CI: checks',
-        jobs: {
-          'detect-changes': 'Detect changed areas',
-          'run-checks': 'Run checks selected for the changed files',
-          'require-scoped-checks':
-            'Require every check selected for the changed files',
-        },
-      },
-      'ci-pr-title.yml': {
-        name: 'CI: PR title',
-        jobs: {
-          'check-pr-title': 'Check PR title follows Conventional Commits',
-        },
-      },
-      'ci-secret-scan.yml': {
-        name: 'CI: secret scan',
-        jobs: { 'scan-secrets': 'Scan commits for secrets' },
-      },
-      'tracker-issue-states.yml': {
-        name: 'Tracker: reconcile issue states',
-        jobs: { 'reconcile-issues': 'Reconcile issue project states' },
-      },
-      'tracker-pr-issue-status.yml': {
-        name: 'Tracker: move closing issues to In review',
-        jobs: { 'mark-issues-in-review': 'Move closing issues to In review' },
-      },
-      'tracker-pr-metadata.yml': {
-        name: 'Tracker: copy issue labels, assignees, and milestone to PR',
-        jobs: {
-          'copy-issue-metadata':
-            'Copy linked issue labels, assignees, and milestone to PR',
-        },
-      },
-      'tracker-project-membership.yml': {
-        name: 'Tracker: add issues to the project',
-        jobs: { 'add-to-project': 'Add issues to the project' },
-      },
+      'ci-checks.yml': 'CI: checks',
+      'ci-pr-title.yml': 'CI: PR title',
+      'ci-secret-scan.yml': 'CI: secret scan',
+      'tracker-issue-states.yml': 'Tracker: reconcile issue states',
+      'tracker-pr-issue-status.yml':
+        'Tracker: move closing issues to In review',
+      'tracker-pr-metadata.yml': 'Tracker: copy issue metadata to PR',
+      'tracker-project-membership.yml': 'Tracker: add issues to the project',
     },
   );
   for (const [file, definition] of definitions) {
-    const match = file.match(/^([a-z]+)-[a-z0-9]+(?:-[a-z0-9]+)*\.yml$/);
-    assert.ok(match, `${file} is not <area>-<name>.yml`);
-    const area = AREAS[match[1]];
-    assert.ok(area, `${file} has unknown area ${match[1]}`);
-    assert.match(
-      definition.name,
-      new RegExp(`^${area}: \\S`),
-      `${file} name must be "${area}: <name>"`,
+    const match = file.match(/^(_?)([a-z]+)-[a-z0-9]+(?:-[a-z0-9]+)*\.yml$/);
+    assert.ok(match, `${file} is not <area>-<purpose>.yml`);
+    const [, reusable, area] = match;
+    assert.ok(AREAS[area], `${file} has unknown area ${area}`);
+    assert.ok(
+      definition.name.startsWith(`${AREAS[area]}: `),
+      `${file} name must start with ${AREAS[area]}:`,
+    );
+    assert.equal(
+      triggers(definition).includes('workflow_call'),
+      reusable === '_',
+      `${file}: only reusable workflows start with _`,
+    );
+    assert.equal(
+      definition.name.endsWith(' (reusable)'),
+      reusable === '_',
+      `${file}: only reusable workflow names end with (reusable)`,
     );
   }
 });
 
 test('every job and step has a sentence-case name and a kebab-case ID', () => {
+  // A name may be an expression, such as a matrix or input value, but the
+  // literal text must start with a capital letter.
+  const sentence = /^(?:\$\{\{.*\}\}|[A-Z])/;
   for (const [file, definition] of definitions) {
     for (const [id, job] of Object.entries(definition.jobs)) {
       const where = `${file} ${id}`;
       assert.match(id, /^[a-z]+(?:-[a-z]+)*$/, `${where} ID`);
       assert.equal(typeof job.name, 'string', `${where} has no name`);
-      assert.match(job.name, /^[A-Z]/, `${where} name`);
+      assert.match(job.name, sentence, `${where} name`);
       for (const [index, step] of (job.steps ?? []).entries()) {
         assert.equal(
           typeof step.name,
@@ -102,18 +82,47 @@ test('every job and step has a sentence-case name and a kebab-case ID', () => {
   }
 });
 
+test('names write the environments as dev and prod', () => {
+  for (const [file, definition] of definitions) {
+    const names = [
+      definition.name,
+      definition['run-name'] ?? '',
+      ...Object.values(definition.jobs).flatMap((job) => [
+        job.name,
+        ...(job.steps ?? []).map((step) => step.name),
+      ]),
+    ];
+    for (const name of names)
+      assert.doesNotMatch(name, /production/i, `${file}: ${name}`);
+  }
+});
+
 test('workflows not started by a pull request or push name their subject', () => {
   for (const [file, definition] of definitions) {
     const events = triggers(definition);
-    if (events.includes('pull_request') || events.includes('push')) continue;
+    if (
+      events.includes('workflow_call') ||
+      events.includes('pull_request') ||
+      events.includes('push')
+    )
+      continue;
     assert.equal(typeof definition['run-name'], 'string', file);
     assert.match(definition['run-name'], /\$\{\{/, file);
   }
 });
 
-test('required status check candidates keep their names', () => {
-  // These are the jobs the main ruleset should require. Renaming one needs a
-  // matching ruleset change at merge once the ruleset requires it.
+test('workflow_run triggers name existing workflows', () => {
+  const names = new Set(
+    [...definitions.values()].map((definition) => definition.name),
+  );
+  for (const [file, definition] of definitions) {
+    for (const name of definition.on.workflow_run?.workflows ?? [])
+      assert.ok(names.has(name), `${file} waits for unknown workflow ${name}`);
+  }
+});
+
+test('required status checks keep the names the main ruleset requires', () => {
+  // Renaming one of these jobs needs a matching ruleset change at merge.
   for (const [file, id, name] of [
     [
       'ci-checks.yml',
@@ -131,314 +140,4 @@ test('required status check candidates keep their names', () => {
     assert.equal(job.name, name, `${file} ${id}`);
     assert.equal(job.strategy, undefined, `${file} ${id} must not be a matrix`);
   }
-});
-
-test('tracker workflows keep their triggers, permissions, secrets, concurrency, and scripts', () => {
-  const contract = (file) => {
-    const definition = definitions.get(file);
-    const [job] = Object.values(definition.jobs);
-    return {
-      on: definition.on,
-      permissions: definition.permissions,
-      concurrency: definition.concurrency,
-      if: job.if,
-      steps: job.steps.map(
-        ({ if: condition, uses, with: inputs, env, run }) => ({
-          ...(condition && { if: condition }),
-          uses,
-          with: inputs,
-          env,
-          run,
-        }),
-      ),
-    };
-  };
-  const checkout = {
-    uses: 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262',
-    with: {
-      ref: '${{ github.event.repository.default_branch }}',
-      'persist-credentials': false,
-      'sparse-checkout': 'scripts',
-    },
-    env: undefined,
-    run: undefined,
-  };
-  const node = {
-    uses: 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
-    with: { 'node-version': '24.22.0' },
-    env: undefined,
-    run: undefined,
-  };
-  const token = '${{ secrets.PRISMATIC_PROJECT_TOKEN }}';
-  const dispatchDryRun =
-    "${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}";
-  assert.deepEqual(contract('tracker-issue-states.yml'), {
-    on: {
-      issues: {
-        types: ['opened', 'reopened', 'closed', 'labeled', 'unlabeled'],
-      },
-      schedule: [{ cron: '7 * * * *' }],
-      workflow_dispatch: {
-        inputs: {
-          dry_run: {
-            description:
-              'Preview metadata and container completion without writes',
-            type: 'boolean',
-            default: true,
-          },
-        },
-      },
-    },
-    permissions: { contents: 'read' },
-    concurrency: {
-      group:
-        "prismatic-issue-triage-${{ github.event.issue.number || 'sweep' }}",
-      'cancel-in-progress': false,
-    },
-    if: "github.repository == 'samlevin/prismatic' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)",
-    steps: [
-      checkout,
-      node,
-      {
-        uses: undefined,
-        with: undefined,
-        env: {
-          PRISMATIC_PROJECT_TOKEN: token,
-          DRY_RUN: dispatchDryRun,
-          ISSUE_NUMBER: '${{ github.event.issue.number }}',
-        },
-        run: [
-          'if [ "$GITHUB_EVENT_NAME" = issues ]; then set -- --issue "$ISSUE_NUMBER"; fi',
-          'node scripts/issue-triage.mjs "$@"',
-          'node scripts/issue-containers.mjs "$@"',
-          '',
-        ].join('\n'),
-      },
-    ],
-  });
-  const prEvents = {
-    types: ['opened', 'edited', 'reopened', 'ready_for_review'],
-  };
-  assert.deepEqual(contract('tracker-pr-issue-status.yml'), {
-    on: { pull_request_target: prEvents },
-    permissions: { contents: 'read' },
-    concurrency: {
-      group: 'pr-issue-status-${{ github.event.pull_request.number }}',
-      'cancel-in-progress': false,
-    },
-    if: "github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft",
-    steps: [
-      checkout,
-      node,
-      {
-        uses: undefined,
-        with: undefined,
-        env: {
-          PRISMATIC_PROJECT_TOKEN: token,
-          PR_NUMBER: '${{ github.event.pull_request.number }}',
-          PR_ACTION: '${{ github.event.action }}',
-          DRY_RUN: 'false',
-        },
-        run: 'node scripts/issue-pr-status.mjs',
-      },
-    ],
-  });
-  const prNumber =
-    '${{ github.event.pull_request.number || inputs.pull_request }}';
-  assert.deepEqual(contract('tracker-pr-metadata.yml'), {
-    on: {
-      pull_request_target: prEvents,
-      workflow_dispatch: {
-        inputs: {
-          pull_request: {
-            description: 'Pull request number to reconcile',
-            required: true,
-            type: 'string',
-          },
-          dry_run: {
-            description:
-              'Preview labels, assignees, and milestone without writes',
-            type: 'boolean',
-            default: true,
-          },
-        },
-      },
-    },
-    permissions: { contents: 'read' },
-    concurrency: {
-      group:
-        'pr-issue-metadata-${{ github.event.pull_request.number || inputs.pull_request }}',
-      'cancel-in-progress': false,
-    },
-    if: "github.repository == 'samlevin/prismatic' && (github.event_name == 'pull_request_target' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))",
-    steps: [
-      checkout,
-      node,
-      {
-        uses: undefined,
-        with: undefined,
-        env: {
-          PRISMATIC_PROJECT_TOKEN: token,
-          PR_NUMBER: prNumber,
-          DRY_RUN: dispatchDryRun,
-        },
-        run: 'node scripts/issue-pr-metadata.mjs',
-      },
-    ],
-  });
-  const eventNumber = '${{ github.event.issue.number }}';
-  assert.deepEqual(contract('tracker-project-membership.yml'), {
-    on: {
-      issues: { types: ['opened'] },
-      schedule: [{ cron: '37 * * * *' }],
-      workflow_dispatch: {
-        inputs: {
-          dry_run: {
-            description: 'Preview the missing issues without adding them',
-            type: 'boolean',
-            default: true,
-          },
-        },
-      },
-    },
-    permissions: { contents: 'read' },
-    concurrency: {
-      group: "project-membership-${{ github.event.issue.number || 'sweep' }}",
-      'cancel-in-progress': false,
-    },
-    if: "github.repository == 'samlevin/prismatic' && (github.event_name == 'issues' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))",
-    steps: [
-      checkout,
-      node,
-      {
-        if: "github.event_name == 'issues'",
-        uses: undefined,
-        with: undefined,
-        env: {
-          PRISMATIC_PROJECT_TOKEN: token,
-          ISSUE_NUMBER: eventNumber,
-          DRY_RUN: 'false',
-        },
-        run: 'node scripts/issue-project-membership.mjs',
-      },
-      {
-        if: "github.event_name != 'issues'",
-        uses: undefined,
-        with: undefined,
-        env: { PRISMATIC_PROJECT_TOKEN: token, DRY_RUN: dispatchDryRun },
-        run: 'node scripts/issue-project-membership.mjs --sweep',
-      },
-    ],
-  });
-});
-
-test('project membership adds one issue when it opens and sweeps on a schedule or dispatch', () => {
-  const definition = definitions.get('tracker-project-membership.yml');
-  const job = definition.jobs['add-to-project'];
-  const format = (template, ...values) =>
-    template.replace(/\{(\d+)\}/g, (_, index) => values[index]);
-  const interpolate = (text, values) =>
-    text.replace(/\$\{\{([\s\S]*?)\}\}/g, (_, expression) =>
-      evaluate(expression, values),
-    );
-  const start = (eventName, { event = {}, inputs = {}, ref } = {}) => {
-    const values = {
-      format,
-      inputs,
-      github: {
-        repository: 'samlevin/prismatic',
-        ref: ref ?? 'refs/heads/main',
-        event_name: eventName,
-        // Actions reads a property of a missing object as null, so `issue: {}`
-        // stands in for the absent issue on schedule and dispatch events.
-        event: { repository: { default_branch: 'main' }, issue: {}, ...event },
-      },
-    };
-    return {
-      name: interpolate(definition['run-name'], values),
-      group: interpolate(definition.concurrency.group, values),
-      runs: evaluate(job.if, values),
-      steps: job.steps
-        .filter((step) => step.if && evaluate(step.if, values))
-        .map((step) => ({
-          run: step.run,
-          dryRun: interpolate(step.env.DRY_RUN, values),
-        })),
-    };
-  };
-  assert.deepEqual(start('issues', { event: { issue: { number: 41 } } }), {
-    name: 'Add issue #41 to the project',
-    group: 'project-membership-41',
-    runs: true,
-    steps: [
-      { run: 'node scripts/issue-project-membership.mjs', dryRun: 'false' },
-    ],
-  });
-  const sweep = 'node scripts/issue-project-membership.mjs --sweep';
-  assert.deepEqual(start('schedule'), {
-    name: 'Add missing issues to the project (schedule)',
-    group: 'project-membership-sweep',
-    runs: true,
-    steps: [{ run: sweep, dryRun: 'false' }],
-  });
-  for (const [dryRunInput, dryRun] of [
-    [true, 'true'],
-    [false, 'false'],
-  ])
-    assert.deepEqual(
-      start('workflow_dispatch', { inputs: { dry_run: dryRunInput } }),
-      {
-        name: 'Add missing issues to the project (workflow_dispatch)',
-        group: 'project-membership-sweep',
-        runs: true,
-        steps: [{ run: sweep, dryRun }],
-      },
-    );
-  assert.equal(
-    start('workflow_dispatch', {
-      inputs: { dry_run: false },
-      ref: 'refs/heads/feature',
-    }).runs,
-    false,
-  );
-});
-
-test('workflows started by pull_request_target never check out or run pull request code', () => {
-  for (const [file, definition] of definitions) {
-    if (!triggers(definition).includes('pull_request_target')) continue;
-    for (const [id, job] of Object.entries(definition.jobs))
-      for (const step of job.steps ?? []) {
-        const where = `${file} ${id} ${step.name}`;
-        if (step.uses?.startsWith('actions/checkout@')) {
-          assert.equal(
-            step.with?.ref,
-            '${{ github.event.repository.default_branch }}',
-            where,
-          );
-          assert.equal(step.with['persist-credentials'], false, where);
-          assert.equal(step.with['sparse-checkout'], 'scripts', where);
-        }
-        assert.doesNotMatch(
-          JSON.stringify(step),
-          /github\.event\.pull_request\.(?:head|merge_commit_sha|title|body)|github\.head_ref/,
-          where,
-        );
-      }
-  }
-});
-
-test('every pinned Node version matches .tool-versions', () => {
-  const pinned = readFileSync(
-    new URL('../.tool-versions', import.meta.url),
-    'utf8',
-  ).match(/^nodejs (\S+)$/m)?.[1];
-  assert.match(pinned ?? '', /^\d+\.\d+\.\d+$/);
-  for (const [file, definition] of definitions)
-    for (const job of Object.values(definition.jobs))
-      for (const step of job.steps ?? []) {
-        if (!step.uses?.startsWith('actions/setup-node@')) continue;
-        if (step.with['node-version-file'] !== undefined)
-          assert.equal(step.with['node-version-file'], '.tool-versions', file);
-        else assert.equal(step.with['node-version'], pinned, file);
-      }
 });

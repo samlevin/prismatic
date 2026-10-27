@@ -1,179 +1,119 @@
-// Adds issues in this repository to the Prismatic delivery project. The
-// project's built-in auto-add cannot be enabled through the API, so
-// tracker-project-membership.yml runs this for one issue when it opens, and
-// with --sweep on a schedule for every open issue missing from the project,
-// in case GitHub dropped an `opened` run. An issue whose item has no Status
-// gets Inbox, so issue-triage.mjs picks it up, and an existing Status never
-// changes. Pull requests never go on the board, so the board counts only
-// issues.
 import { pathToFileURL } from 'node:url';
 import { failureMessage, ghGraphql } from './github-api.mjs';
-import {
-  discover,
-  paginate,
-  readItem,
-  REPOSITORY,
-  updateProjectStatus,
-} from './issue-triage.mjs';
-
-export const PROJECT = { owner: 'samlevin', number: 2 };
-export const INITIAL_STATUS = 'Inbox';
+import { paginate, REPOSITORY, runTracker } from './issue-triage.mjs';
 
 export async function addToProject({
   api,
+  kind,
   number,
   dryRun = true,
   log = console.log,
 }) {
+  if (kind !== 'issue') throw new Error('CONTENT_TYPE must be issue');
   if (!Number.isSafeInteger(number) || number < 1)
     throw new Error('A positive issue number is required');
   const [owner, name] = REPOSITORY.split('/');
   const data = await api(
-    `query($owner: String!, $name: String!, $number: Int!, $login: String!, $project: Int!) {
-      repository(owner: $owner, name: $name) { issueOrPullRequest(number: $number) {
-        __typename ... on PullRequest { id }
-        ... on Issue { id projectItems(first: 100) { nodes { id project { id } } } }
-      } }
-      user(login: $login) { projectV2(number: $project) { id closed } }
+    `query($owner: String!, $name: String!, $number: Int!) {
+      repository(owner: $owner, name: $name) { issue(number: $number) { id } }
+      user(login: "samlevin") { projectV2(number: 2) { id closed } }
     }`,
-    { owner, name, number, login: PROJECT.owner, project: PROJECT.number },
+    { owner, name, number },
   );
-  const content = data.repository?.issueOrPullRequest;
-  if (!content?.id) throw new Error(`#${number} not found in ${REPOSITORY}`);
-  if (content.__typename !== 'Issue') {
-    log(`Skipped pull request #${number}; only issues go on the board.`);
-    return null;
-  }
+  const content = data.repository?.issue;
+  if (!content?.id) throw new Error(`Issue #${number} not found`);
   const project = data.user?.projectV2;
   if (!project?.id || project.closed)
     throw new Error('Prismatic delivery project is unavailable');
-  // Resolve the Status field and its Inbox option by name before any write, so
-  // a renamed field or option fails the run before it adds anything.
-  const context = await discover(api, { Status: [INITIAL_STATUS] });
-  if (context.projectId !== project.id)
-    throw new Error('Prismatic delivery project changed during the run');
   if (dryRun) {
-    const existing = content.projectItems?.nodes?.find(
-      (node) => node?.project?.id === project.id,
-    );
-    if (!existing) {
-      log(
-        `DRY_RUN would add issue #${number} to Prismatic delivery and set its Status to ${INITIAL_STATUS}.`,
-      );
-      return null;
-    }
-    const status = (await readItem(api, existing.id, context))?.fields.Status;
-    log(
-      status
-        ? `DRY_RUN would keep issue #${number} as item ${existing.id} with Status ${status}.`
-        : `DRY_RUN would keep issue #${number} as item ${existing.id} and set its Status to ${INITIAL_STATUS}.`,
-    );
+    log(`Issue #${number}: would add to Prismatic delivery (dry run).`);
     return null;
   }
   // GitHub returns the existing item when the content is already in the
-  // project, so reruns and duplicate events add nothing.
+  // project, so reruns and earlier adds by the workflow neither fail nor
+  // duplicate. The item's full database ID is the ID that the REST
+  // `projectsV2/<n>/items/<id>` endpoints take, which issue filers use.
   const result = await api(
     `mutation($project: ID!, $content: ID!) {
-      addProjectV2ItemById(input: { projectId: $project, contentId: $content }) { item { id } }
+      addProjectV2ItemById(input: { projectId: $project, contentId: $content }) { item { id fullDatabaseId } }
     }`,
     { project: project.id, content: content.id },
   );
-  const item = result.addProjectV2ItemById?.item?.id;
-  if (!item)
-    throw new Error(`GitHub did not return a project item for #${number}`);
-  log(`Added issue #${number} to Prismatic delivery as item ${item}.`);
-  const current = await readItem(api, item, context);
-  if (!current)
-    throw new Error(`Could not read project item ${item} for #${number}`);
-  if (current.fields.Status) {
-    log(`Kept Status ${current.fields.Status} on issue #${number}.`);
-    return item;
-  }
-  await updateProjectStatus(api, context, item, INITIAL_STATUS);
-  log(`Set Status ${INITIAL_STATUS} on issue #${number}.`);
+  const item = result.addProjectV2ItemById?.item?.fullDatabaseId;
+  if (!item || !/^[1-9]\d*$/.test(item))
+    throw new Error('GitHub returned no project item');
+  log(`Issue #${number}: in Prismatic delivery as item ${item}.`);
   return item;
 }
 
-// Lists open issues a page at a time with their project items, so a sweep that
-// finds nothing missing costs one query per 100 open issues and no writes.
-export async function addMissingIssues({
+// Adds every open issue that is not in Prismatic delivery. Archived project items
+// count as present. An issue in more than 100 projects may be listed as
+// missing; addToProject then returns its existing item.
+export async function sweep({
   api,
   dryRun = true,
   log = console.log,
+  logError = console.error,
 }) {
   const [owner, name] = REPOSITORY.split('/');
-  let project;
+  const data = await api(
+    `query { user(login: "samlevin") { projectV2(number: 2) { id closed } } }`,
+    {},
+  );
+  const project = data.user?.projectV2;
+  if (!project?.id || project.closed)
+    throw new Error('Prismatic delivery project is unavailable');
   const issues = await paginate(async (cursor) => {
-    const data = await api(
-      `query($owner: String!, $name: String!, $login: String!, $project: Int!, $cursor: String) {
+    const page = await api(
+      `query($owner: String!, $name: String!, $cursor: String) {
         repository(owner: $owner, name: $name) {
           issues(first: 100, after: $cursor, states: [OPEN]) {
             nodes { number projectItems(first: 100) { nodes { project { id } } } }
             pageInfo { hasNextPage endCursor }
           }
         }
-        user(login: $login) { projectV2(number: $project) { id closed } }
       }`,
-      {
-        owner,
-        name,
-        login: PROJECT.owner,
-        project: PROJECT.number,
-        cursor,
-      },
+      { owner, name, cursor },
     );
-    project = data.user?.projectV2;
-    if (!project?.id || project.closed)
-      throw new Error('Prismatic delivery project is unavailable');
-    return data.repository?.issues;
+    return page.repository?.issues;
   });
   const missing = issues
     .filter(
       (issue) =>
-        !issue.projectItems?.nodes?.some(
-          (node) => node?.project?.id === project.id,
+        !issue.projectItems?.nodes.some(
+          (item) => item?.project?.id === project.id,
         ),
     )
-    .map((issue) => issue.number);
-  let added = 0;
+    .map((issue) => issue.number)
+    .sort((a, b) => a - b);
+  if (!missing.length) {
+    log(`All ${issues.length} open issues are in Prismatic delivery.`);
+    return { missing, failed: [] };
+  }
+  log(
+    `Open issues missing from Prismatic delivery: ${missing.map((number) => `#${number}`).join(', ')}.`,
+  );
   const failed = [];
   for (const number of missing) {
     try {
-      if ((await addToProject({ api, number, dryRun, log })) !== null) added++;
+      await addToProject({ api, kind: 'issue', number, dryRun, log });
     } catch (error) {
       failed.push(number);
-      log(`Could not add issue #${number}: ${failureMessage(error)}`);
+      logError(`Issue #${number}: ${failureMessage(error)}`);
     }
   }
-  log(
-    `Project membership sweep: ${issues.length} open, ${missing.length} missing, ${added} added, ${failed.length} failed; DRY_RUN=${dryRun}`,
-  );
   if (failed.length)
     throw new Error(
-      `Could not add ${failed.map((number) => `#${number}`).join(', ')} to Prismatic delivery`,
+      `Could not add ${failed.length} of ${missing.length} missing issues: ${failed.map((number) => `#${number}`).join(', ')}`,
     );
-  return { missing, added, failed };
+  return { missing, failed };
 }
 
-export function configuration(env, args = []) {
-  if (env.GITHUB_ACTIONS === 'true') {
-    if (!env.PRISMATIC_PROJECT_TOKEN)
-      throw new Error(
-        'PRISMATIC_PROJECT_TOKEN is required for Projects access; GITHUB_TOKEN cannot access Projects.',
-      );
-    if (env.GITHUB_REPOSITORY !== REPOSITORY)
-      throw new Error('Unexpected repository');
-  }
-  const mode = env.DRY_RUN ?? 'true';
-  if (!['true', 'false'].includes(mode))
-    throw new Error('DRY_RUN must be true or false');
-  if (args.length === 1 && args[0] === '--sweep')
-    return { sweep: true, dryRun: mode === 'true' };
-  if (args.length) throw new Error('The only option is --sweep');
-  const number = env.ISSUE_NUMBER ?? '';
-  if (!/^[1-9]\d*$/.test(number) || !Number.isSafeInteger(Number(number)))
-    throw new Error('ISSUE_NUMBER must be a positive integer');
-  return { number: Number(number), dryRun: mode === 'true' };
+function flag(env, name, fallback) {
+  const value = env[name] ?? fallback;
+  if (!['true', 'false'].includes(value))
+    throw new Error(`${name} must be true or false`);
+  return value === 'true';
 }
 
 if (
@@ -181,15 +121,28 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   try {
-    const { sweep, ...config } = configuration(
-      process.env,
-      process.argv.slice(2),
-    );
-    if (process.env.GITHUB_ACTIONS === 'true')
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      if (!process.env.PRISMATIC_PROJECT_TOKEN)
+        throw new Error(
+          'PRISMATIC_PROJECT_TOKEN is required for Projects access.',
+        );
+      if (process.env.GITHUB_REPOSITORY !== REPOSITORY)
+        throw new Error('Unexpected repository');
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
-    await (sweep ? addMissingIssues : addToProject)({
-      api: ghGraphql,
-      ...config,
+    }
+    const dryRun = flag(process.env, 'DRY_RUN', 'true');
+    const sweeping = flag(process.env, 'SWEEP', 'false');
+    process.exitCode = await runTracker({
+      sweep: sweeping,
+      task: () =>
+        sweeping
+          ? sweep({ api: ghGraphql, dryRun })
+          : addToProject({
+              api: ghGraphql,
+              kind: process.env.CONTENT_TYPE,
+              number: Number(process.env.CONTENT_NUMBER),
+              dryRun,
+            }),
     });
   } catch (error) {
     console.error(failureMessage(error));

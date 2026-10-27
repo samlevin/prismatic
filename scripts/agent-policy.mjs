@@ -1,3 +1,4 @@
+import { CliHelp, cliError, defineCli, parseCli } from './cli.cjs';
 // Repository agent workflows: policy resolution and definition generation.
 //
 // `resolve` turns a role (or capability) plus optional prompt overrides into
@@ -5,14 +6,15 @@
 // and refuses unsupported values instead of letting a runtime substitute one.
 // `generate` writes the Claude Code and Codex definitions from the shared
 // sources under .agents/; `check` fails when a generated file is stale so
-// the two tools cannot drift apart. `publish-review` is the one GitHub write
-// the review-code skill makes.
+// the two tools cannot drift apart. `publish-review` posts a finished manual
+// code review to its pull request for the review-code skill.
 //
 // The sources name no repository. `policy.json` carries a `binding` (the
 // namespace prefix, repository, project, tracker documents, and feature
 // flags), and every `{{placeholder}}` and `{{#feature}}...{{/feature}}`
 // section in a source resolves against it, so another repository reuses the
 // same sources with its own policy file.
+import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -25,7 +27,7 @@ import {
 import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ghRest } from './github-api.mjs';
+import { failureMessage, ghRest } from './github-api.mjs';
 
 export const TOOLS = ['claude', 'codex'];
 // Matches the repository Prettier style so generated YAML passes format:check.
@@ -43,7 +45,6 @@ const SOURCES = {
   policy: '.agents/policy.json',
   roles: '.agents/roles',
   workflows: '.agents/workflows',
-  includes: '.agents/includes',
 };
 const OUTPUTS = {
   claude: { agents: '.claude/agents', skills: '.claude/skills' },
@@ -138,24 +139,6 @@ export function substitute(text, policy) {
     .replaceAll(literal, '{{');
 }
 
-// Includes share text across sources, cannot nest, and stay literal when escaped.
-export function include(text, base = root) {
-  const expanded = text.replace(/(?<!\\)\{\{>([^}]*)\}\}/g, (tag, name) => {
-    const path = join(base, SOURCES.includes, `${name.trim()}.md`);
-    if (!/^ [a-z-]+$/.test(name) || !existsSync(path))
-      throw new Error(`Unknown include: ${tag}`);
-    const content = readFileSync(path, 'utf8').trimEnd();
-    if (/(?<!\\)\{\{>/.test(content))
-      throw new Error(
-        `Nested include in ${SOURCES.includes}/${name.trim()}.md`,
-      );
-    return content;
-  });
-  if (/(?<!\\)\{\{>/.test(expanded))
-    throw new Error('Malformed include in source');
-  return expanded;
-}
-
 function supportedEfforts(policy, tool, model) {
   const supported = policy.supported[tool];
   if (supported.models[model]) return supported.models[model];
@@ -213,6 +196,97 @@ export function resolve(
           fork_turns: 'none',
         };
   return resolved;
+}
+
+// Recorded effort assessments contain evidence, never a score derived from labels.
+export function implementationEffort(
+  policy,
+  { override, decision, transitions = 0, blocker } = {},
+) {
+  const rubric = policy.implementationEffort;
+  const ordinary = {
+    effort: rubric.default,
+    rule: 'default',
+    evidence: 'ticket/spec',
+    reason: 'The written plan resolves the design.',
+  };
+  if (blocker) return { ...ordinary, blocker };
+  if (override)
+    return {
+      effort: override,
+      rule: 'user override',
+      evidence: 'explicit user constraint',
+      reason: 'The request selects this effort.',
+    };
+  if (!decision) return ordinary;
+  if (decision.rule === 'user override') {
+    if (
+      !decision.evidence?.trim() ||
+      !decision.reason?.trim() ||
+      !decision.effort
+    )
+      throw new Error(
+        'An effort override record needs effort, evidence, and reason',
+      );
+    return { ...decision };
+  }
+  const rule = rubric.rules[decision.rule];
+  if (!rule || decision.effort !== rubric.automaticMaximum) return ordinary;
+  if (
+    !decision.evidence?.trim() ||
+    !decision.reason?.trim() ||
+    !decision.question?.trim()
+  )
+    return ordinary;
+  if (!rule.requires.every((key) => decision.criteria?.[key] === true))
+    return ordinary;
+  if (decision.later && transitions >= rubric.maximumTransitions)
+    throw new Error(
+      'Only one automatic medium-to-high transition is allowed per leaf',
+    );
+  return { ...decision };
+}
+
+export function effortAnnouncement(issue, decision) {
+  if (decision.rule === 'default')
+    return 'Implementation effort: medium (default)';
+  return `Implementation effort: medium -> ${decision.effort}; issue: #${issue}; rule: ${decision.rule}; evidence: ${decision.evidence}; reason: ${decision.reason}`;
+}
+
+// Each role gets its own resolver call and spawn object, including on escalation.
+export function implementationDispatch(
+  policy,
+  {
+    tool,
+    issue,
+    model,
+    effort,
+    reviewer = {},
+    decision,
+    transitions = 0,
+    blocker,
+  } = {},
+) {
+  const selected = implementationEffort(policy, {
+    override: effort,
+    decision,
+    transitions,
+    blocker,
+  });
+  if (selected.blocker) throw new Error(selected.blocker);
+  const implementer = resolve(policy, {
+    tool,
+    role: 'implementer',
+    model,
+    ...(selected.rule === 'default' ? {} : { effort: selected.effort }),
+  });
+  const review = resolve(policy, { tool, role: 'code-reviewer', ...reviewer });
+  return {
+    selected,
+    implementer,
+    reviewer: review,
+    announcement: effortAnnouncement(issue, selected),
+  };
 }
 
 // Shared Markdown sources carry YAML frontmatter plus optional blocks that
@@ -377,9 +451,9 @@ export function render(base = root) {
   for (const name of roles) {
     if (!policy.roles[name])
       throw new Error(`Role ${name} has no entry in ${SOURCES.policy}`);
-    const source = include(
-      readFileSync(join(base, SOURCES.roles, `${name}.md`), 'utf8'),
-      base,
+    const source = readFileSync(
+      join(base, SOURCES.roles, `${name}.md`),
+      'utf8',
     );
     files.set(
       `${OUTPUTS.claude.agents}/${prefix(policy)}${name}.md`,
@@ -394,9 +468,9 @@ export function render(base = root) {
     if (!roles.includes(name))
       throw new Error(`Role ${name} has no source in ${SOURCES.roles}`);
   for (const name of listSources(join(base, SOURCES.workflows))) {
-    const source = include(
-      readFileSync(join(base, SOURCES.workflows, `${name}.md`), 'utf8'),
-      base,
+    const source = readFileSync(
+      join(base, SOURCES.workflows, `${name}.md`),
+      'utf8',
     );
     const shared = join(base, SOURCES.workflows, name);
     for (const tool of TOOLS) {
@@ -406,13 +480,10 @@ export function render(base = root) {
       ))
         files.set(`${target}/${file}`, content);
       // Supporting references are copied into both skills with the same
-      // includes and placeholders resolved. Markdown references keep only this
-      // tool's tool-only blocks, so one reference can carry both tools' steps.
+      // placeholders resolved. Markdown references keep only the tool-only
+      // blocks for this tool, so one reference can carry both tools' steps.
       for (const file of listFiles(shared)) {
-        const text = substitute(
-          include(readFileSync(file, 'utf8'), base),
-          policy,
-        );
+        const text = substitute(readFileSync(file, 'utf8'), policy);
         files.set(
           `${target}/${relative(shared, file)}`,
           file.endsWith('.md') ? renderBody(text, tool) : text,
@@ -464,117 +535,228 @@ export function check(base = root) {
   return stale.sort();
 }
 
-function argument(args, name) {
-  const index = args.indexOf(`--${name}`);
-  return index === -1 ? undefined : args[index + 1];
-}
+// Manual review publication. The code-reviewer agent stays read-only. The
+// review-code skill passes its finished report here, and this posts exactly
+// one review to the pull request it reviewed, or posts nothing and says why.
+export const REVIEW_VERDICTS = ['APPROVE', 'REQUEST CHANGES', 'BLOCKED'];
+const FULL_SHA = /^[0-9a-f]{40}$/;
 
-const SHA = /^[0-9a-f]{40}$/;
-
-// Posts a code review report to an open pull request as one review pinned to
-// the reviewed head, after checking that the PR still has the reviewed pair.
-export function publishReview(args, { base = root, run } = {}) {
-  try {
-    const { repository } = loadPolicy(base).binding;
-    const pr = argument(args, 'pr');
-    const reviewedBase = argument(args, 'base');
-    const head = argument(args, 'head');
-    const reportPath = argument(args, 'report');
-    if (
-      !/^[1-9]\d*$/.test(pr ?? '') ||
-      !SHA.test(reviewedBase ?? '') ||
-      !SHA.test(head ?? '') ||
-      !reportPath
-    )
-      throw new Error(
-        'usage: publish-review --pr <N> --base <40-character sha> --head <40-character sha> --report <file>',
-      );
-    let report;
-    try {
-      report = readFileSync(reportPath, 'utf8');
-    } catch (error) {
-      throw new Error(`cannot read the report ${reportPath}: ${error.code}`, {
-        cause: error,
-      });
-    }
-    const verdict = report.match(
-      /^Verdict: (APPROVE|REQUEST CHANGES|BLOCKED)\s*$/m,
-    )?.[1];
-    if (!verdict) throw new Error('the report has no readable Verdict line');
-    const pair = report.match(/^Base\/Head: (\S+?)\.\.(\S+)\s*$/m);
-    if (!pair) throw new Error('the report has no readable Base/Head line');
-    if (pair[1] !== reviewedBase || pair[2] !== head)
-      throw new Error(
-        `the report names ${pair[1]}..${pair[2]}, not the reviewed ${reviewedBase}..${head}`,
-      );
-    const api = (request) => JSON.parse(ghRest(request, { run }));
-    const pull = api([`repos/${repository}/pulls/${pr}`]);
-    if (pull.state !== 'open')
-      throw new Error(
-        `pull request #${pr} is ${pull.merged_at ? 'merged' : 'closed'}; reviews post only to open pull requests`,
-      );
-    if (pull.head.sha !== head)
-      throw new Error(
-        `pull request #${pr} head is now ${pull.head.sha}, not the reviewed ${head}`,
-      );
-    // The skill's `git merge-base <baseRefOid> <headRefOid>`; --jq drops the file patches.
-    const mergeBase = api([
-      `repos/${repository}/compare/${pull.base.sha}...${head}?per_page=1`,
-      '--jq',
-      '{sha: .merge_base_commit.sha}',
-    ]).sha;
-    if (mergeBase !== reviewedBase)
-      throw new Error(
-        `pull request #${pr} now has merge base ${mergeBase} with ${pull.base.ref}, not the reviewed ${reviewedBase}`,
-      );
-    let login;
-    try {
-      login = api(['user']).login;
-    } catch {
-      login = undefined;
-    }
-    const author = pull.user.login;
-    const event =
-      verdict === 'REQUEST CHANGES' && login && login !== author
-        ? 'REQUEST_CHANGES'
-        : 'COMMENT';
-    const reason = {
-      APPROVE: 'agent reviews never approve',
-      BLOCKED: 'it is not a review decision',
-      'REQUEST CHANGES': login
-        ? `GitHub does not let ${author} request changes on their own pull request`
-        : 'the posting account could not be identified and may be the pull request author',
-    }[verdict];
-    const body =
-      event === 'REQUEST_CHANGES'
-        ? report
-        : `Verdict ${verdict} is posted as a comment because ${reason}.\n\n${report}`;
-    const review = api([
-      '--method',
-      'POST',
-      `repos/${repository}/pulls/${pr}/reviews`,
-      '-f',
-      `commit_id=${head}`,
-      '-f',
-      `event=${event}`,
-      '-f',
-      `body=${body}`,
-    ]);
-    return { status: 0, line: `Posted: ${event} ${review.html_url}` };
-  } catch (error) {
-    return { status: 1, line: `Review not posted: ${error.message}` };
+export class ReviewNotPosted extends Error {
+  constructor(message) {
+    super(`Review not posted: ${message}`);
+    this.name = 'ReviewNotPosted';
   }
 }
 
+// Reads the verdict and the reviewed SHAs from a code-reviewer report, which
+// has `Verdict: <verdict>` and `Base/Head: <sha>..<sha>` lines. Light
+// Markdown around either is tolerated. Two different verdicts are an error,
+// and so is a missing or unreadable pair: a review binds to the commits it
+// read, so a report that does not name them is never posted.
+export function parseReviewReport(text) {
+  const verdicts = new Set(
+    [
+      ...String(text).matchAll(
+        /^[\s>*_`-]*Verdict:[\s*_`]*(APPROVE|REQUEST CHANGES|BLOCKED)\b/gm,
+      ),
+    ].map((match) => match[1]),
+  );
+  if (verdicts.size !== 1)
+    throw new ReviewNotPosted(
+      verdicts.size
+        ? `the report has conflicting verdicts (${[...verdicts].join(', ')})`
+        : `the report has no Verdict: line with ${REVIEW_VERDICTS.join(', ')}`,
+    );
+  const pair =
+    /^[\s>*_`-]*Base\/Head:[\s*_`]*([0-9a-f]{7,40})`?\s*\.\.\s*`?([0-9a-f]{7,40})\b/m.exec(
+      String(text),
+    );
+  if (!pair)
+    throw new ReviewNotPosted(
+      'the report has no Base/Head: <sha>..<sha> line naming the reviewed commits',
+    );
+  return { verdict: [...verdicts][0], base: pair[1], head: pair[2] };
+}
+
+// GitHub rejects REQUEST_CHANGES and APPROVE from a pull request's own
+// author, so a change request goes out only when the publishing account is
+// known and differs from the author. Logins compare case-insensitively, as
+// GitHub treats them. Agent names and models never enter the comparison.
+// Every other case is a COMMENT review, and nothing here ever approves.
+export function reviewEvent({ verdict, viewer, author, identityError }) {
+  if (!REVIEW_VERDICTS.includes(verdict))
+    throw new Error(`Unknown review verdict: ${verdict}`);
+  if (!viewer || !author)
+    return {
+      event: 'COMMENT',
+      note: `The publishing GitHub account could not be compared with the pull request author (${identityError ?? 'GitHub returned no login'}), so this review is posted as a comment and cannot request changes.`,
+    };
+  const same = viewer.toLowerCase() === author.toLowerCase();
+  if (verdict === 'REQUEST CHANGES')
+    return same
+      ? {
+          event: 'COMMENT',
+          note: `The verdict is REQUEST CHANGES, but it is posted as a comment rather than a change request because the reviewer and the pull request author share the GitHub account @${author}, and GitHub does not let an account request changes on its own pull request.`,
+        }
+      : { event: 'REQUEST_CHANGES', note: null };
+  if (verdict === 'APPROVE')
+    return {
+      event: 'COMMENT',
+      note: 'This workflow never submits a GitHub approval, so the APPROVE verdict is posted as a comment.',
+    };
+  return { event: 'COMMENT', note: null };
+}
+
+export function reviewBody(policy, { report, base, head, note }) {
+  const parts = [
+    `${binding(policy).label} code review of \`${base}..${head}\`, requested through \`${prefix(policy)}review-code\`.`,
+  ];
+  if (note) parts.push(`> ${note}`);
+  parts.push(String(report).trim());
+  return `${parts.join('\n\n')}\n`;
+}
+
+function ghJson(path, run, { method, input } = {}) {
+  const args = [path, ...(method ? ['--method', method] : [])];
+  if (input !== undefined) args.push('--input', '-');
+  let output;
+  try {
+    output = ghRest(args, { run, input });
+  } catch (cause) {
+    throw new Error(failureMessage(cause), { cause });
+  }
+  try {
+    return JSON.parse(output);
+  } catch {
+    throw new Error(`gh api ${path} returned a response that is not JSON`);
+  }
+}
+
+export function publishReview(
+  policy,
+  { pr, base, head, report },
+  run = execFileSync,
+) {
+  const repository = binding(policy).repository;
+  if (!/^[1-9][0-9]*$/.test(String(pr)))
+    throw new ReviewNotPosted('--pr must be a pull request number');
+  for (const [name, sha] of Object.entries({ base, head }))
+    if (!FULL_SHA.test(sha ?? ''))
+      throw new ReviewNotPosted(`--${name} must be a full 40-character SHA`);
+  if (!String(report ?? '').trim())
+    throw new ReviewNotPosted('the review report is empty');
+  const reviewed = parseReviewReport(report);
+  if (!base.startsWith(reviewed.base) || !head.startsWith(reviewed.head))
+    throw new ReviewNotPosted(
+      `the report reviewed ${reviewed.base}..${reviewed.head}, not ${base}..${head}. Run a fresh review.`,
+    );
+  let pull;
+  try {
+    pull = ghJson(`repos/${repository}/pulls/${pr}`, run);
+  } catch (error) {
+    throw new ReviewNotPosted(error.message);
+  }
+  // A review posts only to an open pull request. A merged or closed one
+  // still gets its report, but nothing is written to it.
+  if (pull?.merged === true || pull?.merged_at)
+    throw new ReviewNotPosted('pull request is merged');
+  if (pull?.state !== 'open')
+    throw new ReviewNotPosted(
+      pull?.state === 'closed'
+        ? 'pull request is closed'
+        : `pull request state is ${pull?.state ?? 'unknown'}, not open`,
+    );
+  if (pull?.base?.sha !== base || pull?.head?.sha !== head)
+    throw new ReviewNotPosted(
+      `pull request #${pr} is now at ${pull?.base?.sha}..${pull?.head?.sha}, not the reviewed ${base}..${head}. Run a fresh review for the new commits.`,
+    );
+  let viewer = null;
+  let identityError;
+  try {
+    viewer = ghJson('user', run)?.login || null;
+  } catch (error) {
+    identityError = error.message;
+  }
+  const author = pull.user?.login || null;
+  if (!identityError && !author)
+    identityError = 'GitHub returned no pull request author';
+  const { event, note } = reviewEvent({
+    verdict: reviewed.verdict,
+    viewer,
+    author,
+    identityError,
+  });
+  if (!['COMMENT', 'REQUEST_CHANGES'].includes(event))
+    throw new ReviewNotPosted(`refusing to submit a ${event} review`);
+  let posted;
+  try {
+    posted = ghJson(`repos/${repository}/pulls/${pr}/reviews`, run, {
+      method: 'POST',
+      // commit_id pins the review to the reviewed head, so GitHub shows it
+      // as outdated once the pull request moves.
+      input: JSON.stringify({
+        commit_id: head,
+        event,
+        body: reviewBody(policy, { report, base, head, note }),
+      }),
+    });
+  } catch (error) {
+    throw new ReviewNotPosted(
+      `${error.message.replace(/\.$/, '')}. Check the pull request before retrying.`,
+    );
+  }
+  if (!posted?.html_url)
+    throw new ReviewNotPosted(
+      'GitHub returned no review URL, so the review cannot be confirmed as posted. Check the pull request before retrying.',
+    );
+  return {
+    posted: true,
+    event,
+    verdict: reviewed.verdict,
+    note,
+    url: posted.html_url,
+    reviewer: viewer,
+    author,
+    base,
+    head,
+  };
+}
+
+const COMMAND_OPTIONS = {
+  resolve: ['tool', 'role', 'capability', 'model', 'effort'],
+  generate: [],
+  check: [],
+  'publish-review': ['pr', 'base', 'head', 'report'],
+};
+const USAGE =
+  'Usage: node scripts/agent-policy.mjs <resolve|generate|check|publish-review> [options]';
+
 function main(args) {
   const [command, ...rest] = args;
+  const commandHelp = defineCli(USAGE, Object.values(COMMAND_OPTIONS).flat());
+  if (command === '--help' || command === '-h')
+    throw new CliHelp(commandHelp.help);
+  if (!Object.hasOwn(COMMAND_OPTIONS, command)) {
+    console.error(
+      cliError(
+        commandHelp,
+        command ? `Unknown command ${command}` : 'Name a command',
+      ).message,
+    );
+    return 2;
+  }
+  const cli = defineCli(USAGE, COMMAND_OPTIONS[command]);
+  const { options, positionals } = parseCli(rest, cli);
+  if (positionals.length) throw cliError(cli, 'Unexpected positional argument');
+  if (command === 'resolve' && options.role && options.capability)
+    throw cliError(cli, 'Use --role or --capability, not both');
   if (command === 'resolve') {
     const resolved = resolve(loadPolicy(), {
-      tool: argument(rest, 'tool'),
-      role: argument(rest, 'role'),
-      capability: argument(rest, 'capability'),
-      model: argument(rest, 'model'),
-      effort: argument(rest, 'effort'),
+      tool: options.tool,
+      role: options.role,
+      capability: options.capability,
+      model: options.model,
+      effort: options.effort,
     });
     console.log(JSON.stringify(resolved, null, 2));
     return 0;
@@ -584,9 +766,30 @@ function main(args) {
     return 0;
   }
   if (command === 'publish-review') {
-    const { status, line } = publishReview(rest);
-    (status ? console.error : console.log)(line);
-    return status;
+    const reportPath = options.report;
+    if (!reportPath) throw new ReviewNotPosted('--report <file> is required');
+    let report;
+    try {
+      report = readFileSync(reportPath, 'utf8');
+    } catch (error) {
+      throw new ReviewNotPosted(`cannot read ${reportPath}: ${error.message}`);
+    }
+    let policy;
+    try {
+      policy = loadPolicy();
+    } catch (error) {
+      throw new ReviewNotPosted(
+        `cannot load ${SOURCES.policy}: ${error.message}`,
+      );
+    }
+    const result = publishReview(policy, {
+      pr: options.pr,
+      base: options.base,
+      head: options.head,
+      report,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return 0;
   }
   if (command === 'check') {
     const stale = check();
@@ -596,20 +799,16 @@ function main(args) {
     );
     return 1;
   }
-  console.error(
-    'Usage: node scripts/agent-policy.mjs resolve --tool <claude|codex> (--role <role> | --capability <capability>) [--model <model>] [--effort <effort>]\n' +
-      '       node scripts/agent-policy.mjs generate\n' +
-      '       node scripts/agent-policy.mjs check\n' +
-      '       node scripts/agent-policy.mjs publish-review --pr <N> --base <sha> --head <sha> --report <file>',
-  );
-  return 2;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {
-    console.error(error.message);
-    process.exitCode = 1;
+    if (error instanceof CliHelp) console.log(error.message);
+    else {
+      console.error(error.message);
+      process.exitCode = 1;
+    }
   }
 }

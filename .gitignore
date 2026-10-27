@@ -5,3 +5,4 @@ node_modules/
 .codex/worktrees/
 coverage/
 dist/
+.playwright-mcp/

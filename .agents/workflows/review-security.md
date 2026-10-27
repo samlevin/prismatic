@@ -16,14 +16,14 @@ Runs only when a person explicitly asked for a security review. If the request c
 
 ## Gather
 
-1. Resolve the target in `{{repository}}`: a PR number or URL (`gh api repos/{{repository}}/pulls/<n> --jq '{headRefName: .head.ref, headRefOid: .head.sha, baseRefName: .base.ref, baseRefOid: .base.sha, url: .html_url}'`) or a branch (`git ls-remote origin <branch>`; base is the merge base with `origin/main` unless the request names one). Return BLOCKED if the base cannot be inferred safely.
+1. Resolve the target in `{{repository}}`: a PR number or URL (`gh api repos/{{repository}}/pulls/<n> --jq '{head_ref: .head.ref, head_sha: .head.sha, base_ref: .base.ref, base_sha: .base.sha, url: .html_url}'`) or a branch (`git ls-remote origin <branch>`; base is the merge base with `origin/main` unless the request names one). Return BLOCKED if the base cannot be inferred safely.
 2. `git fetch origin <branch>` on the human checkout (read-only) so the objects exist locally; the reviewer reads through `git diff` and `git show` in that worktree path.
 3. Record the scope the person named (whole diff by default; {{#infrastructure}}OpenTofu, CDK, or {{/infrastructure}}workflow paths when they say so).
 4. Parse overrides: `model <name>` and `effort <level>` apply to the reviewer. A partial override changes only the named setting.
 
 ## Dispatch
 
-Run `node scripts/agent-policy.mjs resolve --tool <tool> --role security-reviewer`, adding `--model` or `--effort` only for an override. If it exits non-zero, stop and report its message verbatim. Compose `Policy: tool=<tool> role={{prefix}}security-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)`.
+Run `node scripts/agent-policy.mjs resolve --tool <tool> --role security-reviewer`, adding `--model` or `--effort` only for an override. If it exits non-zero, stop and report its message verbatim. Compose `Policy: tool=<tool> role=security-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)`.
 
 Packet: repo, branch, head SHA, base SHA, scope, the worktree path, and the `Policy:` line.
 
@@ -36,4 +36,4 @@ Use `spawn_agent` with `agent_type: {{prefix}}security-reviewer`, `model` and `r
 
 ## Report
 
-Print the verdict, scope and SHAs, findings, limits, and the `Requested settings:` line verbatim. Never print secret values; cite locations. Filing issues or posting to the PR needs a separate explicit request.
+Print the verdict, scope and SHAs, findings, limits, and `Requested settings: Policy: <as dispatched>` line verbatim. Never print secret values; cite locations. Filing issues or posting to the PR needs a separate explicit request.
