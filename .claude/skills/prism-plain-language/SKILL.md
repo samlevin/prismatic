@@ -13,7 +13,7 @@ These rules cover text that other people read: PR titles and bodies, commit mess
 
 A plain PR paragraph, for an invented change:
 
-> The tracker scripts now retry a GitHub call once when it returns a 502. Before, one 502 failed the whole run and left the issue in the wrong column. I put the retry in `ghRest`, which every script calls. A second 502 still fails the run and logs GitHub's error message. The new tests mock a 502 then a success, two 502s, and a 404. A 404 still fails at once, with no retry.
+> The tracker scripts now retry a GitHub call once when it returns a 502. Before, one 502 failed the whole run and left the issue in the wrong column. The retry is in `ghRest`, which every script calls. A second 502 still fails the run and logs GitHub's error message. The new tests mock a 502 then a success, two 502s, and a 404. A 404 still fails at once, with no retry.
 
 The same paragraph written badly. Each marker is a rule number below.
 
@@ -31,7 +31,7 @@ Rules 17 and 18 work at the scale of a whole document, so one paragraph can't sh
 6. **Filler.** Words the sentence would mean the same without. Some frame the subject instead of naming it ("when it comes to", "in terms of", "in this day and age"). Some point at the text itself ("as we can see", "as mentioned above", "to summarize", "in conclusion"). Some flag interest or importance ("interestingly", "notably", "it's worth noting that"). Some put a claim in someone else's mouth ("one might argue"), and some vouch for sincerity ("honestly", "to be honest", "the honest answer"). Delete them. In place of "furthermore", "moreover", and "additionally", use "and" or "also", or begin the next sentence with its subject. If several paragraphs open with "However" or another connective, cut the connective.
 7. **Inflated words.** A grand word where a plain one is accurate. See [Words](#words).
 8. **Sprawl.** One sentence that chains clauses with "which", "and", "so", and "but", each qualifying the last. Put one idea in each sentence. Join two only when the link between them is the point.
-9. **Missing actor.** A person's work told without the person. The artifact acts ("this PR introduces", "your tests shaped ours"), the thing that changed becomes the subject while the doer hides in a phrase ("every script gains retries via the shared layer"), or the sentence goes passive ("a retry was added"). Make the doer the subject and the deed the verb: "I added a retry to `ghRest`." Or state the new state with no event: "`ghRest` retries once." A tool doing its own job is a fine subject: "the parser rejects malformed input." Name things directly too: "our new tests", not "the ones that merged". And don't squeeze a sequence of events into one clause: "your review drove the final design" hides "you found the race, and I moved the lock". Tell what happened, in order, with the people in it.
+9. **Missing actor.** A person's work told without the person. The artifact acts ("this PR introduces", "your tests shaped ours"), the thing that changed becomes the subject while the doer hides in a phrase ("every script gains retries via the shared layer"), or the sentence goes passive ("a retry was added"). Make the doer the subject and the deed the verb: "I added a retry to `ghRest`." Or state the new state with no event: "`ghRest` retries once." A tool doing its own job is a fine subject: "the parser rejects malformed input." Name things directly too: "our new tests", not "the ones that merged". Naming the doer makes a claim clear. It is not a reason to tell the story of the work, which [PR bodies and commit messages](#pr-bodies-and-commit-messages) leaves out.
 10. **Forced symmetry.** Three adjectives in a row, a list padded or trimmed to a tidy count such as three or five, sections cut to equal length, every bullet opening the same way, bullets for what is one sentence. Facts are uneven. Let each list be as long as its facts.
 11. **Restatement.** Saying a thing twice: a lead sentence that sums up its paragraph, a first line that repeats its heading, a clause that repeats its sentence's opening. If deleting a phrase loses no information, delete it:
 
@@ -45,20 +45,6 @@ Rules 17 and 18 work at the scale of a whole document, so one paragraph can't sh
 16. **Splices.** Em dashes, ` - ` or ` -- ` used the same way, and semicolons or colons that join two clauses. Split the sentence or rebuild it. A colon that introduces a list or an example is fine.
 17. **Even texture.** Paragraphs that all follow one template, and sentences that all run about twenty words. Let length follow content. A section with two facts gets two sentences.
 18. **False depth.** Text that sounds thorough without adding facts: an "it depends" that never says on what, a list of considerations every reader already has in mind, or the problem told again in bigger words. Replace it with the measurement, the failing input, or the decision you made.
-
-## Docs
-
-Docs, READMEs, specs, and agent instructions describe the current state: what exists, how to set it up, and how to run it. The history of a change or a fix goes in the PR body, the commit message, or a changelog.
-
-A current-state README paragraph, for an invented script:
-
-> `scripts/issue-sync.mjs` moves an issue to Done when it closes and leaves pull requests off the project. Run `node scripts/issue-sync.mjs <issue>` for a dry run, and add `--apply` to write the change.
-
-The same paragraph written as history:
-
-> `scripts/issue-sync.mjs` now moves closed issues to Done. It used to leave them in In review until we fixed that in #41, and we also stopped adding pull requests to the project after they started showing up twice.
-
-A reader of the second version learns what the script did before, which no longer matters to them, and still has to work out how to run it.
 
 ## Words
 
@@ -90,6 +76,24 @@ Use the most ordinary word that is still accurate. These come up most often:
 | surface (verb) | show, report, raise |
 | testament to | shows |
 | underscore | show, stress |
+
+## PR bodies and commit messages
+
+A PR body or commit message states the change, the reason for it, the decisions a reviewer should check, the open findings, and the validation results. It leaves out the delivery history: how the evidence was gathered, the order the work was done in, and who raised what during review. Write the fact that the history points to. "The parser reads both totals correctly" replaces "In both test runs, the parser read the right numbers". "`parseRow` accepts a negative score" replaces "The reviewer raised three low findings that I left for follow-up", with one line for each open finding. A before-and-after statement of behavior, such as "Before, one 502 failed the whole run", is a fact about the defect and stays.
+
+## Docs and code comments
+
+Docs, READMEs, guides, specs, agent instructions, wiki pages, and code comments describe the current state: what exists, and how to set it up, bootstrap, deploy, and run it. They are not a log of problems and fixes, and they are not ordered by when things happened. Write how it works, not how it came to work that way: "`ghRest` retries once on a 502", not "`ghRest` now retries, because a 502 used to fail the run". Change history goes in PR bodies, commit messages, and changelogs, where the example above belongs. A code comment may keep prior context only to explain an established regression the code must not reintroduce.
+
+A current-state README paragraph, for an invented script:
+
+> `scripts/issue-sync.mjs` moves an issue to Done when it closes and leaves pull requests off the project. Run `node scripts/issue-sync.mjs <issue>` for a dry run, and add `--apply` to write the change.
+
+The same paragraph written as history:
+
+> `scripts/issue-sync.mjs` now moves closed issues to Done. It used to leave them in In review until we fixed that in #41, and we also stopped adding pull requests to the project after they started showing up twice.
+
+A reader of the second version learns what the script did before, which no longer matters to them, and still has to work out how to run it.
 
 ## Format
 

@@ -264,10 +264,11 @@ export function ghGraphql(
   return json.data;
 }
 
-// Runs a REST request and returns the response body text. A failure carries
-// the HTTP status as `httpStatus` when GitHub sent one.
-export function ghRest(args, { run = execFileSync } = {}) {
-  const output = request(args, { run, graphql: false });
+// Runs a REST request and returns the response body text. `input` goes to
+// gh on stdin, for `--input -`. A failure carries the HTTP status as
+// `httpStatus` when GitHub sent one.
+export function ghRest(args, { run = execFileSync, input } = {}) {
+  const output = request(args, { input, run, graphql: false });
   if (output.failed || output.status >= 400) throw responseError(output);
   return output.body;
 }

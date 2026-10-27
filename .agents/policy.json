@@ -1,5 +1,5 @@
 {
-  "description": "Binding, model, and effort policy for this repository's agent workflows. scripts/agent-policy.mjs reads this file and generates both the Claude Code and Codex definitions from it.",
+  "description": "Binding, model, and effort policy for this repository's agent workflows, including the implementation effort rubric. scripts/agent-policy.mjs reads this file and generates both the Claude Code and Codex definitions from it.",
   "binding": {
     "namespace": "prism",
     "label": "Prismatic",
@@ -42,14 +42,14 @@
       }
     },
     "implementation": {
-      "summary": "Leaf delivery, PR rework, and container queues through ready-for-review PRs; binding for an isolated implementer, advisory for the main thread",
+      "summary": "Delegated leaf delivery and PR rework through ready-for-review PRs; advisory only for explicit inline delivery",
       "claude": {
         "model": "opus",
-        "effort": "high"
+        "effort": "medium"
       },
       "codex": {
         "model": "gpt-6.1-sol",
-        "effort": "high"
+        "effort": "medium"
       }
     },
     "code-review": {
@@ -102,6 +102,69 @@
         "gpt-5.6-sol": ["low", "medium", "high", "xhigh", "max", "ultra"],
         "gpt-5.6-terra": ["low", "medium", "high", "xhigh", "max", "ultra"],
         "gpt-5.6-luna": ["low", "medium", "high", "xhigh", "max"]
+      }
+    }
+  },
+  "implementationEffort": {
+    "default": "medium",
+    "automaticMaximum": "high",
+    "maximumTransitions": 1,
+    "assessmentOrder": [
+      "Reuse ticket/spec decisions",
+      "Name a concrete unresolved correctness question",
+      "Inspect only relevant evidence when needed",
+      "Try an existing pattern, focused test, or smaller reviewable step",
+      "Apply a rule only with evidence and why medium with the written plan is insufficient"
+    ],
+    "blockers": [
+      "missing acceptance criteria",
+      "missing product decisions",
+      "missing credentials",
+      "unmet prerequisites",
+      "missing reproducible evidence"
+    ],
+    "nonTriggers": [
+      "labels",
+      "severity",
+      "risk",
+      "area",
+      "infrastructure",
+      "shared packages",
+      "Size L",
+      "file count",
+      "multiple consumers",
+      "unfamiliar code",
+      "routine failures",
+      "review round count"
+    ],
+    "rules": {
+      "H1-boundary": {
+        "description": "Design or prove a new security, immutable-evidence, persistent-data, or compatibility guarantee across components. The ticket/spec leaves the mechanism unresolved. Applying an established specified pattern does not qualify.",
+        "requires": [
+          "newGuarantee",
+          "acrossComponents",
+          "mechanismUnresolved",
+          "failureScenario"
+        ]
+      },
+      "H2-coupled-design": {
+        "description": "An algorithm, state machine, concurrency protocol, or migration has interacting correctness constraints unresolved by the supplied design. File count, Size L, and multiple consumers do not qualify.",
+        "requires": [
+          "interactingConstraints",
+          "designUnresolved",
+          "patternsInsufficient",
+          "testsInsufficient",
+          "decompositionInsufficient"
+        ]
+      },
+      "H3-demonstrated-limit": {
+        "description": "A medium attempt produced a reproducible correctness failure or substantive review finding requiring an underlying design revision. Routine test, formatting, environment failures, first unsuccessful attempts, and review counts do not qualify. Retry and two-round review limits still apply.",
+        "requires": [
+          "mediumAttempt",
+          "reproducibleFailureOrFinding",
+          "designRevisionRequired",
+          "unresolvedReasoning"
+        ]
       }
     }
   }
