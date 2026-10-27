@@ -137,11 +137,7 @@ function parseCli(argv, cli) {
     throw cliError(cli, error.message);
   }
   for (const [name, value] of Object.entries(values)) {
-    if (
-      cli.options[name].type === 'string' &&
-      value === '' &&
-      name !== 'reason'
-    )
+    if (cli.options[name].type === 'string' && value === '')
       throw cliError(cli, `--${name} requires a value`);
   }
   if (values.help) throw new CliHelp(cli.help);

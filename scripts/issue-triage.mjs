@@ -142,15 +142,15 @@ export const SWEEP_FILTER = `is:issue is:open -status:${SETTLED_STATUSES.map(
   (status) => (status.includes(' ') ? `"${status}"` : status),
 ).join(',')}`;
 
-// The open issue items that can qualify for Ready, each with the first page of
-// its field values and labels.
-export async function listItems(api, projectId) {
+// The project items that match `filter`, by default the open issue items that
+// can qualify for Ready, each with the first page of its field values and labels.
+export async function listItems(api, projectId, filter = SWEEP_FILTER) {
   return paginate(async (cursor) => {
     const data = await api(
       `query($id: ID!, $cursor: String, $filter: String!) { node(id: $id) { ... on ProjectV2 {
         items(first: 100, after: $cursor, query: $filter) { nodes { ${ITEM} } ${PAGE} }
       } } }`,
-      { id: projectId, cursor, filter: SWEEP_FILTER },
+      { id: projectId, cursor, filter },
     );
     if (!data.node)
       throw new Error('Prismatic delivery project is unavailable');
@@ -241,6 +241,14 @@ export async function updateProjectStatus(api, context, itemId, status) {
   );
 }
 
+function checkIssueNumber(issueNumber) {
+  if (
+    issueNumber !== undefined &&
+    (!Number.isSafeInteger(issueNumber) || issueNumber <= 0)
+  )
+    throw new Error('--issue requires a positive safe integer');
+}
+
 export async function reconcile({
   api,
   dryRun = true,
@@ -248,11 +256,7 @@ export async function reconcile({
   log = console.log,
   warn = warning,
 }) {
-  if (
-    issueNumber !== undefined &&
-    (!Number.isSafeInteger(issueNumber) || issueNumber <= 0)
-  )
-    throw new Error('--issue requires a positive safe integer');
+  checkIssueNumber(issueNumber);
   const context = await discover(api);
   // One issue reads only its own project items; a sweep lists the project.
   const items =
@@ -304,6 +308,81 @@ export async function reconcile({
   }
   log(
     `Triage reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
+  );
+  return { candidates, updated };
+}
+
+// The Status an issue's state requires: Done when closed, Ready when reopened
+// out of Done, otherwise none.
+function doneTarget(state, status) {
+  if (state === 'CLOSED' && status !== 'Done') return 'Done';
+  if (state === 'OPEN' && status === 'Done') return 'Ready';
+  return undefined;
+}
+
+// A sweep lists only the issues whose Status disagrees with their state.
+export const DONE_FILTERS = [
+  'is:issue is:closed -status:Done',
+  'is:issue is:open status:Done',
+];
+
+// Keeps Done equal to closed: moves every closed issue on the board to Done,
+// whatever its Status, and every reopened issue still in Done back to Ready.
+export async function reconcileDone({
+  api,
+  dryRun = true,
+  issueNumber,
+  log = console.log,
+  warn = warning,
+}) {
+  checkIssueNumber(issueNumber);
+  const context = await discover(api, { Status: ['Ready', 'Done'] });
+  const items = [];
+  if (issueNumber === undefined)
+    for (const filter of DONE_FILTERS)
+      items.push(...(await listItems(api, context.projectId, filter)));
+  else items.push(...(await issueItems(api, issueNumber)));
+  let candidates = 0;
+  let updated = 0;
+  for (const listed of items) {
+    if (listed.type === 'ISSUE' && !listed.content) {
+      warn(`Project item ${listed.id} has no readable issue; skipping`);
+      continue;
+    }
+    if (
+      listed.type !== 'ISSUE' ||
+      listed.content?.repository?.nameWithOwner !== REPOSITORY ||
+      (issueNumber !== undefined && listed.content.number !== issueNumber)
+    )
+      continue;
+    const item = await completeItem(api, listed, context);
+    if (!item || !doneTarget(item.content.state, item.fields.Status)) continue;
+    // Re-read the issue state and Status at the write boundary.
+    const fresh = await readItem(api, listed.id, context);
+    if (!fresh) {
+      warn(`Issue #${listed.content.number} left the project; skipping`);
+      continue;
+    }
+    if (fresh.content?.repository?.nameWithOwner !== REPOSITORY) {
+      warn(missingIssue(listed.content.number));
+      continue;
+    }
+    const target = doneTarget(fresh.content.state, fresh.fields.Status);
+    if (
+      !target ||
+      (issueNumber !== undefined && fresh.content.number !== issueNumber)
+    )
+      continue;
+    candidates++;
+    log(
+      `${dryRun ? 'DRY_RUN would move' : 'Moving'} ${target === 'Done' ? 'closed' : 'reopened'} issue #${fresh.content.number} ${fresh.fields.Status ?? 'without Status'} -> ${target}`,
+    );
+    if (dryRun) continue;
+    await updateProjectStatus(api, context, fresh.id, target);
+    updated++;
+  }
+  log(
+    `Done reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
   );
   return { candidates, updated };
 }
@@ -504,6 +583,7 @@ if (
       task: async () => {
         await reconcileEpicLabels({ api: trackerGraphql, ...config });
         await reconcile({ api: trackerGraphql, ...config });
+        await reconcileDone({ api: trackerGraphql, ...config });
       },
     });
   } catch (error) {

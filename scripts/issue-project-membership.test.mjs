@@ -1,7 +1,65 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { addToProject, sweep } from './issue-project-membership.mjs';
+import { REPOSITORY } from './issue-triage.mjs';
 import { evaluate, workflow } from './workflow-test-helpers.mjs';
+
+// Answers the Status field discovery, project item reads, and Status writes.
+// `statuses` maps project item node IDs to their Status.
+function board(statuses, projectId = 'P_1') {
+  const page = (nodes) => ({ nodes, pageInfo: { hasNextPage: false } });
+  const statusWrites = [];
+  const answer = (query, variables) => {
+    if (query.includes('fields(first: 100'))
+      return {
+        user: {
+          projectV2: {
+            id: projectId,
+            fields: page([
+              {
+                id: 'F_status',
+                name: 'Status',
+                options: ['Inbox', 'Ready', 'In progress'].map((name) => ({
+                  id: `O_${name}`,
+                  name,
+                })),
+              },
+            ]),
+          },
+        },
+      };
+    if (query.includes('updateProjectV2ItemFieldValue')) {
+      statusWrites.push(variables);
+      statuses.set(variables.item, variables.option.slice('O_'.length));
+      return {};
+    }
+    if (query.includes('... on ProjectV2Item {')) {
+      const status = statuses.get(variables.id);
+      return {
+        node: {
+          id: variables.id,
+          type: 'ISSUE',
+          project: { id: projectId },
+          fieldValues: page(
+            status
+              ? [{ field: { id: 'F_status' }, optionId: `O_${status}` }]
+              : [],
+          ),
+          content: {
+            __typename: 'Issue',
+            id: 'I',
+            number: 1,
+            state: 'OPEN',
+            repository: { nameWithOwner: REPOSITORY },
+            labels: page([]),
+          },
+        },
+      };
+    }
+    return undefined;
+  };
+  return { answer, statusWrites };
+}
 
 // A mocked GitHub that keeps one project item per content node, as
 // addProjectV2ItemById does.
@@ -9,10 +67,14 @@ function github({
   issues = { 7: 'I_7' },
   project = { id: 'P_1', closed: false },
   items = new Map(),
+  statuses = new Map(),
 } = {}) {
   const reads = [];
   const writes = [];
+  const { answer, statusWrites } = board(statuses, project?.id);
   const api = async (query, variables) => {
+    const answered = answer(query, variables);
+    if (answered) return answered;
     if (query.startsWith('mutation')) {
       assert.match(query, /addProjectV2ItemById/);
       writes.push(variables);
@@ -37,12 +99,22 @@ function github({
     assert.match(query, /issue\(number: \$number\)/);
     assert.doesNotMatch(query, /pullRequest/);
     const id = issues[variables.number];
+    const item = items.get(id);
     return {
-      repository: { issue: id ? { id } : null },
+      repository: {
+        issue: id
+          ? {
+              id,
+              projectItems: {
+                nodes: item ? [{ id: `PVTI_${item}`, project }] : [],
+              },
+            }
+          : null,
+      },
       user: { projectV2: project },
     };
   };
-  return { api, reads, writes, items, log: () => {} };
+  return { api, reads, writes, items, statuses, statusWrites, log: () => {} };
 }
 
 test('adds a new issue to the project and prints its REST item ID', async () => {
@@ -59,7 +131,57 @@ test('adds a new issue to the project and prints its REST item ID', async () => 
     '101',
   );
   assert.deepEqual(f.writes, [{ project: 'P_1', content: 'I_7' }]);
-  assert.deepEqual(logs, ['Issue #7: in Prismatic delivery as item 101.']);
+  assert.deepEqual(f.statusWrites, [
+    { project: 'P_1', item: 'PVTI_101', field: 'F_status', option: 'O_Inbox' },
+  ]);
+  assert.deepEqual(logs, [
+    'Issue #7: in Prismatic delivery as item 101.',
+    'Issue #7: set its Status to Inbox.',
+  ]);
+});
+
+test('an existing Status never changes', async () => {
+  const f = github({
+    items: new Map([['I_7', '276979720']]),
+    statuses: new Map([['PVTI_276979720', 'In progress']]),
+  });
+  const logs = [];
+  assert.equal(
+    await addToProject({
+      ...f,
+      kind: 'issue',
+      number: 7,
+      dryRun: false,
+      log: (line) => logs.push(line),
+    }),
+    '276979720',
+  );
+  assert.deepEqual(f.statusWrites, []);
+  assert.equal(f.statuses.get('PVTI_276979720'), 'In progress');
+  assert.deepEqual(logs, [
+    'Issue #7: in Prismatic delivery as item 276979720.',
+    'Issue #7: kept its Status In progress.',
+  ]);
+});
+
+test('a missing Status field or Inbox option fails before adding', async () => {
+  for (const options of [[], ['Inbox', 'Inbox']]) {
+    const f = github();
+    const api = async (query, variables) => {
+      const data = await f.api(query, variables);
+      if (query.includes('fields(first: 100'))
+        data.user.projectV2.fields.nodes[0].options = options.map((name) => ({
+          id: `O_${name}`,
+          name,
+        }));
+      return data;
+    };
+    await assert.rejects(
+      addToProject({ ...f, api, kind: 'issue', number: 7, dryRun: false }),
+      /Status option Inbox/,
+    );
+    assert.deepEqual(f.writes, []);
+  }
 });
 
 test('pull request input fails before any API call, including dry runs', async () => {
@@ -84,11 +206,40 @@ test('an item already in the project is returned without a duplicate', async () 
   assert.equal(f.items.size, 1);
 });
 
-test('dry runs read but never write', async () => {
-  const f = github();
-  assert.equal(await addToProject({ ...f, kind: 'issue', number: 7 }), null);
-  assert.equal(f.reads.length, 1);
-  assert.deepEqual(f.writes, []);
+test('dry runs read but never write, and say what they would do', async () => {
+  for (const [items, statuses, line] of [
+    [
+      new Map(),
+      new Map(),
+      'Issue #7: would add to Prismatic delivery and set its Status to Inbox (dry run).',
+    ],
+    [
+      new Map([['I_7', '5']]),
+      new Map(),
+      'Issue #7: would keep in Prismatic delivery and set its Status to Inbox (dry run).',
+    ],
+    [
+      new Map([['I_7', '5']]),
+      new Map([['PVTI_5', 'Ready']]),
+      'Issue #7: would keep its Status Ready (dry run).',
+    ],
+  ]) {
+    const f = github({ items, statuses });
+    const logs = [];
+    assert.equal(
+      await addToProject({
+        ...f,
+        kind: 'issue',
+        number: 7,
+        log: (text) => logs.push(text),
+      }),
+      null,
+    );
+    assert.equal(f.reads.length, 1);
+    assert.deepEqual(f.writes, []);
+    assert.deepEqual(f.statusWrites, []);
+    assert.deepEqual(logs, [line]);
+  }
 });
 
 test('invalid input, missing content, and an unavailable project fail before writing', async () => {
@@ -146,12 +297,17 @@ function repository({
   project = { id: 'P_1', closed: false },
   pageSize = 2,
   failing = new Set(),
+  deleted = new Set(),
 } = {}) {
   const calls = [];
   const writes = [];
   const logs = [];
   const errors = [];
+  const warnings = [];
+  const { answer } = board(new Map(), project?.id);
   const api = async (query, variables) => {
+    const answered = answer(query, variables);
+    if (answered) return answered;
     if (query.startsWith('mutation')) {
       const number = Number(variables.content.slice(2));
       if (failing.has(number))
@@ -166,7 +322,11 @@ function repository({
     if (query.includes('issue(number: $number)')) {
       calls.push(['read', variables.number]);
       return {
-        repository: { issue: { id: `I_${variables.number}` } },
+        repository: {
+          issue: deleted.has(variables.number)
+            ? null
+            : { id: `I_${variables.number}`, projectItems: { nodes: [] } },
+        },
         user: { projectV2: project },
       };
     }
@@ -205,8 +365,10 @@ function repository({
     writes,
     logs,
     errors,
+    warnings,
     log: (line) => logs.push(line),
     logError: (line) => errors.push(line),
+    warn: (line) => warnings.push(line),
   };
 }
 
@@ -271,7 +433,7 @@ test('a dry-run sweep reports missing issues without writing', async () => {
     assert.deepEqual(f.writes, []);
     assert.deepEqual(f.logs, [
       'Open issues missing from Prismatic delivery: #8.',
-      'Issue #8: would add to Prismatic delivery (dry run).',
+      'Issue #8: would add to Prismatic delivery and set its Status to Inbox (dry run).',
     ]);
   }
 });
@@ -291,6 +453,26 @@ test('a failing issue is logged, the rest are added, and the sweep fails', async
   );
   assert.deepEqual(f.writes, [1, 3]);
   assert.deepEqual(f.errors, ['Issue #2: Issue #2 could not be added']);
+});
+
+test('a sweep warns about an issue deleted or transferred before its add and still succeeds', async () => {
+  const f = repository({
+    open: [
+      [1, []],
+      [2, []],
+      [3, []],
+    ],
+    deleted: new Set([2]),
+  });
+  assert.deepEqual(await sweep({ ...f, dryRun: false }), {
+    missing: [1, 2, 3],
+    failed: [],
+  });
+  assert.deepEqual(f.writes, [1, 3]);
+  assert.deepEqual(f.errors, []);
+  assert.deepEqual(f.warnings, [
+    'Issue #2 no longer exists in the repository; skipping',
+  ]);
 });
 
 test('a sweep against an unavailable project fails before listing issues', async () => {

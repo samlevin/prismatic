@@ -2,12 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   copyMetadata,
-  isReleasePullRequest,
   linkedIssues,
   metadataGraphql,
   readMetadata,
-  RELEASE_BRANCH,
-  releasedComponents,
 } from './issue-pr-metadata.mjs';
 
 const repository = 'example/suite';
@@ -38,10 +35,6 @@ function fixture({
   changed = false,
   existing = {},
   sources,
-  head = {},
-  blobs = {},
-  repoLabels = {},
-  pushed = false,
 } = {}) {
   sources ??= {
     1: {
@@ -73,34 +66,7 @@ function fixture({
             body,
             state,
             milestone,
-            headRefName: 'agent/1-change',
-            headRefOid: 'head-sha',
-            baseRefOid: 'base-sha',
-            isCrossRepository: false,
-            ...head,
           },
-        },
-      };
-    if (query.includes('object(expression:')) {
-      const blob = (expression) =>
-        expression in blobs
-          ? { text: JSON.stringify(blobs[expression]) }
-          : null;
-      return {
-        repository: {
-          config: blob(variables.config),
-          base: blob(variables.base),
-          head: blob(variables.head),
-        },
-      };
-    }
-    if (query.includes('label(name:'))
-      return {
-        repository: {
-          label:
-            variables.label in repoLabels
-              ? { id: repoLabels[variables.label] }
-              : null,
         },
       };
     if (query.includes('issueOrPullRequest(')) {
@@ -147,7 +113,6 @@ function fixture({
           body: changed ? 'Closes #3' : body,
           state,
           milestone,
-          headRefOid: pushed ? 'pushed-sha' : (head.headRefOid ?? 'head-sha'),
         },
       };
     throw new Error(`Unexpected query: ${query}`);
@@ -406,170 +371,4 @@ test('valid issues still supply metadata alongside missing references', async ()
       { id: 'pr', milestone: 'm1' },
     ],
   );
-});
-
-const releaseHead = { headRefName: RELEASE_BRANCH };
-const releaseBlobs = {
-  'base-sha:release-please-config.json': {
-    packages: {
-      'packages/a': { component: 'a' },
-      'packages/b': { component: 'b' },
-      'applications/c': { component: 'c' },
-    },
-  },
-  'base-sha:.release-please-manifest.json': {
-    'packages/a': '1.0.0',
-    'packages/b': '1.0.0',
-    'applications/c': '2.0.0',
-  },
-  'head-sha:.release-please-manifest.json': {
-    'packages/a': '1.1.0',
-    'packages/b': '1.0.0',
-    'applications/c': '2.0.1',
-  },
-};
-const packageLabels = {
-  'package: a': 'pa',
-  'package: b': 'pb',
-  'package: c': 'pc',
-};
-
-test('the release PR is the repository branch Release Please opens', () => {
-  assert.equal(
-    isReleasePullRequest({
-      headRefName: RELEASE_BRANCH,
-      isCrossRepository: false,
-    }),
-    true,
-  );
-  for (const pr of [
-    { headRefName: RELEASE_BRANCH, isCrossRepository: true },
-    { headRefName: 'agent/1-change', isCrossRepository: false },
-    { headRefName: RELEASE_BRANCH },
-  ])
-    assert.equal(isReleasePullRequest(pr), false);
-});
-
-test('released components are the packages whose manifest version changes', () => {
-  assert.deepEqual(
-    releasedComponents(
-      {
-        packages: {
-          'packages/a': { component: 'a' },
-          'packages/same': { component: 'same' },
-          'packages/new': { component: 'new' },
-          'packages/removed': { component: 'removed' },
-          'packages/unnamed': {},
-        },
-      },
-      {
-        'packages/a': '1.0.0',
-        'packages/same': '1.0.0',
-        'packages/removed': '1.0.0',
-        'packages/unnamed': '1.0.0',
-      },
-      {
-        'packages/a': '1.0.1',
-        'packages/same': '1.0.0',
-        'packages/new': '0.1.0',
-        'packages/unnamed': '1.1.0',
-      },
-    ),
-    ['a', 'new'],
-  );
-  assert.deepEqual(releasedComponents({}, {}, {}), []);
-});
-
-test('the release PR gets released package labels instead of issue labels', async () => {
-  const f = fixture({
-    head: releaseHead,
-    blobs: releaseBlobs,
-    repoLabels: packageLabels,
-    existing: { labels: ['autorelease'] },
-  });
-  await copyMetadata({ ...f, number: 10, dryRun: false });
-  assert.deepEqual(
-    f.writes.map((write) => write.variables),
-    [
-      { id: 'pr', labels: ['pa', 'pc'] },
-      { id: 'pr', assignees: ['u1', 'u2'] },
-      { id: 'pr', milestone: 'm1' },
-    ],
-  );
-  // The component mapping comes from the base commit, never the release branch.
-  const blobRead = f.calls.find(({ query }) =>
-    query.includes('object(expression:'),
-  );
-  assert.equal(
-    blobRead.variables.config,
-    'base-sha:release-please-config.json',
-  );
-});
-
-test('the release PR gets package labels without linked issues and keeps existing ones', async () => {
-  const logs = [];
-  const f = fixture({
-    body: 'No issue references',
-    head: releaseHead,
-    blobs: releaseBlobs,
-    repoLabels: { 'package: a': 'pa' },
-    existing: { labels: ['pa'] },
-  });
-  await copyMetadata({
-    ...f,
-    log: (line) => logs.push(line),
-    number: 10,
-    dryRun: false,
-  });
-  assert.deepEqual(f.writes, []);
-  assert.deepEqual(logs, [
-    'Release PR releases a, c; issue labels are not copied.',
-    'Label "package: c" does not exist; skipping it.',
-    'PR #10: 0 labels, 0 assignees, 0 milestone to copy.',
-  ]);
-});
-
-test('a release PR dry run reports package labels and writes nothing', async () => {
-  const logs = [];
-  const f = fixture({
-    head: releaseHead,
-    blobs: releaseBlobs,
-    repoLabels: packageLabels,
-  });
-  await copyMetadata({ ...f, log: (line) => logs.push(line), number: 10 });
-  assert.deepEqual(f.writes, []);
-  assert.deepEqual(logs, [
-    'Release PR releases a, c; issue labels are not copied.',
-    'PR #10: 2 labels, 2 assignees, 1 milestone to copy (dry run).',
-  ]);
-});
-
-test('a forked PR from a release-named branch keeps issue labels', async () => {
-  const f = fixture({
-    head: { ...releaseHead, isCrossRepository: true },
-    blobs: releaseBlobs,
-    repoLabels: packageLabels,
-  });
-  await copyMetadata({ ...f, number: 10, dryRun: false });
-  assert.deepEqual(f.writes[0].variables, {
-    id: 'pr',
-    labels: ['l1', 'shared', 'l2'],
-  });
-  assert.ok(
-    f.calls.every(({ query }) => !query.includes('object(expression:')),
-  );
-});
-
-test('a release PR push during discovery prevents mutations', async () => {
-  const f = fixture({
-    head: releaseHead,
-    blobs: releaseBlobs,
-    repoLabels: packageLabels,
-    pushed: true,
-  });
-  await assert.rejects(
-    copyMetadata({ ...f, number: 10, dryRun: false }),
-    /changed during discovery/,
-  );
-  assert.deepEqual(f.writes, []);
 });

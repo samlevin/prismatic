@@ -74,72 +74,6 @@ export async function readMetadata(api, id) {
   };
 }
 
-// Release Please opens one rolling release PR from this branch of the
-// repository itself; its body links every changelog entry.
-export const RELEASE_BRANCH = 'release-please--branches--main';
-
-export function isReleasePullRequest(pr) {
-  return pr.headRefName === RELEASE_BRANCH && pr.isCrossRepository === false;
-}
-
-// Components whose version differs between two parsed manifests, in
-// release-please-config.json order.
-export function releasedComponents(config, base, head) {
-  return Object.entries(config?.packages ?? {})
-    .filter(
-      ([path, settings]) =>
-        settings?.component &&
-        head?.[path] !== undefined &&
-        head[path] !== base?.[path],
-    )
-    .map(([, settings]) => settings.component);
-}
-
-// The release PR gets one `package:` label per package whose version it
-// changes. The component mapping comes from the base commit; the manifest is
-// compared between the base and head commits.
-export async function releaseLabels(api, pr, log) {
-  const [owner, name] = REPOSITORY.split('/');
-  const data = await api(
-    `query($owner: String!, $name: String!, $config: String!, $base: String!, $head: String!) {
-      repository(owner: $owner, name: $name) {
-        config: object(expression: $config) { ... on Blob { text } }
-        base: object(expression: $base) { ... on Blob { text } }
-        head: object(expression: $head) { ... on Blob { text } }
-      }
-    }`,
-    {
-      owner,
-      name,
-      config: `${pr.baseRefOid}:release-please-config.json`,
-      base: `${pr.baseRefOid}:.release-please-manifest.json`,
-      head: `${pr.headRefOid}:.release-please-manifest.json`,
-    },
-  );
-  const parse = (blob) => (blob?.text ? JSON.parse(blob.text) : {});
-  const components = releasedComponents(
-    parse(data.repository?.config),
-    parse(data.repository?.base),
-    parse(data.repository?.head),
-  );
-  log(
-    `Release PR releases ${components.length ? components.join(', ') : 'no packages'}; issue labels are not copied.`,
-  );
-  const labels = [];
-  for (const component of components) {
-    const result = await api(
-      `query($owner: String!, $name: String!, $label: String!) {
-        repository(owner: $owner, name: $name) { label(name: $label) { id } }
-      }`,
-      { owner, name, label: `package: ${component}` },
-    );
-    const id = result.repository?.label?.id;
-    if (id) labels.push(id);
-    else log(`Label "package: ${component}" does not exist; skipping it.`);
-  }
-  return labels;
-}
-
 export async function copyMetadata({
   api,
   number,
@@ -154,7 +88,6 @@ export async function copyMetadata({
     `query($owner: String!, $name: String!, $number: Int!) {
       repository(owner: $owner, name: $name) { pullRequest(number: $number) {
         id body state milestone { id }
-        headRefName headRefOid baseRefOid isCrossRepository
       } }
     }`,
     variables,
@@ -162,9 +95,8 @@ export async function copyMetadata({
   const pr = data.repository?.pullRequest;
   if (!pr) throw new Error('Pull request not found');
   if (pr.state !== 'OPEN') return;
-  const release = isReleasePullRequest(pr);
   const numbers = linkedIssues(pr.body);
-  if (!numbers.length && !release) return;
+  if (!numbers.length) return;
   const issues = [];
   for (const issueNumber of numbers) {
     const result = await api(
@@ -181,14 +113,9 @@ export async function copyMetadata({
     if (issue)
       issues.push({ ...issue, ...(await readMetadata(api, issue.id)) });
   }
-  if (!issues.length && !release) return;
+  if (!issues.length) return;
   const current = await readMetadata(api, pr.id);
-  // The release PR body links every changelog entry, so its labels come from
-  // the packages it releases instead of the issues it references.
-  const sourceLabels = release
-    ? await releaseLabels(api, pr, log)
-    : issues.flatMap((issue) => issue.labels);
-  const labels = [...new Set(sourceLabels)].filter(
+  const labels = [...new Set(issues.flatMap((issue) => issue.labels))].filter(
     (id) => !current.labels.includes(id),
   );
   // The PR inherits whoever owns the issues it closes; nobody is assigned
@@ -209,17 +136,12 @@ export async function copyMetadata({
     `PR #${number}: ${labels.length} labels, ${assignees.length} assignees, ${milestone ? 1 : 0} milestone to copy${dryRun ? ' (dry run)' : ''}.`,
   );
   if (dryRun) return;
-  // A description edit during discovery must not apply stale issue metadata,
-  // and a release PR push must not apply stale package labels.
+  // A description edit during discovery must not apply stale issue metadata.
   const fresh = await api(
-    `query($id: ID!) { node(id: $id) { ... on PullRequest { body state milestone { id } headRefOid } } }`,
+    `query($id: ID!) { node(id: $id) { ... on PullRequest { body state milestone { id } } } }`,
     { id: pr.id },
   );
-  if (
-    fresh.node?.body !== pr.body ||
-    fresh.node.state !== 'OPEN' ||
-    (release && fresh.node.headRefOid !== pr.headRefOid)
-  )
+  if (fresh.node?.body !== pr.body || fresh.node.state !== 'OPEN')
     throw new Error(
       'Pull request changed during discovery; rerun reconciliation',
     );

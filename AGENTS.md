@@ -56,7 +56,7 @@ Issue tracker: GitHub Issues. This marker turns on the GitHub issue flows (`impl
 Repo `samlevin/prismatic`, trunk `main`, project [Prismatic delivery](https://github.com/users/samlevin/projects/2).
 
 - PR titles use Conventional Commits with a component scope, e.g. `fix(tracker): ...`. Body: `Closes #N`, plus `Parent issue or epic: #P` when one exists.
-- Issue states: an agent sets only `In progress`, when it claims the issue before coding, as [leaf delivery](.agents/workflows/implement/references/delivery.md#claim) describes. `tracker-pr-issue-status.yml` moves the closing issue to `In review` when the PR opens, and only a person marks an issue `Done`.
+- Issue states: an agent sets only `In progress`, when it claims the issue before coding, as [leaf delivery](.agents/workflows/implement/references/delivery.md#claim) describes. `tracker-pr-issue-status.yml` moves the closing issue to `In review` when the PR opens. Tracker automation moves a closed issue to `Done` and a reopened issue in `Done` back to `Ready`. An agent never sets `In review` or `Done`.
 - Every request needs an issue before work starts. Search for an existing one first; if none exists, file it with `prism-create-github-issue` (`$prism-create-github-issue` in Codex), then claim it and do the work.
 - Issue titles follow `ISSUE_TRIAGE.md`. For issue filing, follow `.agents/issue-creation.md`.
 

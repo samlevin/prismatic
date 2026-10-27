@@ -17,8 +17,9 @@ import { evaluate, workflow } from './workflow-test-helpers.mjs';
 const MARKER = 'automation: container-closed';
 
 // A mocked repository and Prismatic delivery project. Each issue is
-// { number, state, parent, repo, marked, status }; sub-issue summaries come
-// from the parent links, and mutations change the model.
+// { number, state, parent, repo, marked, status, archived }; sub-issue
+// summaries come from the parent links, and mutations change the model. An
+// archived project item is listed only to a read that includes archived items.
 function github(definitions, { pageSize = 100, markerExists = true } = {}) {
   const issues = new Map(
     definitions.map((issue) => [
@@ -58,14 +59,18 @@ function github(definitions, { pageSize = 100, markerExists = true } = {}) {
         .length,
     },
   });
-  const items = (issue) =>
+  const items = (issue, query) =>
     connection([
       { id: `other-${issue.number}`, project: { id: 'other' } },
-      {
-        id: `item-${issue.number}`,
-        project: { id: 'project' },
-        fieldValueByName: { name: issue.status },
-      },
+      ...(issue.archived && query.includes('includeArchived: false')
+        ? []
+        : [
+            {
+              id: `item-${issue.number}`,
+              project: { id: 'project' },
+              fieldValueByName: { name: issue.status },
+            },
+          ]),
     ]);
   const statusOptions = ['Inbox', 'Ready', 'In progress', 'In review', 'Done'];
   const api = async (query, variables) => {
@@ -122,7 +127,7 @@ function github(definitions, { pageSize = 100, markerExists = true } = {}) {
                 .filter((issue) => issue.marked)
                 .map((issue) => ({
                   id: id(issue.number),
-                  projectItems: items(issue),
+                  projectItems: items(issue, query),
                 })),
             ),
           },
@@ -156,14 +161,14 @@ function github(definitions, { pageSize = 100, markerExists = true } = {}) {
       };
     }
     const issue = issues.get(variables.id);
-    if (query.includes('projectItems(first: 100)'))
+    if (query.includes('projectItems(first: 100, includeArchived: false)'))
       return {
         node: issue && {
           ...record(issue),
           labels: connection(
             issue.marked ? [{ name: 'epic' }, { name: MARKER }] : [],
           ),
-          projectItems: items(issue),
+          projectItems: items(issue, query),
         },
       };
     assert.match(query, /node\(id: \$id\) \{ \.\.\. on Issue/);
@@ -181,7 +186,9 @@ function github(definitions, { pageSize = 100, markerExists = true } = {}) {
               ? 'issue'
               : query.includes('subIssues(')
                 ? 'children'
-                : query.includes('projectItems(first: 100)')
+                : query.includes(
+                      'projectItems(first: 100, includeArchived: false)',
+                    )
                   ? 'snapshot'
                   : 'ancestor',
     );
@@ -365,7 +372,7 @@ test('a marked container that is complete again keeps its marker', async () => {
   let reads = 0;
   const api = async (query, variables) => {
     if (
-      query.includes('projectItems(first: 100)') &&
+      query.includes('projectItems(first: 100, includeArchived: false)') &&
       !query.includes('label(name:') &&
       variables.id === 'I_1' &&
       ++reads === 2
@@ -388,6 +395,66 @@ test('a marked container that is complete again keeps its marker', async () => {
     'discover',
     'snapshot',
   ]);
+});
+
+test('a marked container closed again before the final read keeps its marker', async () => {
+  // #1 is open, marked, and unfinished, so this run would remove the marker,
+  // but a person closes #1 before the read that decides it.
+  const mock = github([
+    { number: 1, marked: true },
+    { number: 2, parent: 1, state: 'CLOSED' },
+    { number: 3, parent: 1 },
+  ]);
+  let reads = 0;
+  const api = async (query, variables) => {
+    if (
+      query.includes('projectItems(first: 100, includeArchived: false)') &&
+      !query.includes('label(name:') &&
+      variables.id === 'I_1' &&
+      ++reads === 2
+    )
+      mock.issues.get('I_1').state = 'CLOSED';
+    return mock.api(query, variables);
+  };
+  assert.deepEqual(
+    await reconcileContainers({ api, dryRun: false, issueNumber: 3, ...quiet }),
+    { updated: 0 },
+  );
+  assert.equal(reads, 2);
+  assert.deepEqual(mock.mutations(), []);
+  assert.equal(mock.issues.get('I_1').marked, true);
+});
+
+test('an archived project item is neither read nor written', async () => {
+  for (const issueNumber of [undefined, 2]) {
+    const mock = github([
+      { number: 1, archived: true },
+      { number: 2, parent: 1, state: 'CLOSED' },
+      { number: 3, state: 'CLOSED', marked: true, status: 'In review' },
+      { number: 4, parent: 3, state: 'CLOSED' },
+    ]);
+    assert.deepEqual(
+      await reconcileContainers({
+        api: mock.api,
+        dryRun: false,
+        issueNumber,
+        ...quiet,
+      }),
+      { updated: 1 },
+    );
+    assert.equal(mock.issues.get('I_1').state, 'CLOSED');
+    assert.deepEqual(
+      mock.mutations().filter((line) => line.includes('item-1')),
+      [],
+    );
+    assert.equal(mock.issues.get('I_1').status, 'Ready');
+    for (const { query } of mock.calls)
+      if (query.includes('projectItems('))
+        assert.match(
+          query,
+          /projectItems\(first: 100, includeArchived: false\)/,
+        );
+  }
 });
 
 test('a closed child reconciles only its ancestors, never unrelated containers', async () => {

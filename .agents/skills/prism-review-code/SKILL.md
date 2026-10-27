@@ -11,7 +11,7 @@ You gather the inputs and dispatch `prism-code-reviewer`; you do not review the 
 ## Gather
 
 1. Resolve the review target in `samlevin/prismatic`. The target is a pull request or a pushed branch, never an issue.
-   - `#N`, a bare number `N`, or a PR URL always names pull request N. Run `gh api repos/samlevin/prismatic/pulls/N --jq '{number, state, merged, head_ref: .head.ref, head_sha: .head.sha, base_ref: .base.ref, base_sha: .base.sha, url: .html_url}'`. Open, merged, and closed PRs are all valid targets; review the reported head against the reported base. Only an open PR receives the posted review.
+   - `#N`, a bare number `N`, or a PR URL always names pull request N. Run `gh api repos/samlevin/prismatic/pulls/N --jq '{number, state, merged, head_ref: .head.ref, head_sha: .head.sha, base_ref: .base.ref, base_sha: .base.sha, url: .html_url}'`. Open, merged, and closed PRs are all valid targets; review the reported head against the merge base from step 2. Only an open PR receives the posted review.
    - If that call fails, stop and report that no pull request #N exists in the repository. Do not treat N as an issue number, and do not search for pull requests linked to issue N.
    - REST has no field for the issues a PR closes, so read them with the one GraphQL call this skill keeps: `gh pr view N -R samlevin/prismatic --json closingIssuesReferences`. If that call is rate-limited, take every `Closes #<issue>` line from the PR `body` that `gh api repos/samlevin/prismatic/pulls/N --jq .body` returns, and say in the packet that the criteria issues came from the PR body.
    - A branch name resolves with `git ls-remote origin <branch>` for the head; the base is the merge base with `origin/main` unless the request names one.

@@ -3,19 +3,12 @@ import { readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import { workflow } from './workflow-test-helpers.mjs';
 
-// The naming convention lives in CONTRIBUTING.md. Terrateam owns its workflow
-// file and marks it DO NOT MODIFY, so it keeps the vendor's names.
-const VENDOR_WORKFLOWS = ['terrateam.yml'];
-const AREAS = {
-  ci: 'CI',
-  release: 'Release',
-  delivery: 'Delivery',
-  tracker: 'Tracker',
-};
+// The naming convention lives in CONTRIBUTING.md.
+const AREAS = { ci: 'CI', tracker: 'Tracker' };
 
-const files = readdirSync(new URL('../.github/workflows/', import.meta.url))
-  .filter((file) => !VENDOR_WORKFLOWS.includes(file))
-  .sort();
+const files = readdirSync(
+  new URL('../.github/workflows/', import.meta.url),
+).sort();
 const definitions = new Map(
   files.map((file) => [file, workflow(file.replace(/\.yml$/, ''))]),
 );
@@ -39,23 +32,13 @@ test('workflow files and names match the convention table', () => {
     },
   );
   for (const [file, definition] of definitions) {
-    const match = file.match(/^(_?)([a-z]+)-[a-z0-9]+(?:-[a-z0-9]+)*\.yml$/);
+    const match = file.match(/^([a-z]+)-[a-z0-9]+(?:-[a-z0-9]+)*\.yml$/);
     assert.ok(match, `${file} is not <area>-<purpose>.yml`);
-    const [, reusable, area] = match;
+    const [, area] = match;
     assert.ok(AREAS[area], `${file} has unknown area ${area}`);
     assert.ok(
       definition.name.startsWith(`${AREAS[area]}: `),
       `${file} name must start with ${AREAS[area]}:`,
-    );
-    assert.equal(
-      triggers(definition).includes('workflow_call'),
-      reusable === '_',
-      `${file}: only reusable workflows start with _`,
-    );
-    assert.equal(
-      definition.name.endsWith(' (reusable)'),
-      reusable === '_',
-      `${file}: only reusable workflow names end with (reusable)`,
     );
   }
 });
@@ -82,30 +65,10 @@ test('every job and step has a sentence-case name and a kebab-case ID', () => {
   }
 });
 
-test('names write the environments as dev and prod', () => {
-  for (const [file, definition] of definitions) {
-    const names = [
-      definition.name,
-      definition['run-name'] ?? '',
-      ...Object.values(definition.jobs).flatMap((job) => [
-        job.name,
-        ...(job.steps ?? []).map((step) => step.name),
-      ]),
-    ];
-    for (const name of names)
-      assert.doesNotMatch(name, /production/i, `${file}: ${name}`);
-  }
-});
-
 test('workflows not started by a pull request or push name their subject', () => {
   for (const [file, definition] of definitions) {
     const events = triggers(definition);
-    if (
-      events.includes('workflow_call') ||
-      events.includes('pull_request') ||
-      events.includes('push')
-    )
-      continue;
+    if (events.includes('pull_request') || events.includes('push')) continue;
     assert.equal(typeof definition['run-name'], 'string', file);
     assert.match(definition['run-name'], /\$\{\{/, file);
   }

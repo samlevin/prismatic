@@ -1,12 +1,24 @@
+// Adds issues in this repository to the Prismatic delivery project, one issue
+// when it opens (CONTENT_TYPE and CONTENT_NUMBER) or every open issue missing
+// from the project (SWEEP=true). An added item without a Status gets Inbox, so
+// issue-triage.mjs picks it up; an existing Status never changes. A sweep warns
+// about an issue deleted or transferred between listing and adding, and still
+// succeeds.
 import { pathToFileURL } from 'node:url';
 import { failureMessage } from './github-api.mjs';
 import {
+  discover,
   MissingIssueError,
   paginate,
+  readItem,
   REPOSITORY,
   runTracker,
   trackerGraphql,
+  updateProjectStatus,
+  warning,
 } from './issue-triage.mjs';
+
+const INITIAL_STATUS = 'Inbox';
 
 export async function addToProject({
   api,
@@ -21,7 +33,9 @@ export async function addToProject({
   const [owner, name] = REPOSITORY.split('/');
   const data = await api(
     `query($owner: String!, $name: String!, $number: Int!) {
-      repository(owner: $owner, name: $name) { issue(number: $number) { id } }
+      repository(owner: $owner, name: $name) { issue(number: $number) {
+        id projectItems(first: 100) { nodes { id project { id } } }
+      } }
       user(login: "samlevin") { projectV2(number: 2) { id closed } }
     }`,
     { owner, name, number },
@@ -32,8 +46,22 @@ export async function addToProject({
   const project = data.user?.projectV2;
   if (!project?.id || project.closed)
     throw new Error('Prismatic delivery project is unavailable');
+  // Resolve the Status field and its Inbox option before any write, so a
+  // renamed field or option fails the run before it adds anything.
+  const context = await discover(api, { Status: [INITIAL_STATUS] });
+  if (context.projectId !== project.id)
+    throw new Error('Prismatic delivery project changed during the run');
   if (dryRun) {
-    log(`Issue #${number}: would add to Prismatic delivery (dry run).`);
+    const existing = content.projectItems?.nodes.find(
+      (node) => node?.project?.id === project.id,
+    );
+    const status =
+      existing && (await readItem(api, existing.id, context))?.fields.Status;
+    log(
+      status
+        ? `Issue #${number}: would keep its Status ${status} (dry run).`
+        : `Issue #${number}: would ${existing ? 'keep in' : 'add to'} Prismatic delivery and set its Status to ${INITIAL_STATUS} (dry run).`,
+    );
     return null;
   }
   // GitHub returns the existing item when the content is already in the
@@ -46,10 +74,19 @@ export async function addToProject({
     }`,
     { project: project.id, content: content.id },
   );
-  const item = result.addProjectV2ItemById?.item?.fullDatabaseId;
+  const added = result.addProjectV2ItemById?.item;
+  const item = added?.fullDatabaseId;
   if (!item || !/^[1-9]\d*$/.test(item))
     throw new Error('GitHub returned no project item');
   log(`Issue #${number}: in Prismatic delivery as item ${item}.`);
+  const current = await readItem(api, added.id, context);
+  if (!current) throw new Error(`Could not read project item ${item}`);
+  if (current.fields.Status) {
+    log(`Issue #${number}: kept its Status ${current.fields.Status}.`);
+    return item;
+  }
+  await updateProjectStatus(api, context, added.id, INITIAL_STATUS);
+  log(`Issue #${number}: set its Status to ${INITIAL_STATUS}.`);
   return item;
 }
 
@@ -61,6 +98,7 @@ export async function sweep({
   dryRun = true,
   log = console.log,
   logError = console.error,
+  warn = warning,
 }) {
   const [owner, name] = REPOSITORY.split('/');
   const data = await api(
@@ -105,6 +143,10 @@ export async function sweep({
     try {
       await addToProject({ api, kind: 'issue', number, dryRun, log });
     } catch (error) {
+      if (error instanceof MissingIssueError) {
+        warn(error.message);
+        continue;
+      }
       failed.push(number);
       logError(`Issue #${number}: ${failureMessage(error)}`);
     }

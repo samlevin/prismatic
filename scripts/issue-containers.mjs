@@ -25,11 +25,13 @@ const LABELS = `nodes { name } ${PAGE}`;
 const CHILDREN = `nodes { ${ISSUE} } ${PAGE}`;
 
 // Reads every page of one connection on an issue, such as `labels` with LABELS.
+// Archived project items never take a Status write, so they are not read.
 async function connection(api, id, field, selection) {
+  const archived = field === 'projectItems' ? ', includeArchived: false' : '';
   return paginate(async (cursor) => {
     const data = await api(
       `query($id: ID!, $cursor: String) { node(id: $id) { ... on Issue {
-      ${field}(first: 100, after: $cursor) { ${selection} }
+      ${field}(first: 100, after: $cursor${archived}) { ${selection} }
     } } }`,
       { id, cursor },
     );
@@ -139,7 +141,7 @@ async function marker(api, sweep) {
     const data = await api(
       `query($cursor: String) { repository(owner: "samlevin", name: "prismatic") {
       label(name: "${MARKER}") { id
-        issues(first: 100, after: $cursor, states: [OPEN, CLOSED]) { nodes { id projectItems(first: 100) { ${ITEMS} } } ${PAGE} }
+        issues(first: 100, after: $cursor, states: [OPEN, CLOSED]) { nodes { id projectItems(first: 100, includeArchived: false) { ${ITEMS} } } ${PAGE} }
       }
     } }`,
       { cursor },
@@ -167,7 +169,7 @@ async function marker(api, sweep) {
 async function snapshot(api, id) {
   const data = await api(
     `query($id: ID!) { node(id: $id) { ... on Issue { ${ISSUE}
-    labels(first: 100) { ${LABELS} } projectItems(first: 100) { ${ITEMS} }
+    labels(first: 100) { ${LABELS} } projectItems(first: 100, includeArchived: false) { ${ITEMS} }
   } } }`,
     { id },
   );

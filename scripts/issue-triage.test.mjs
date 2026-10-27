@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import {
   configuration,
   discover,
+  DONE_FILTERS,
   eligible,
   SETTLED_STATUSES,
   SWEEP_FILTER,
@@ -22,6 +23,7 @@ import {
   paginate,
   readItem,
   reconcile,
+  reconcileDone,
   reconcileEpicLabels,
   REPOSITORY,
   runTracker,
@@ -895,6 +897,242 @@ test('discovery fails closed for missing or ambiguous field options', async () =
   await assert.rejects(discover(api), /Expected one Status/);
 });
 
+// A mocked project for Done reconciliation. Each entry is one item with its
+// issue number, state, Status, and repository. Listing applies the two Done
+// filters; `onRead` runs before each write-boundary re-read and may change the
+// entry or return null to remove the item from the project.
+function board(entries, { onRead } = {}) {
+  const items = new Map(
+    entries.map((entry) => [
+      `item-${entry.number}`,
+      { type: 'ISSUE', state: 'OPEN', repository: REPOSITORY, ...entry },
+    ]),
+  );
+  const filters = [];
+  const reads = [];
+  const mutations = [];
+  const page = (nodes) => ({ nodes, pageInfo: { hasNextPage: false } });
+  const node = (id) => {
+    const entry = items.get(id);
+    return {
+      id,
+      type: entry.type,
+      project: { id: 'project' },
+      fieldValues: page(
+        entry.status
+          ? [
+              {
+                field: { id: 'field-Status' },
+                optionId: `option-${entry.status}`,
+              },
+            ]
+          : [],
+      ),
+      content: {
+        __typename: entry.type === 'ISSUE' ? 'Issue' : 'PullRequest',
+        id: `issue-${entry.number}`,
+        number: entry.number,
+        state: entry.state,
+        repository: { nameWithOwner: entry.repository },
+        labels: page([]),
+      },
+    };
+  };
+  const matches = (entry, filter) =>
+    entry.type === 'ISSUE' &&
+    (filter === DONE_FILTERS[0]
+      ? entry.state === 'CLOSED' && entry.status !== 'Done'
+      : entry.state === 'OPEN' && entry.status === 'Done');
+  const api = async (query, variables) => {
+    if (query.includes('projectV2(number: 2)'))
+      return {
+        user: {
+          projectV2: {
+            id: 'project',
+            fields: page([
+              {
+                id: 'field-Status',
+                name: 'Status',
+                options: ['Inbox', 'Ready', 'In review', 'Done'].map(
+                  (name) => ({ id: `option-${name}`, name }),
+                ),
+              },
+            ]),
+          },
+        },
+      };
+    if (query.startsWith('mutation')) {
+      mutations.push(variables);
+      items.get(variables.item).status = variables.option.slice(
+        'option-'.length,
+      );
+      return {};
+    }
+    if (query.includes('items(first: 100')) {
+      filters.push(variables.filter);
+      return {
+        node: {
+          items: page(
+            [...items.keys()]
+              .filter((id) => matches(items.get(id), variables.filter))
+              .map(node),
+          ),
+        },
+      };
+    }
+    if (query.includes('projectItems(first: 20')) {
+      const id = `item-${variables.number}`;
+      return {
+        repository: {
+          issue: { projectItems: page(items.has(id) ? [node(id)] : []) },
+        },
+      };
+    }
+    if (query.includes('... on ProjectV2Item {')) {
+      reads.push(variables.id);
+      if (onRead?.(items.get(variables.id), variables.id) === null)
+        return { node: null };
+      return { node: node(variables.id) };
+    }
+    throw new Error(`Unexpected mock query ${query}`);
+  };
+  return { api, filters, reads, mutations };
+}
+
+test('closed issues move to Done, reopened issues leave Done, and everything else stays', async () => {
+  const f = board([
+    { number: 1, state: 'CLOSED', status: 'In review' },
+    { number: 2, state: 'CLOSED', status: 'Ready' },
+    { number: 3, state: 'CLOSED' },
+    { number: 4, state: 'CLOSED', status: 'Done' },
+    { number: 5, state: 'OPEN', status: 'In review' },
+    { number: 6, state: 'MERGED', type: 'PULL_REQUEST' },
+    { number: 7, state: 'CLOSED', status: 'Ready', repository: 'other/repo' },
+    { number: 8, state: 'OPEN', status: 'Done' },
+    { number: 9, state: 'OPEN' },
+  ]);
+  const lines = [];
+  assert.deepEqual(
+    await reconcileDone({
+      api: f.api,
+      dryRun: false,
+      log: (line) => lines.push(line),
+    }),
+    { candidates: 4, updated: 4 },
+  );
+  assert.deepEqual(f.filters, DONE_FILTERS);
+  assert.deepEqual(f.reads, ['item-1', 'item-2', 'item-3', 'item-8']);
+  assert.deepEqual(
+    f.mutations,
+    [
+      ['item-1', 'Done'],
+      ['item-2', 'Done'],
+      ['item-3', 'Done'],
+      ['item-8', 'Ready'],
+    ].map(([item, status]) => ({
+      project: 'project',
+      item,
+      field: 'field-Status',
+      option: `option-${status}`,
+    })),
+  );
+  assert.deepEqual(lines, [
+    'Moving closed issue #1 In review -> Done',
+    'Moving closed issue #2 Ready -> Done',
+    'Moving closed issue #3 without Status -> Done',
+    'Moving reopened issue #8 Done -> Ready',
+    'Done reconciliation: 4 eligible, 4 updated; DRY_RUN=false',
+  ]);
+  assert.deepEqual(
+    await reconcileDone({ api: f.api, dryRun: false, log() {} }),
+    { candidates: 0, updated: 0 },
+  );
+});
+
+test('Done reconciliation dry-runs and re-reads every item before writing', async () => {
+  const dry = board([{ number: 1, state: 'CLOSED', status: 'In review' }]);
+  const lines = [];
+  assert.deepEqual(
+    await reconcileDone({ api: dry.api, log: (line) => lines.push(line) }),
+    { candidates: 1, updated: 0 },
+  );
+  assert.deepEqual(dry.mutations, []);
+  assert.deepEqual(lines, [
+    'DRY_RUN would move closed issue #1 In review -> Done',
+    'Done reconciliation: 1 eligible, 0 updated; DRY_RUN=true',
+  ]);
+
+  const changes = {
+    'item-1': { state: 'OPEN' },
+    'item-2': { status: 'Done' },
+    'item-3': { state: 'CLOSED' },
+    'item-4': { repository: 'other/repo' },
+  };
+  const warnings = [];
+  const raced = board(
+    [
+      { number: 1, state: 'CLOSED', status: 'In review' },
+      { number: 2, state: 'CLOSED', status: 'In review' },
+      { number: 3, state: 'OPEN', status: 'Done' },
+      { number: 4, state: 'CLOSED', status: 'Ready' },
+      { number: 5, state: 'CLOSED', status: 'Ready' },
+    ],
+    {
+      onRead: (entry, id) =>
+        id === 'item-5' ? null : Object.assign(entry, changes[id]),
+    },
+  );
+  assert.deepEqual(
+    await reconcileDone({
+      api: raced.api,
+      dryRun: false,
+      log() {},
+      warn: (line) => warnings.push(line),
+    }),
+    { candidates: 0, updated: 0 },
+  );
+  assert.deepEqual(raced.mutations, []);
+  assert.deepEqual(warnings, [
+    'Issue #4 no longer exists in the repository; skipping',
+    'Issue #5 left the project; skipping',
+  ]);
+
+  await assert.rejects(
+    reconcileDone({ api: dry.api, issueNumber: 0 }),
+    /positive safe integer/,
+  );
+});
+
+test('a single-issue Done run reads only that issue and never lists the project', async () => {
+  const f = board([
+    { number: 1, state: 'CLOSED', status: 'In review' },
+    { number: 2, state: 'OPEN', status: 'Done' },
+  ]);
+  for (const [issueNumber, target] of [
+    [1, 'Done'],
+    [2, 'Ready'],
+  ])
+    assert.deepEqual(
+      await reconcileDone({
+        api: f.api,
+        dryRun: false,
+        issueNumber,
+        log() {},
+      }),
+      { candidates: 1, updated: 1 },
+      target,
+    );
+  assert.deepEqual(f.filters, []);
+  assert.deepEqual(f.reads, ['item-1', 'item-2']);
+  assert.deepEqual(
+    f.mutations.map((mutation) => [mutation.item, mutation.option]),
+    [
+      ['item-1', 'option-Done'],
+      ['item-2', 'option-Ready'],
+    ],
+  );
+});
+
 test('workflow requires its own project token and local defaults remain read-only', () => {
   assert.throws(
     () =>
@@ -994,7 +1232,7 @@ test('invalid programmatic issue filters fail before any API access', async () =
   }
 });
 
-test('catalog has unique names, supported severities, and all directly affected workspace labels', () => {
+test('catalog has unique names and supported severities', () => {
   const catalog = JSON.parse(
     readFileSync(new URL('../.github/labels.json', import.meta.url), 'utf8'),
   );
@@ -1011,13 +1249,6 @@ test('catalog has unique names, supported severities, and all directly affected 
     ['critical', 'high', 'low', 'medium', 'none'].map(
       (name) => `severity: ${name}`,
     ),
-  );
-  assert.deepEqual(
-    catalog.labels
-      .filter((label) => label.name.startsWith('package:'))
-      .map((label) => label.name)
-      .sort(),
-    [],
   );
   for (const label of catalog.labels) {
     assert.match(label.color, /^[a-f0-9]{6}$/);

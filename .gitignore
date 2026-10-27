@@ -6,3 +6,22 @@ node_modules/
 coverage/
 dist/
 .playwright-mcp/
+
+# Env files
+.env
+.env.*
+!.env.example
+.envrc
+.envrc.*
+!.envrc.example
+.direnv/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
