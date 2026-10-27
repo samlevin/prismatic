@@ -11,17 +11,24 @@ const PAGE = 'pageInfo { hasNextPage endCursor }';
 
 // A referenced number that is neither an issue nor a pull request comes back
 // as NOT_FOUND; it supplies no metadata and is not a failure.
-export function metadataGraphql(query, variables, run = execFileSync) {
+// `allowErrors` lets a shared reader such as readItem accept its own
+// expected errors too.
+export function metadataGraphql(
+  query,
+  variables,
+  { run = execFileSync, allowErrors } = {},
+) {
   return ghGraphql(query, variables, {
     run,
     allowErrors: (result) =>
-      query.includes('issueOrPullRequest(number:') &&
-      result.errors.every(
-        (error) =>
-          error.type === 'NOT_FOUND' &&
-          error.path?.join('.') === 'repository.issueOrPullRequest',
-      ) &&
-      result.data?.repository?.issueOrPullRequest === null,
+      (query.includes('issueOrPullRequest(number:') &&
+        result.errors.every(
+          (error) =>
+            error.type === 'NOT_FOUND' &&
+            error.path?.join('.') === 'repository.issueOrPullRequest',
+        ) &&
+        result.data?.repository?.issueOrPullRequest === null) ||
+      Boolean(allowErrors?.(result)),
   });
 }
 

@@ -252,16 +252,26 @@ test('GitHub NOT_FOUND for a missing issue is skipped while other errors fail', 
       stdout: JSON.stringify(result),
     });
   };
-  assert.deepEqual(metadataGraphql(query, {}, run(response('NOT_FOUND'))), {
-    repository: { issueOrPullRequest: null },
-  });
-  assert.throws(() => metadataGraphql(query, {}, run(response('FORBIDDEN'))), {
-    message:
-      'GitHub GraphQL request failed: FORBIDDEN: no message. Check the token and Projects access.',
-  });
+  assert.deepEqual(
+    metadataGraphql(query, {}, { run: run(response('NOT_FOUND')) }),
+    {
+      repository: { issueOrPullRequest: null },
+    },
+  );
+  assert.throws(
+    () => metadataGraphql(query, {}, { run: run(response('FORBIDDEN')) }),
+    {
+      message:
+        'GitHub GraphQL request failed: FORBIDDEN: no message. Check the token and Projects access.',
+    },
+  );
   assert.throws(
     () =>
-      metadataGraphql(query, {}, run(response('NOT_FOUND', ['repository']))),
+      metadataGraphql(
+        query,
+        {},
+        { run: run(response('NOT_FOUND', ['repository'])) },
+      ),
     /GitHub GraphQL request failed: NOT_FOUND/,
   );
   assert.throws(
@@ -269,7 +279,7 @@ test('GitHub NOT_FOUND for a missing issue is skipped while other errors fail', 
       metadataGraphql(
         'query { repository { pullRequest { id } } }',
         {},
-        run(response('NOT_FOUND')),
+        { run: run(response('NOT_FOUND')) },
       ),
     /GitHub GraphQL request failed: NOT_FOUND/,
   );
@@ -278,13 +288,15 @@ test('GitHub NOT_FOUND for a missing issue is skipped while other errors fail', 
       metadataGraphql(
         query,
         {},
-        run({
-          ...response('NOT_FOUND'),
-          errors: [
-            ...response('NOT_FOUND').errors,
-            ...response('FORBIDDEN').errors,
-          ],
-        }),
+        {
+          run: run({
+            ...response('NOT_FOUND'),
+            errors: [
+              ...response('NOT_FOUND').errors,
+              ...response('FORBIDDEN').errors,
+            ],
+          }),
+        },
       ),
     /GitHub GraphQL request failed: NOT_FOUND: no message; FORBIDDEN: no message\. Check the token/,
   );
@@ -295,18 +307,20 @@ test('valid issues still supply metadata alongside missing references', async ()
   const original = f.api;
   f.api = async (query, variables) =>
     variables.number === 999
-      ? metadataGraphql(query, variables, () => {
-          throw Object.assign(new Error('gh exited with status 1'), {
-            stdout: JSON.stringify({
-              data: { repository: { issueOrPullRequest: null } },
-              errors: [
-                {
-                  type: 'NOT_FOUND',
-                  path: ['repository', 'issueOrPullRequest'],
-                },
-              ],
-            }),
-          });
+      ? metadataGraphql(query, variables, {
+          run: () => {
+            throw Object.assign(new Error('gh exited with status 1'), {
+              stdout: JSON.stringify({
+                data: { repository: { issueOrPullRequest: null } },
+                errors: [
+                  {
+                    type: 'NOT_FOUND',
+                    path: ['repository', 'issueOrPullRequest'],
+                  },
+                ],
+              }),
+            });
+          },
         })
       : original(query, variables);
   await copyMetadata({ ...f, number: 10, dryRun: false });

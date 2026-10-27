@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
+import { metadataGraphql } from './issue-pr-metadata.mjs';
 import { closingIssues, moveIssuesToReview } from './issue-pr-status.mjs';
-import { REPOSITORY } from './issue-triage.mjs';
+import { readItem, REPOSITORY } from './issue-triage.mjs';
 
 test('only closing keyword references supply status targets', () => {
   assert.deepEqual(
@@ -268,4 +269,60 @@ test('status events are limited and isolated from metadata reconciliation', () =
     metadata,
     /discover\(|updateProjectStatus\(|moveIssuesToReview\(/,
   );
+});
+
+test('the write-boundary read goes through metadataGraphql and tolerates a deleted item', async () => {
+  const sent = [];
+  const answer = (body) => (query, variables, options) =>
+    metadataGraphql(query, variables, {
+      ...options,
+      run: (command, args, { input }) => {
+        sent.push(JSON.parse(input).query);
+        return `HTTP/2.0 200 OK\n\r\n${JSON.stringify(body)}`;
+      },
+    });
+  const context = {
+    projectId: 'project',
+    fields: {
+      Status: { id: 'status', options: [{ id: 'Ready', name: 'Ready' }] },
+    },
+  };
+  const item = await readItem(
+    answer({
+      data: {
+        node: {
+          id: 'item',
+          type: 'ISSUE',
+          project: { id: 'project' },
+          fieldValues: {
+            nodes: [{ optionId: 'Ready', field: { id: 'status' } }],
+            pageInfo: { hasNextPage: false },
+          },
+          content: {
+            __typename: 'Issue',
+            id: 'issue',
+            number: 7,
+            state: 'OPEN',
+            repository: { nameWithOwner: REPOSITORY },
+            labels: { nodes: [], pageInfo: { hasNextPage: false } },
+          },
+        },
+      },
+    }),
+    'item',
+    context,
+  );
+  assert.equal(item.fields.Status, 'Ready');
+  assert.equal(
+    await readItem(
+      answer({
+        data: { node: null },
+        errors: [{ type: 'NOT_FOUND', path: ['node'], message: 'Gone.' }],
+      }),
+      'item',
+      context,
+    ),
+    null,
+  );
+  assert.equal(sent.length, 2);
 });

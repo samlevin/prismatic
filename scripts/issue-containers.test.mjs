@@ -83,7 +83,7 @@ function repository(entries, { page = 100, marker = true, onSnapshot } = {}) {
   const label = marker ? { id: 'label-marker' } : null;
   const own = () =>
     [...issues.values()].filter((entry) => entry.repository === REPOSITORY);
-  const api = async (query, variables) => {
+  const api = async (query, variables, options) => {
     calls.push(query);
     const entry = variables.id ? issues.get(number(variables.id)) : undefined;
     if (query.includes('projectV2(number: 2)'))
@@ -136,7 +136,15 @@ function repository(entries, { page = 100, marker = true, onSnapshot } = {}) {
       };
     if (query.includes('... on Issue { id number state')) {
       onSnapshot?.(issues);
-      return { node: node(issues.get(number(variables.id))) ?? null };
+      const found = node(issues.get(number(variables.id)));
+      if (found) return { node: found };
+      // GitHub's answer for a deleted or transferred issue.
+      const result = {
+        data: { node: null },
+        errors: [{ type: 'NOT_FOUND', path: ['node'] }],
+      };
+      if (!options?.allowErrors?.(result)) throw new Error('NOT_FOUND');
+      return result.data;
     }
     if (query.includes('subIssues(first: 100'))
       return {
@@ -238,8 +246,9 @@ test('a sweep closes a finished container and then its parent, reading no untouc
     await reconcileContainers({ api: f.api, dryRun: false, log() {} }),
     { updated: 0 },
   );
-  // The marker listing, the issue listing, and field discovery.
-  assert.equal(f.calls.length, 3);
+  // The marker listing and the issue listing; every marked container already
+  // has its Status, so no field discovery.
+  assert.equal(f.calls.length, 2);
   assert.equal(f.writes.length, 6);
 });
 

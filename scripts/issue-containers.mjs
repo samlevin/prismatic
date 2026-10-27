@@ -71,6 +71,7 @@ async function snapshot(api, id) {
   const data = await api(
     `query($id: ID!) { node(id: $id) { ... on Issue { ${FULL} } } }`,
     { id },
+    MISSING_ISSUE,
   );
   return withDetails(api, data.node);
 }
@@ -218,14 +219,16 @@ function markedStatus(issue) {
   return issue.state === 'CLOSED' ? 'Done' : 'Ready';
 }
 
-// Whether a marked container needs a write: an open one loses its marker, and
-// a project item with the wrong Status (or unknown items) needs a repair.
-function needsRepair(issue, context) {
-  if (issue.state === 'OPEN' || !issue.projectItems) return true;
-  const item = issue.projectItems.find(
-    (item) => item.project?.id === context.projectId,
+// Whether a marked container may need a write: an open one loses its marker,
+// and a project item with the wrong Status needs a repair. Judged from the
+// read alone, so a container that needs nothing costs no field discovery.
+function needsRepair(issue) {
+  return (
+    issue.state === 'OPEN' ||
+    issue.projectItems.some(
+      (item) => item.fieldValueByName?.name !== markedStatus(issue),
+    )
   );
-  return Boolean(item) && item.fieldValueByName?.name !== markedStatus(issue);
 }
 
 // Sets the Status of an issue read with FULL. An item that already has the
@@ -258,7 +261,7 @@ export async function reconcileContainers({
   }
   const { label, issues } = loaded;
   const ordered = childrenFirst(issues);
-  // Discovered on the first write, so a run with nothing to change skips it.
+  // Discovered only when a write needs the project fields.
   let context;
   const project = async () =>
     (context ??= await discover(api, { Status: ['Ready', 'Done'] }));
@@ -340,7 +343,7 @@ export async function reconcileContainers({
       }
       continue;
     }
-    if (!marked || dryRun || !needsRepair(current, await project())) continue;
+    if (!marked || dryRun || !needsRepair(current)) continue;
     // Repair status if a prior state mutation succeeded but its project
     // update failed. Another run may have changed the container since it was
     // listed, so act on a fresh read.
