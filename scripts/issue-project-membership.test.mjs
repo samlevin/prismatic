@@ -98,7 +98,10 @@ test('invalid input, missing content, and an unavailable project fail before wri
     [{ kind: undefined, number: 7 }, /CONTENT_TYPE/],
     [{ kind: 'issue', number: 0 }, /positive/],
     [{ kind: 'issue', number: Number.NaN }, /positive/],
-    [{ kind: 'issue', number: 8 }, /Issue #8 not found/],
+    [
+      { kind: 'issue', number: 8 },
+      { name: 'MissingIssueError', message: /Issue #8 no longer exists/ },
+    ],
   ];
   for (const [options, error] of cases) {
     const f = github();

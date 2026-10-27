@@ -14,13 +14,13 @@ Keep titles plain ("Add CSV export", not "\[Task]: Add CSV export"); labels carr
 
 ## Triage
 
-[ISSUE_TRIAGE.md](ISSUE_TRIAGE.md) defines severity, Priority, Size, labels, and when to split work into sub-issues. Each directory under `packages/` that contains a `package.json` is an npm workspace and needs a `package: <directory>` label, and a test fails when one is missing.
+[ISSUE_TRIAGE.md](ISSUE_TRIAGE.md) defines severity, Priority, Size, labels, and when to split work into sub-issues.
 
 ## Status
 
 | Status | Meaning |
 | --- | --- |
-| Inbox | New and not triaged yet |
+| Inbox, or no Status | New and not triaged yet; triage treats both the same |
 | Ready | Triaged; set automatically once priority, size, and severity are filled in |
 | In progress | Someone is working on it |
 | In review | A PR is open |
@@ -37,7 +37,7 @@ Before you start, assign yourself, comment with your plan, and move the issue to
 ## Pull requests
 
 - Name the branch `<login>/<issue>-<slug>`, where `<login>` is your GitHub login. Run `node scripts/branch-name.mjs <issue> --actor <login>` and use its output before the first commit; never pick a name by hand. Nothing in CI checks branch names.
-- Title the PR with [Conventional Commits](https://www.conventionalcommits.org/), e.g. `feat: add CSV export`.
+- Title the PR with [Conventional Commits](https://www.conventionalcommits.org/), with a component scope, e.g. `fix(tracker): skip archived items`.
 - Fill in the PR template. Put `Closes #N` for the issue the PR finishes, and link the parent issue if there is one.
 - Add tests for behavior you change, and update docs if you change how something is used or operated.
 - Past roughly 400 lines of changed production code (not counting tests, docs, or lockfiles), split the work into stacked PRs. Each layer is its own branch and PR on top of the previous one; `--layer <n>` names layers 2 and up with `-part-<n>`. Early layers reference the issue, and only the last one closes it.
@@ -67,7 +67,7 @@ The [project membership workflow](.github/workflows/tracker-project-membership.y
 
 The [issue states workflow](.github/workflows/tracker-issue-states.yml) uses deterministic GitHub API calls, with no model usage. It moves an open issue whose Status is empty or Inbox to Ready when Priority, exactly one supported severity, and Size are present. Other statuses are left alone by metadata triage. A sweep asks the project only for open issues whose Status is not Ready, In progress, In review, or Done, so it never reads items that cannot qualify. Ready means triaged; implementation still requires clear scope, acceptance criteria, validation, and satisfied dependencies.
 
-It also removes conflicting standard labels and any `type:` label from issues labeled `epic`, preserving severity/package/area/risk metadata. It closes any container when all direct children are closed and updates its project status to Done. Nested completion rolls up in the same run. If an unfinished child appears, it reopens only containers carrying the automation's `automation: container-closed` marker and sets their status to Ready. Manually closed containers are left alone. An empty issue is never auto-closed. Closed children count as complete regardless of close reason; a cancelled child should have its scope removed or reassigned before closure.
+It also removes conflicting standard labels and any `type:` label from issues labeled `epic`, preserving severity, area, and risk metadata. It closes any container when all direct children are closed and updates its project status to Done. Nested completion rolls up in the same run. If an unfinished child appears, it reopens only containers carrying the automation's `automation: container-closed` marker and sets their status to Ready. Manually closed containers are left alone. An empty issue is never auto-closed. Closed children count as complete regardless of close reason; a cancelled child should have its scope removed or reassigned before closure.
 
 An issue event reconciles only that issue: triage reads its own project item, and container reconciliation reads its sub-issue subtree and its ancestors. Reopening and closing an issue start a run. Adding or removing a label starts one only for a `severity:` label, `epic`, or `automation: container-closed`, or for any label on an issue labeled `epic`. Opening an issue and editing its title or body start no run. One hourly job in the issue states workflow runs three sweeps in order on one runner: it adds open issues missing from the project, triages every issue, and reconciles every container. It catches project field and hierarchy edits that lack an Actions trigger. Each sweep runs even when an earlier one failed, and the job fails at the end if any sweep failed. A manual run of the issue states workflow runs the same three sweeps and is a dry run unless you clear `dry_run`. Each run logs the GraphQL budget before and after. A sweep skips with a warning when fewer than 1,000 points remain. An issue event that hits the rate limit logs a warning and succeeds, because the next sweep repeats its work.
 

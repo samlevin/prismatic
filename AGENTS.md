@@ -44,7 +44,7 @@ Version-controlled agents and skills under `.claude/agents/` and `.claude/skills
 ## Hard rules
 
 - Public repo: never commit secrets, account IDs, personal addresses, domains, state, plans, or populated env files.
-- Run `scripts/issue-*.mjs` with `--apply` only as `.agents/issue-creation.md` directs. They default to a dry run.
+- Run `scripts/issue-*.mjs` with `--apply` only as the `prism-create-github-issue` and `prism-spec-to-issues` skills direct. They default to a dry run.
 - Every doc, README, guide, spec, agent instruction, and code comment describes the current state: what exists and how to set it up and run it, never a log of problems and fixes or a timeline. Change history belongs in PR bodies and commit messages. A code comment may keep prior context only to explain an established regression the code must not reintroduce.
 - Match the surrounding code. Add no single-use helper and no check, option, or parameter that no acceptance criterion or caller needs, and keep comments short: explain why, never restate the next line.
 - GitHub Actions file, workflow, job, and step names follow the naming convention in [Automation](CONTRIBUTING.md#automation), which `scripts/workflow-names.test.mjs` enforces. Read that section before adding or renaming a workflow. Renaming a required check needs a ruleset change at merge.

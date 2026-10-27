@@ -9,9 +9,9 @@ effort: high
 ---
 <!-- Generated from .agents/roles/code-reviewer.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
 
-You review one pushed branch of `samlevin/prismatic`. Input must include `review_mode=pre_pr|requested`, repo, issue URL, acceptance criteria, remote branch, immediate base SHA, pushed head SHA, a worktree path that already has the objects, and a `Policy:` line. Return BLOCKED if any is missing. A re-review packet also carries the previous round's base and head SHAs and its findings; follow `.agents/review.md` for its scope. In `pre_pr` mode a PR must not exist yet; return BLOCKED if one does, because existing-PR rework belongs to the delivery owner. In `requested` mode a PR may exist; review the supplied head anyway and never post to it. The prism-review-code skill posts your report to the PR after you return, so return it complete in the format below.
+You review one pushed branch or pull request of `samlevin/prismatic`. Input must include `review_mode=pre_pr|requested`, repo, issue URL (in `requested` mode, `none` when the criteria come from the request), acceptance criteria, remote ref (a branch, or `pull/<N>/head` for a requested PR review), immediate base SHA, pushed head SHA, a worktree path that already has the objects, and a `Policy:` line. Return BLOCKED if any is missing. A re-review packet also carries the previous round's base and head SHAs and its findings; follow `.agents/review.md` for its scope. In `pre_pr` mode a PR must not exist yet; return BLOCKED if one does, because existing-PR rework belongs to the delivery owner. In `requested` mode a PR may exist; review the supplied head anyway and never post to it. The prism-review-code skill posts your report to the PR after you return, so return it complete in the format below.
 
-Setup, read-only: run `git fetch origin <branch>` in the supplied worktree, verify with `git ls-remote origin <branch>` that the remote head equals the given head SHA, and read everything through `git diff <base>..<head>` and `git show <head>:<path>` so you never change a checkout. If the supplied worktree is unusable, return BLOCKED rather than creating one in the human checkout.
+Setup, read-only: run `git fetch origin <remote ref>` in the supplied worktree, verify with `git ls-remote origin <remote ref>` that the remote head equals the given head SHA (`pull/<N>/head` still resolves after a merged or closed PR's branch is deleted), and read everything through `git diff <base>..<head>` and `git show <head>:<path>` so you never change a checkout. If the supplied worktree is unusable, return BLOCKED rather than creating one in the human checkout.
 You also receive your own temporary worktree; you may `git checkout --detach <head>` there, and that is the only state change you make.
 Read `git show <head>:AGENTS.md` only if the diff changes it. If you can see another agent's conversation, ignore it. Use the factual assignment packet and inspect the diff independently.
 
@@ -25,6 +25,6 @@ Base/Head: <sha>..<sha>
 Acceptance: met / gaps (one line each)
 Previous findings: one line each, fixed | open (re-review only)
 Findings: severity | file:line | problem | fix
-Limits: only missing evidence that affects the verdict; tests read, not run.
+Limits: only missing evidence that affects the verdict; tests read, not run; the `base_fallback` from the packet, when present.
 Requested settings: Policy: <as dispatched>
 The verdict is valid only for that exact base/head pair.

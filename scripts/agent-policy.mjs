@@ -616,9 +616,10 @@ export function reviewBody(policy, { report, base, head, note }) {
   return `${parts.join('\n\n')}\n`;
 }
 
-function ghJson(path, run, { method, input } = {}) {
+function ghJson(path, run, { method, input, jq } = {}) {
   const args = [path, ...(method ? ['--method', method] : [])];
   if (input !== undefined) args.push('--input', '-');
+  if (jq) args.push('--jq', jq);
   let output;
   try {
     output = ghRest(args, { run, input });
@@ -666,9 +667,26 @@ export function publishReview(
         ? 'pull request is closed'
         : `pull request state is ${pull?.state ?? 'unknown'}, not open`,
     );
-  if (pull?.base?.sha !== base || pull?.head?.sha !== head)
+  if (pull?.head?.sha !== head)
     throw new ReviewNotPosted(
-      `pull request #${pr} is now at ${pull?.base?.sha}..${pull?.head?.sha}, not the reviewed ${base}..${head}. Run a fresh review for the new commits.`,
+      `pull request #${pr} head is now ${pull?.head?.sha}, not the reviewed ${head}. Run a fresh review for the new commits.`,
+    );
+  // The skill reviews from `git merge-base <base_sha> <head_sha>`, so the
+  // review still posts after the base branch tip moves, as long as the
+  // reviewed diff is unchanged. --jq keeps the file patches out of the output.
+  let mergeBase;
+  try {
+    mergeBase = ghJson(
+      `repos/${repository}/compare/${pull?.base?.sha}...${head}?per_page=1`,
+      run,
+      { jq: '{sha: .merge_base_commit.sha}' },
+    )?.sha;
+  } catch (error) {
+    throw new ReviewNotPosted(error.message);
+  }
+  if (mergeBase !== base)
+    throw new ReviewNotPosted(
+      `pull request #${pr} now has merge base ${mergeBase} with ${pull?.base?.ref}, not the reviewed ${base}. Run a fresh review for the new commits.`,
     );
   let viewer = null;
   let identityError;

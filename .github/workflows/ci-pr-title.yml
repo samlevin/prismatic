@@ -1,5 +1,4 @@
-# Requires a Conventional Commits PR title. The squash commit takes the title,
-# and Release Please derives versions and release notes from it.
+# Requires a Conventional Commits PR title. The squash commit takes the title.
 
 name: 'CI: PR title'
 

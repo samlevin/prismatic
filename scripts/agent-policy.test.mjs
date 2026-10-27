@@ -1111,6 +1111,8 @@ test('the README keeps the effective-model verification row', () => {
 // reaches GitHub. `run` stands in for execFileSync and records every call.
 const BASE = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
+// The base branch tip, which moves on after the reviewed merge base.
+const TIP = 'd'.repeat(40);
 const report = (verdict, pair = `${BASE}..${HEAD}`) =>
   [
     `Verdict: ${verdict}`,
@@ -1134,7 +1136,8 @@ function ghFailure(status, body) {
 function mockGitHub({
   viewer = 'reviewer',
   author = 'author',
-  base = BASE,
+  tip = TIP,
+  mergeBase = BASE,
   head = HEAD,
   user,
   review,
@@ -1155,9 +1158,20 @@ function mockGitHub({
         merged,
         merged_at: merged ? '2026-10-01T00:00:00Z' : null,
         user: author === null ? null : { login: author },
-        base: { sha: base },
+        base: { sha: tip, ref: 'main' },
         head: { sha: head },
       });
+    if (
+      path ===
+      `repos/${policy.binding.repository}/compare/${tip}...${HEAD}?per_page=1`
+    ) {
+      // gh filters the compare response so its file patches never reach the buffer.
+      assert.deepEqual(args.slice(3), [
+        '--jq',
+        '{sha: .merge_base_commit.sha}',
+      ]);
+      return JSON.stringify({ sha: mergeBase });
+    }
     if (path === 'user') {
       if (user) throw user;
       return JSON.stringify(viewer === null ? {} : { login: viewer });
@@ -1391,16 +1405,26 @@ test('a merged or closed pull request gets no review and says why', () => {
 });
 
 test('moved or mismatched SHAs post nothing and ask for a fresh review', () => {
-  for (const github of [
-    mockGitHub({ head: 'c'.repeat(40) }),
-    mockGitHub({ base: 'c'.repeat(40) }),
+  for (const [github, reason] of [
+    [mockGitHub({ head: 'c'.repeat(40) }), `head is now ${'c'.repeat(40)}`],
+    [
+      mockGitHub({ mergeBase: 'c'.repeat(40) }),
+      `now has merge base ${'c'.repeat(40)} with main, not the reviewed ${BASE}`,
+    ],
   ]) {
     assert.throws(
       () => publish('REQUEST CHANGES', github),
-      /^ReviewNotPosted: Review not posted: pull request #7 is now at .*Run a fresh review for the new commits/,
+      (error) =>
+        error.message.startsWith('Review not posted: pull request #7 ') &&
+        error.message.includes(reason) &&
+        error.message.endsWith('Run a fresh review for the new commits.'),
     );
     assert.equal(github.posts.length, 0);
   }
+  // A base branch tip that moved on past the reviewed merge base still posts.
+  const moved = mockGitHub({ tip: 'e'.repeat(40) });
+  publish('APPROVE', moved);
+  assert.equal(moved.posts.length, 1);
   const mismatch = mockGitHub();
   assert.throws(
     () =>

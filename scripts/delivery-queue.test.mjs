@@ -300,6 +300,29 @@ test('released, untrusted, and legacy claims follow ownership rules', () => {
   );
   assert.equal(claimRecord([legacy]).branch, 'agent/1-one');
   assert.equal(claimRecord([legacy, comment('Released the claim.')]), null);
+  // A release by another account changes nothing, and does not make that
+  // account the owner of the claim it failed to release.
+  const other = (body) => ({ ...comment(body), user: { login: 'other' } });
+  assert.equal(
+    claimRecord([legacy, other('Released the claim.')]).branch,
+    'agent/1-one',
+  );
+  assert.equal(
+    claimRecord([
+      legacy,
+      other('Released the claim.'),
+      comment('Released the claim.'),
+    ]),
+    null,
+  );
+  assert.equal(
+    claimRecord([
+      legacy,
+      other('Released the claim.'),
+      other('Released the claim.'),
+    ]).branch,
+    'agent/1-one',
+  );
 });
 
 test('the ledger reuses only qualifying effort decisions and never escalates from metadata', () => {

@@ -48,7 +48,12 @@ export function claimRecord(comments) {
       const value = JSON.parse(record[1]);
       if (value.released) {
         if (active?.agent === value.agent) active = null;
-      } else active = { ...value, url: comment.html_url };
+      } else
+        active = {
+          ...value,
+          url: comment.html_url,
+          login: comment.user?.login,
+        };
     } else if (
       /\b(?:claims?|claimed|claiming)\b/i.test(body) &&
       !/\b(?:releases?|released|releasing)\b/i.test(body)
@@ -60,13 +65,12 @@ export function claimRecord(comments) {
           body,
         )?.[1],
         url: comment.html_url,
+        login: comment.user?.login,
       };
     } else if (/\b(?:releases?|released|releasing)\b.*\bclaim\b/i.test(body)) {
       // Legacy releases belong to the GitHub account that wrote the claim.
       if (active && comment.user?.login === active.login) active = null;
     }
-    if (active && (record || /\b(?:claims?|claimed|claiming)\b/i.test(body)))
-      active.login = comment.user?.login;
   }
   return active;
 }
