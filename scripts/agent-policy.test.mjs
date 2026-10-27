@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -68,10 +74,13 @@ test('missing and unknown commands show an actionable error and combined help', 
     [['unknown'], 'Unknown command unknown'],
   ]) {
     const result = run(...args);
-    assert.equal(result.status, 2);
+    assert.equal(result.status, 1);
     assert.equal(result.stdout, '');
     assert.equal(result.stderr, `${message}\n\n${help.stdout}`);
   }
+  const named = run('check');
+  assert.equal(named.status, 0, named.stderr);
+  assert.equal(named.stderr, '');
 });
 
 test('the binding resolves every placeholder and feature section', () => {
@@ -1129,6 +1138,9 @@ function fakeGh(overrides = {}) {
   return { run, calls, posts };
 }
 
+const body = (note, text) =>
+  `**${policy.binding.label} review-code** of base \`${BASE}\` and head \`${HEAD}\`\n\n> ${note}\n\n${text}`;
+
 const publish = (text, github, fields = {}) =>
   publishReview(
     policy,
@@ -1190,7 +1202,14 @@ test('publish-review requests changes only when the poster is not the PR author'
   // The body goes on stdin as JSON, never as a command-line argument.
   assert.deepEqual(github.calls[3].slice(-2), ['--input', '-']);
   assert.deepEqual(github.posts, [
-    { commit_id: HEAD, event: 'REQUEST_CHANGES', body: text },
+    {
+      commit_id: HEAD,
+      event: 'REQUEST_CHANGES',
+      body: body(
+        'Verdict REQUEST CHANGES is posted as a change request because reviewer is not the pull request author author.',
+        text,
+      ),
+    },
   ]);
 
   for (const login of ['author', 'AUTHOR']) {
@@ -1198,20 +1217,54 @@ test('publish-review requests changes only when the poster is not the PR author'
     assert.equal(publish(text, own).event, 'COMMENT');
     assert.equal(
       own.posts[0].body,
-      `Verdict REQUEST CHANGES is posted as a comment because GitHub does not let author request changes on their own pull request.\n\n${text}`,
+      body(
+        'Verdict REQUEST CHANGES is posted as a comment because GitHub does not let author request changes on their own pull request.',
+        text,
+      ),
     );
   }
 });
 
-test('publish-review comments when the posting identity is unknown', () => {
-  for (const user of [null, 403, {}]) {
+test('publish-review comments with the reason when an identity is unknown', () => {
+  const unknown = (reason) =>
+    `Verdict REQUEST CHANGES is posted as a comment because the posting account could not be identified (${reason}) and may be the pull request author.`;
+  for (const [user, note] of [
+    [
+      null,
+      unknown(
+        'gh api user failed: GitHub API request failed: HTTP 404: Not Found. It does not exist, or the token cannot see it; check the token and Projects access.',
+      ),
+    ],
+    [
+      403,
+      unknown(
+        'gh api user failed: GitHub API request failed: HTTP 403: Unprocessable Entity. Check the token and Projects access.',
+      ),
+    ],
+    [{}, unknown('gh api user returned no login')],
+  ]) {
     const github = fakeGh({ user });
-    assert.equal(publish(report('REQUEST CHANGES'), github).event, 'COMMENT');
-    assert.match(
-      github.posts[0].body,
-      /^Verdict REQUEST CHANGES is posted as a comment because the posting account could not be identified/,
-    );
+    const result = publish(report('REQUEST CHANGES'), github);
+    assert.equal(result.event, 'COMMENT');
+    assert.equal(result.note, note);
+    assert.equal(github.posts[0].body, body(note, report('REQUEST CHANGES')));
   }
+  const github = fakeGh({
+    [`repos/${REPO}/pulls/7`]: {
+      state: 'open',
+      merged_at: null,
+      head: { sha: HEAD },
+      base: { sha: TIP, ref: 'main' },
+      user: null,
+    },
+  });
+  const result = publish(report('REQUEST CHANGES'), github);
+  assert.equal(result.event, 'COMMENT');
+  assert.equal(
+    result.note,
+    'Verdict REQUEST CHANGES is posted as a comment because the pull request author is an unknown identity and may be reviewer.',
+  );
+  assert.equal(result.author, null);
 });
 
 test('publish-review never approves and says why the event differs', () => {
@@ -1224,7 +1277,7 @@ test('publish-review never approves and says why the event differs', () => {
     assert.equal(result.event, 'COMMENT');
     assert.match(result.note, reason);
     assert.equal(github.posts[0].commit_id, HEAD);
-    assert.ok(github.posts[0].body.endsWith(report(verdict)));
+    assert.equal(github.posts[0].body, body(result.note, report(verdict)));
   }
   assert.throws(
     () => reviewEvent({ verdict: 'LGTM' }),
@@ -1233,14 +1286,15 @@ test('publish-review never approves and says why the event differs', () => {
   assert.deepEqual(REVIEW_VERDICTS, ['APPROVE', 'REQUEST CHANGES', 'BLOCKED']);
 });
 
-test('publish-review posts nothing to a merged or closed pull request', () => {
-  for (const [merged, word] of [
-    ['2026-10-01T00:00:00Z', 'merged'],
-    [null, 'closed'],
+test('publish-review posts nothing to a pull request that is not open', () => {
+  for (const [state, merged, reason] of [
+    ['closed', '2026-10-01T00:00:00Z', 'pull request is merged'],
+    ['closed', null, 'pull request is closed'],
+    ['locked', null, 'pull request state is locked, not open'],
   ]) {
     const github = fakeGh({
       [`repos/${REPO}/pulls/7`]: {
-        state: 'closed',
+        state,
         merged_at: merged,
         head: { sha: HEAD },
         base: { sha: TIP, ref: 'gone' },
@@ -1250,7 +1304,7 @@ test('publish-review posts nothing to a merged or closed pull request', () => {
     assert.throws(
       () => publish(report('REQUEST CHANGES'), github),
       new RegExp(
-        `Review not posted: pull request #7 is ${word}; reviews post only to open pull requests$`,
+        `Review not posted: ${reason}; reviews post only to open pull requests$`,
       ),
     );
     assert.deepEqual(github.posts, []);
@@ -1332,7 +1386,7 @@ test('publish-review rejects bad input before calling gh, and the command report
     [['--pr', '7'], /^Review not posted: --report <file> is required/],
     [
       ['--pr', '7', '--report', join(tmpdir(), 'missing-review.md')],
-      /^Review not posted: cannot read the report .*missing-review\.md: ENOENT/,
+      /^Review not posted: cannot read the report .*missing-review\.md: ENOENT: no such file or directory/,
     ],
   ]) {
     const result = spawnSync(
@@ -1347,6 +1401,36 @@ test('publish-review rejects bad input before calling gh, and the command report
     assert.equal(result.status, 1);
     assert.match(result.stderr, message);
   }
+  // A copy of the scripts beside a broken policy file. The real path keeps
+  // the script's entry-point check true where the temp directory is a symlink.
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'agent-policy-')));
+  mkdirSync(join(base, 'scripts'));
+  mkdirSync(join(base, '.agents'));
+  for (const file of ['agent-policy.mjs', 'cli.mjs', 'github-api.mjs'])
+    writeFileSync(
+      join(base, 'scripts', file),
+      readFileSync(new URL(`./${file}`, import.meta.url)),
+    );
+  writeFileSync(join(base, '.agents/policy.json'), '{}');
+  const reportFile = join(base, 'report.md');
+  writeFileSync(reportFile, report('APPROVE'));
+  const broken = spawnSync(
+    process.execPath,
+    [
+      join(base, 'scripts/agent-policy.mjs'),
+      'publish-review',
+      '--pr',
+      '7',
+      '--report',
+      reportFile,
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(broken.status, 1);
+  assert.equal(
+    broken.stderr,
+    'Review not posted: cannot load the policy: policy.json binding is missing binding\n',
+  );
 });
 
 function inBoth(file) {
@@ -2029,7 +2113,7 @@ test('implementation is medium while every review dispatch has its own high sett
     assert.equal(packet.reviewer.effort, 'high');
     assert.equal(
       packet.implementer.model,
-      tool === 'claude' ? 'opus' : 'gpt-6.1-sol',
+      tool === 'claude' ? 'claude-opus-5-5' : 'gpt-6.1-sol',
     );
     assert.equal(
       packet.reviewer.model,

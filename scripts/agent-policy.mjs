@@ -603,8 +603,8 @@ export function parseReviewReport(text) {
 // author, so a change request goes out only when the publishing account is
 // known and differs from the author. Logins compare case-insensitively, as
 // GitHub treats them. Every other case is a COMMENT review, and nothing here
-// ever approves.
-export function reviewEvent({ verdict, viewer, author }) {
+// ever approves. `viewerError` says why the posting account is unknown.
+export function reviewEvent({ verdict, viewer, author, viewerError }) {
   if (!REVIEW_VERDICTS.includes(verdict))
     throw new Error(`Unknown review verdict: ${verdict}`);
   if (verdict === 'APPROVE')
@@ -617,17 +617,25 @@ export function reviewEvent({ verdict, viewer, author }) {
       event: 'COMMENT',
       note: 'Verdict BLOCKED is posted as a comment because it is not a review decision.',
     };
-  if (!viewer || !author)
+  if (!viewer)
     return {
       event: 'COMMENT',
-      note: 'Verdict REQUEST CHANGES is posted as a comment because the posting account could not be identified and may be the pull request author.',
+      note: `Verdict REQUEST CHANGES is posted as a comment because the posting account could not be identified (${viewerError ?? 'gh api user returned no login'}) and may be the pull request author.`,
+    };
+  if (!author)
+    return {
+      event: 'COMMENT',
+      note: `Verdict REQUEST CHANGES is posted as a comment because the pull request author is an unknown identity and may be ${viewer}.`,
     };
   if (viewer.toLowerCase() === author.toLowerCase())
     return {
       event: 'COMMENT',
       note: `Verdict REQUEST CHANGES is posted as a comment because GitHub does not let ${author} request changes on their own pull request.`,
     };
-  return { event: 'REQUEST_CHANGES', note: null };
+  return {
+    event: 'REQUEST_CHANGES',
+    note: `Verdict REQUEST CHANGES is posted as a change request because ${viewer} is not the pull request author ${author}.`,
+  };
 }
 
 // Posts a code review report to an open pull request as one review pinned to
@@ -660,7 +668,13 @@ export function publishReview(
   const pull = api([`repos/${repository}/pulls/${pr}`]);
   if (pull.state !== 'open')
     throw new ReviewNotPosted(
-      `pull request #${pr} is ${pull.merged_at ? 'merged' : 'closed'}; reviews post only to open pull requests`,
+      `${
+        pull.merged_at
+          ? 'pull request is merged'
+          : pull.state === 'closed'
+            ? 'pull request is closed'
+            : `pull request state is ${pull.state}, not open`
+      }; reviews post only to open pull requests`,
     );
   if (pull.head.sha !== head)
     throw new ReviewNotPosted(
@@ -679,16 +693,18 @@ export function publishReview(
       `pull request #${pr} now has merge base ${mergeBase} with ${pull.base.ref}, not the reviewed ${base}`,
     );
   let viewer;
+  let viewerError;
   try {
     viewer = JSON.parse(ghRest(['user'], { run })).login;
-  } catch {
-    viewer = undefined;
+  } catch (error) {
+    viewerError = `gh api user failed: ${failureMessage(error)}`;
   }
   const author = pull.user?.login;
   const { event, note } = reviewEvent({
     verdict: reviewed.verdict,
     viewer,
     author,
+    viewerError,
   });
   const posted = api(
     [
@@ -701,7 +717,7 @@ export function publishReview(
     JSON.stringify({
       commit_id: head,
       event,
-      body: note ? `${note}\n\n${report}` : report,
+      body: `**${binding(policy).label} review-code** of base \`${base}\` and head \`${head}\`\n\n> ${note}\n\n${report}`,
     }),
   );
   if (!posted?.html_url)
@@ -751,7 +767,7 @@ function main(args) {
         command ? `Unknown command ${command}` : 'Name a command',
       ).message,
     );
-    return 2;
+    return 1;
   }
   const cli = defineCli(USAGE, COMMAND_OPTIONS[command]);
   const { options, positionals } = parseCli(rest, cli);
@@ -808,10 +824,16 @@ function main(args) {
       report = readFileSync(reportPath, 'utf8');
     } catch (error) {
       throw new ReviewNotPosted(
-        `cannot read the report ${reportPath}: ${error.code}`,
+        `cannot read the report ${reportPath}: ${error.message}`,
       );
     }
-    const result = publishReview(loadPolicy(), {
+    let policy;
+    try {
+      policy = loadPolicy();
+    } catch (error) {
+      throw new ReviewNotPosted(`cannot load the policy: ${error.message}`);
+    }
+    const result = publishReview(policy, {
       pr: options.pr,
       base: options.base,
       head: options.head,
@@ -820,12 +842,14 @@ function main(args) {
     console.log(JSON.stringify(result, null, 2));
     return 0;
   }
-  const stale = check();
-  if (!stale.length) return 0;
-  console.error(
-    `Generated agent definitions are out of date. Run \`npm run agents:generate\` and commit:\n${stale.map((path) => `  ${path}`).join('\n')}`,
-  );
-  return 1;
+  if (command === 'check') {
+    const stale = check();
+    if (!stale.length) return 0;
+    console.error(
+      `Generated agent definitions are out of date. Run \`npm run agents:generate\` and commit:\n${stale.map((path) => `  ${path}`).join('\n')}`,
+    );
+    return 1;
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

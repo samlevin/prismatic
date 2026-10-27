@@ -44,7 +44,7 @@
     "implementation": {
       "summary": "Delegated leaf delivery and PR rework through ready-for-review PRs; advisory only for explicit inline delivery",
       "claude": {
-        "model": "opus",
+        "model": "claude-opus-5-5",
         "effort": "medium"
       },
       "codex": {

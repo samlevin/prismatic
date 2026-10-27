@@ -4,7 +4,7 @@ description: Isolated owner of one Prismatic leaf issue or PR rework, the defaul
 tools: Agent, Bash, Read, Edit, Write, Grep, Glob, Skill
 isolation: worktree
 color: green
-model: opus
+model: claude-opus-5-5
 effort: medium
 ---
 <!-- Generated from .agents/roles/implementer.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->

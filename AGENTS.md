@@ -17,6 +17,7 @@ CI picks its checks from the changed files, as CONTRIBUTING.md describes. Tests 
 
 ## Autonomous delivery
 
+- Every request needs an issue before work starts. Search the tracker for an existing one, file it with `prism-create-github-issue` when none exists, then claim it.
 - A delivery request authorizes issue claims, project moves, commits, pushes, and ready-for-review PRs. Filing authorizes issue publication. Review authorizes no edits, and its only PR write is the one review `prism-review-code` posts to an open PR target through `publish-review`. Merges, deployments, destructive operations, and changes to GitHub repository settings, CI secrets, or agent tool settings require explicit user authorization.
 - Each writer works in its own git worktree based on fresh `origin/main`: the one your tool creates, or else one you add with `git worktree add` under the ignored `.claude/worktrees/` (Claude Code) or `.codex/worktrees/` (Codex). The writer that creates a worktree runs every change in it, stack operations included; other agents only inspect it. Never edit, install, build, or switch branches in the human checkout, and never modify a worktree you did not create. Before creating or using one, read [Agent worktree isolation](.agents/worktree-isolation.md).
 - When a leaf lacks Priority or Size, set Priority to P2 and Size from the scope, as the triage section of CONTRIBUTING.md defines. Missing tracker metadata alone does not block delivery. Stop for a concrete unmet prerequisite or missing acceptance criteria.
@@ -53,9 +54,7 @@ The repository ships the same delivery roles, handoffs, and checks for Claude Co
 
 ## Branch names
 
-Name every branch you push for an issue `agent/<issue>-<slug>`, where `<issue>` is the leaf the PR closes, even when the branch stacks on another issue's PR. Stacked layers after the first end in `-part-<n>`. Print the name with `node scripts/branch-name.mjs <issue>`, adding `--layer <n>` for layer 2 and up, and never type it by hand. Create the branch with that name, or run `git branch -m <name>` on the branch your tool created, before the first commit. Once a branch is pushed, keep its name even if the issue title changes. Nothing in CI checks branch names. For example, #5 gets `agent/5-generate-and-enforce-branch-names-from`, and its second layer adds `-part-2`.
-
-A request with no issue uses `agent/<slug>`, built from a short description of the change by the same slug rules the script applies to issue titles: lowercase, accents dropped, every run of other characters turned into `-`, "Part N" written `partN`, cut to 40 characters at a word boundary, and `issue` when nothing is left.
+Name every branch you push `agent/<issue>-<slug>`, where `<issue>` is the leaf the PR closes, even when the branch stacks on another issue's PR. Stacked layers after the first end in `-part-<n>`. Print the name with `node scripts/branch-name.mjs <issue>`, adding `--layer <n>` for layer 2 and up, and never type it by hand. Create the branch with that name, or run `git branch -m <name>` on the branch your tool created, before the first commit. Once a branch is pushed, keep its name even if the issue title changes. Nothing in CI checks branch names. For example, #5 gets `agent/5-generate-and-enforce-branch-names-from`, and its second layer adds `-part-2`.
 
 ## Hard rules
 
@@ -69,7 +68,7 @@ Issue tracker: GitHub Issues. This marker turns on the GitHub issue flows (`impl
 Repo `samlevin/prismatic`, trunk `main`, project [Prismatic delivery](https://github.com/users/samlevin/projects/2). Discover project field IDs with `gh`.
 
 - Triage, statuses, and PR rules live in [CONTRIBUTING.md](CONTRIBUTING.md); labels in [.github/labels.json](.github/labels.json); forms in `.github/ISSUE_TEMPLATE/`.
-- PR titles use Conventional Commits, e.g. `feat: add CSV export`. Body: `Closes #N`, plus `Parent issue or epic: #P` when one exists. For a request with no issue, write `No linked issue.` instead and skip the issue state steps.
+- PR titles use Conventional Commits, e.g. `feat: add CSV export`. Body: `Closes #N`, plus `Parent issue or epic: #P` when one exists.
 - Issue states: claim and move to `In progress` before coding. That is the only status an agent sets; agents never set `In review` or `Done`. `tracker-pr-issue-status.yml` moves the closing issue to `In review` when the PR opens. If the issue is not `In review` at handoff, because the workflow has not run, skipped the issue, or failed, report the state you see in the handoff and leave it unchanged.
 - Issue titles are plain, with no `[Type]:` prefix. For issue filing, follow `.agents/issue-creation.md`.
 - Agents make their own GitHub calls through REST with `gh api`: issues, PRs, comments, labels, assignees, sub-issues, issue dependencies, and Projects v2 under `users/<owner>/projectsV2/<n>`. `gh issue`, `gh pr`, `gh project`, and `gh api graphql` spend the GraphQL limit that agents share with Actions tokens, so use them only for an operation REST lacks. When a GraphQL call is rate-limited, switch to REST instead of waiting. Repository code, such as GitHub Actions workflows and the scripts they run, keeps its GraphQL calls.
