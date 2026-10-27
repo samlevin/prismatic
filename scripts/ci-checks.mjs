@@ -36,46 +36,59 @@ export function checks({ full }) {
   return commands;
 }
 
-// Prints each check's buffered output in one group as soon as it finishes.
-export async function runChecks(commands, run = runCommand, log = console.log) {
+function commandLine(command, args) {
+  return [command, ...args].join(' ');
+}
+
+// Checks run in parallel, so each one's output is buffered and printed in its
+// own log group when that check ends. A `Started` line outside any group marks
+// each check's start, so a timed-out or cancelled run still shows which checks
+// were running. Every check settles before the run fails, and the error names
+// each failed command with its exit code.
+export async function runChecks(
+  commands,
+  run = runCommand,
+  write = (text) => process.stdout.write(text),
+) {
   const results = await Promise.all(
-    commands.map(([command, args]) => {
-      const line = [command, ...args].join(' ');
-      log(`Started ${line}`);
-      return run(command, args).then((result) => {
-        log(`::group::${line}`);
-        if (result.output) log(result.output.trimEnd());
-        log('::endgroup::');
-        return { line, ...result };
-      });
+    commands.map(async ([command, args]) => {
+      const line = commandLine(command, args);
+      write(`Started ${line}\n`);
+      const { code, output } = await run(command, args);
+      write(`::group::${line}\n`);
+      if (output) write(output.endsWith('\n') ? output : `${output}\n`);
+      write('::endgroup::\n');
+      return { line, code };
     }),
   );
-  return results.filter(({ code }) => code !== 0);
+  const failed = results.filter(({ code }) => code !== 0);
+  if (failed.length > 0)
+    throw new Error(
+      [
+        `${failed.length} of ${results.length} CI checks failed:`,
+        ...failed.map(({ line, code }) => `  ${line} (exit code ${code})`),
+      ].join('\n'),
+    );
 }
 
-export function failureReport(failed, total) {
-  return [
-    `${failed.length} of ${total} CI checks failed:`,
-    ...failed.map(({ line, code }) => `  ${line} exited with ${code}`),
-  ].join('\n');
-}
-
+// Collects stdout and stderr together in the order they arrive.
 function runCommand(command, args) {
   return new Promise((resolve) => {
-    let output = '';
+    const chunks = [];
+    let settled = false;
+    const finish = (code) => {
+      if (settled) return;
+      settled = true;
+      resolve({ code, output: Buffer.concat(chunks).toString() });
+    };
     const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    // Decoding per stream keeps a character split across chunks intact.
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => (output += chunk));
-    child.stderr.on('data', (chunk) => (output += chunk));
-    // A command that cannot start emits error before close, so the error wins.
+    child.stdout.on('data', (chunk) => chunks.push(chunk));
+    child.stderr.on('data', (chunk) => chunks.push(chunk));
     child.on('error', (error) => {
-      resolve({ code: error.code, output: `${output}${error.message}\n` });
+      chunks.push(Buffer.from(`${error.stack ?? error}\n`));
+      finish(1);
     });
-    child.on('close', (code, signal) => {
-      resolve({ code: code ?? signal, output });
-    });
+    child.on('close', (code) => finish(code ?? 1));
   });
 }
 
@@ -95,24 +108,19 @@ async function main() {
   const { full, summary } = readEnv(process.env);
   const scope = full ? 'every check' : 'format check and Markdown lint only';
   console.log(`Selected: ${scope}`);
-  const commands = checks({ full });
-  const failed = await runChecks(commands);
-  if (failed.length) {
-    console.error(failureReport(failed, commands.length));
-    return 1;
-  }
+  await runChecks(checks({ full }));
   if (summary)
     appendFileSync(
       summary,
       `Selected ${scope}; every selected check passed.\n`,
     );
-  return 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
   try {
-    process.exitCode = await main();
+    await main();
   } catch (error) {
+    // End the log with the failure summary instead of a stack trace.
     console.error(error.message);
     process.exitCode = 1;
   }
