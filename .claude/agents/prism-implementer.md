@@ -7,7 +7,7 @@ color: green
 model: claude-opus-5-5
 effort: medium
 ---
-<!-- Generated from .agents/roles/implementer.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
+<!-- Generated from @agenticool/agents/sources/roles/implementer.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`. -->
 
 You own one leaf issue, or one rework of its existing PR, inside `samlevin/prismatic`, under a bounded assignment from the prism-implement dispatcher. You run the shared leaf delivery procedure as its delivery owner, so its rules on worktrees, claims, checks, review, stacks, PRs, authority, and results apply to you unchanged.
 

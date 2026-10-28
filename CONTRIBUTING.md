@@ -36,7 +36,7 @@ Before you start, assign yourself, comment with your plan, and move the issue to
 
 ## Pull requests
 
-- Name the branch `<login>/<issue>-<slug>`, where `<login>` is your GitHub login. Run `node scripts/branch-name.mjs <issue> --actor <login>` and use its output before the first commit; never pick a name by hand. Nothing in CI checks branch names.
+- Name the branch `<login>/<issue>-<slug>`, where `<login>` is your GitHub login. Run `npx agenticool-delivery branch-name <issue> --actor <login>` and use its output before the first commit; never pick a name by hand. Nothing in CI checks branch names.
 - Title the PR with [Conventional Commits](https://www.conventionalcommits.org/), with a component scope, e.g. `fix(tracker): skip archived items`.
 - Fill in the PR template. Put `Closes #N` for the issue the PR finishes, and link the parent issue if there is one.
 - Add tests for behavior you change, and update docs if you change how something is used or operated.
@@ -51,7 +51,7 @@ When you change the `Dockerfile`, `.dockerignore`, `docker/`, or `apps/action/`,
 
 ## Automation
 
-Workflow files are named `<area>-<name>.yml`, and each workflow is named `<Area>: <name>`. The areas are `ci` for checks on pull requests and pushes, and `tracker` for the project board. Every job and step has a name that says what it does. `scripts/workflow-names.test.mjs` enforces this.
+Workflow files are named `<area>-<name>.yml`, and each workflow is named `<Area>: <name>`. The areas are `ci` for checks on pull requests and pushes, and `tracker` for the project board. Every job and step has a name that says what it does. `npm run workflows:lint` (`agenticool-workflow-lint`) enforces this, with the areas listed in `workflowLint` in `.agents/policy.json`.
 
 [ci-checks.yml](.github/workflows/ci-checks.yml) runs only the checks a pull request needs. The `Detect changed areas` job classifies the changed files with `scripts/ci-scope.mjs`, read from the base commit, so a change to the classifier applies only after it merges.
 
@@ -59,9 +59,9 @@ A pull request that changes only Markdown outside `.agents/`, `.claude/`, `.code
 
 The `Require every check selected for the changed files` job always runs, even in a cancelled run, and fails unless every selected check passed. Require this job, not the individual checks, in the `main` ruleset: GitHub reports a skipped job as passing, so a required check must never be skipped.
 
-[ci-secret-scan.yml](.github/workflows/ci-secret-scan.yml) runs Gitleaks on every pull request and push to `main`. [ci-pr-title.yml](.github/workflows/ci-pr-title.yml) fails a pull request whose title doesn't follow Conventional Commits.
+[ci-secret-scan.yml](.github/workflows/ci-secret-scan.yml) runs Gitleaks on every pull request and push to `main`. [ci-pr-title.yml](.github/workflows/ci-pr-title.yml) fails a pull request whose title doesn't follow Conventional Commits. Both call the reusable workflows of the same names in `agenticool/agenticool`, pinned to a release tag.
 
-The tracker workflows keep the project in step with the work.
+The tracker workflows keep the project in step with the work. `npx agenticool-agents sync` writes them from `@agenticool/tracker`; each one calls a reusable workflow in `agenticool/agenticool`, pinned to the installed tracker release, which runs `npx agenticool-tracker` from this repository's default branch.
 
 The [project membership workflow](.github/workflows/tracker-project-membership.yml) adds every new issue to Prismatic delivery when it opens, however it was created, sets its Status to Inbox when it has none, and then runs that issue's first triage. An existing Status never changes. GitHub sometimes starts no run for an issue's `opened` event, so the hourly sweep described below adds any open issue that is missing from the project. An issue archived in the project counts as present. An `opened` run that hits the GraphQL rate limit logs a warning and succeeds, and the next sweep adds the issue. A membership sweep logs an issue it cannot add, continues with the rest, and fails at the end. An issue deleted or transferred before the sweep adds it gets a warning and does not fail the sweep. Run a membership sweep alone by hand from this workflow in the Actions tab; a manual run is a dry run that lists the missing issues unless you clear `dry_run`. Pull requests are not added to the project. Adding an item that is already in the project changes nothing. It runs trusted default-branch code only and uses `PRISMATIC_PROJECT_TOKEN`.
 
@@ -71,7 +71,7 @@ It also removes conflicting standard labels and any `type:` label from issues la
 
 An issue event reconciles only that issue: triage reads its own project item, and container reconciliation reads its sub-issue subtree and its ancestors. Reopening and closing an issue start a run. Adding or removing a label starts one only for a `severity:` label, `epic`, or `automation: container-closed`, or for any label on an issue labeled `epic`. Opening an issue and editing its title or body start no run. One hourly job in the issue states workflow runs three sweeps in order on one runner: it adds open issues missing from the project, triages every issue, and reconciles every container. It catches project field and hierarchy edits that lack an Actions trigger. Each sweep runs even when an earlier one failed, and the job fails at the end if any sweep failed. A manual run of the issue states workflow runs the same three sweeps and is a dry run unless you clear `dry_run`. Each run logs the GraphQL budget before and after. A sweep skips with a warning when fewer than 1,000 points remain. An issue event that hits the rate limit logs a warning and succeeds, because the next sweep repeats its work.
 
-Right after a batch's metadata and relationships are complete, the filing skills run `scripts/issue-triage.mjs` on each new issue and `scripts/issue-containers.mjs` on each new top-level container. `scripts/issue-containers.mjs --issue N` reconciles the named issue's container subtree and ancestors, never unrelated issues. Both scripts default to dry-run. Actions uses `PRISMATIC_PROJECT_TOKEN`, a token with write access to the Prismatic delivery project. Creating or changing it requires explicit authorization. Local use relies on existing `gh` authentication. Do not print credentials or copy them during ordinary issue filing. Workflow activation requires publication on `main`; runtime field IDs are discovered. Concurrent human edits can race API writes, so avoid competing reconciliation sessions.
+Right after a batch's metadata and relationships are complete, the filing skills run `npx agenticool-tracker triage` on each new issue and `npx agenticool-tracker containers` on each new top-level container. `npx agenticool-tracker containers --issue N` reconciles the named issue's container subtree and ancestors, never unrelated issues. Both commands default to dry-run. Actions uses `PRISMATIC_PROJECT_TOKEN`, a token with write access to the Prismatic delivery project. Creating or changing it requires explicit authorization. Local use relies on existing `gh` authentication. Do not print credentials or copy them during ordinary issue filing. Workflow activation requires publication on `main`; runtime field IDs are discovered. Concurrent human edits can race API writes, so avoid competing reconciliation sessions.
 
 [tracker-pr-metadata.yml](.github/workflows/tracker-pr-metadata.yml) copies the linked issue's labels, assignees, and milestone onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues.
 

@@ -42,45 +42,9 @@ jobs:
       github.event.label.name == 'epic' ||
       github.event.label.name == 'automation: container-closed' ||
       contains(github.event.issue.labels.*.name, 'epic'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
-      ISSUE_NUMBER: ${{ github.event.issue.number }}
-    steps:
-      - name: Check out default-branch scripts
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-          sparse-checkout: scripts
-      - name: Set up Node.js
-        id: node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .tool-versions
-      # An issue event reconciles only that issue and its hierarchy; a
-      # scheduled or manual run sweeps the project. Each sweep runs even when
-      # an earlier one failed, and any failure fails the job at the end.
-      - name: Add missing open issues to Prismatic delivery
-        if: ${{ github.event_name != 'issues' && !cancelled() && steps.node.outcome == 'success' }}
-        env:
-          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
-          SWEEP: 'true'
-        run: node scripts/issue-project-membership.mjs
-      - name: Triage issues
-        if: ${{ !cancelled() && steps.node.outcome == 'success' }}
-        env:
-          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
-        run: |
-          scope=()
-          if [ -n "$ISSUE_NUMBER" ]; then scope=(--issue "$ISSUE_NUMBER"); fi
-          node scripts/issue-triage.mjs "${scope[@]}"
-      - name: Close finished containers
-        if: ${{ !cancelled() && steps.node.outcome == 'success' }}
-        env:
-          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
-        run: |
-          scope=()
-          if [ -n "$ISSUE_NUMBER" ]; then scope=(--issue "$ISSUE_NUMBER"); fi
-          node scripts/issue-containers.mjs "${scope[@]}"
+    uses: agenticool/agenticool/.github/workflows/_tracker-issue-states.yml@tracker-v0.1.0
+    with:
+      token_env: 'PRISMATIC_PROJECT_TOKEN'
+      issue: ${{ github.event.issue.number || 0 }}
+      dry_run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    secrets: inherit

@@ -2,7 +2,7 @@
 name: prism-stack
 description: "Build or adopt stacked Prismatic branches, stack on an unmerged prerequisite PR, link existing PRs into a native stack, cascade rebases, and sync after a merge with the gh stack extension, run by the agent that created the worktree. Use when a Prismatic delivery in samlevin/prismatic splits a leaf into stacked layers, builds on another issue's open PR, or must rebase a stack after its base moved or merged. Never creates PRs or merges."
 ---
-<!-- Generated from .agents/workflows/stack.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
+<!-- Generated from @agenticool/agents/sources/workflows/stack.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`. -->
 
 # Prismatic stack
 
@@ -26,8 +26,8 @@ Every operation here needs the `gh stack` extension (`github/gh-stack`), because
 
 You own a branch in two cases, and only while it is checked out in your worktree or in none:
 
-- You created it for this delivery, with a name from `node scripts/branch-name.mjs`.
-- It comes from an earlier delivery that you are reworking or resuming: `node scripts/branch-name.mjs` named it for this issue, it is the head branch of the target PR or of the claim you resume, and you verified its remote head before your first mutation. That verified head is the expected SHA for your first push.
+- You created it for this delivery, with a name from `npx agenticool-delivery branch-name`.
+- It comes from an earlier delivery that you are reworking or resuming: `npx agenticool-delivery branch-name` named it for this issue, it is the head branch of the target PR or of the claim you resume, and you verified its remote head before your first mutation. That verified head is the expected SHA for your first push.
 
 Trunk `main` is never yours; it is usually checked out in the human checkout. Stop and report when any of these holds:
 
@@ -48,7 +48,9 @@ Trunk `main` is never yours; it is usually checked out in the human checkout. St
 
 ## Operations
 
-- Build: layer 1 is the branch the delivery procedure's worktree step created on the base SHA. Create each later layer on the one below it, bottom to top, with `git switch -c <layer n> <layer n-1>` and names from `node scripts/branch-name.mjs <issue> --layer <n>`. Track them with `gh stack init --base main <layer 1> <layer 2> ...`. Create and verify the branches first: `init` adopts existing branches and creates missing ones, so a typo becomes a new branch. To grow a stack that is already tracked, switch to its top layer and run `gh stack add <layer n>` with a name that does not exist yet; it creates that branch on the top layer.
+A rebase, cascade, or push never moves a branch that another worktree has checked out: [Inspect before every mutation](#inspect-before-every-mutation) stops it first.
+
+- Build: layer 1 is the branch the delivery procedure's worktree step created on the base SHA. Create each later layer on the one below it, bottom to top, with `git switch -c <layer n> <layer n-1>` and names from `npx agenticool-delivery branch-name <issue> --layer <n>`. Track them with `gh stack init --base main <layer 1> <layer 2> ...`. Create and verify the branches first: `init` adopts existing branches and creates missing ones, so a typo becomes a new branch. To grow a stack that is already tracked, switch to its top layer and run `gh stack add <layer n>` with a name that does not exist yet; it creates that branch on the top layer.
 - Adopt: for branches you already own, verify names and ancestry, then `gh stack init --base main <branches bottom to top>`.
 - Prerequisite: to build on another issue's unmerged PR, which the delivery gate must allow, base layer 1 on that PR's pushed head SHA and record the SHA. Never adopt, rebase, or push the prerequisite's branch; it belongs to another owner. Link its PR by URL instead.
 - Link: after the PRs exist, run `gh stack link --base main <PR URL> ...` bottom to top, prerequisite PRs first, with PR URLs only.

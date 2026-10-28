@@ -1,18 +1,21 @@
 {
-  "description": "Repository binding, model, and effort policy for the agent workflows. scripts/agent-policy.mjs reads this file; both the Claude Code and Codex definitions are generated from it, and every placeholder in .agents/roles and .agents/workflows resolves here.",
+  "$schema": "../node_modules/@agenticool/policy/src/policy.schema.json",
+  "description": "Repository binding, model and effort policy, and workflow lint config. agenticool-agents generates and syncs the agent files from it, and agenticool-workflow-lint reads workflowLint.",
   "binding": {
     "namespace": "prism",
     "label": "Prismatic",
     "repository": "samlevin/prismatic",
     "project": {
       "owner": "samlevin",
+      "ownerType": "user",
       "number": 2,
       "name": "Prismatic delivery"
     },
+    "tokenEnv": "PRISMATIC_PROJECT_TOKEN",
     "docs": {
       "triage": "ISSUE_TRIAGE.md",
       "workflow": "AGENTS.md",
-      "guides": ["CONTRIBUTING.md"]
+      "guides": ["AGENTS.md"]
     },
     "features": {
       "infrastructure": false
@@ -167,5 +170,32 @@
         ]
       }
     }
+  },
+  "workflowLint": {
+    "areas": {
+      "ci": "CI",
+      "tracker": "Tracker"
+    },
+    "pullRequestTarget": [
+      "tracker-pr-issue-status.yml",
+      "tracker-pr-metadata.yml"
+    ],
+    "requiredChecks": [
+      {
+        "file": "ci-checks.yml",
+        "job": "require-scoped-checks",
+        "name": "Require every check selected for the changed files"
+      },
+      {
+        "file": "ci-pr-title.yml",
+        "job": "check-pr-title",
+        "name": "Check PR title"
+      },
+      {
+        "file": "ci-secret-scan.yml",
+        "job": "scan-secrets",
+        "name": "Scan secrets"
+      }
+    ]
   }
 }

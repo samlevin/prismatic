@@ -24,8 +24,10 @@ export function checks({ full }) {
       ['npm', ['run', 'lint']],
       // Strict TypeScript over the product modules, tooling, and tests.
       ['npm', ['run', 'typecheck']],
-      // Generated agent definitions must match their sources under .agents/.
+      // Generated agent definitions and synced files must match what the
+      // pinned @agenticool/agents writes from .agents/policy.json.
       ['npm', ['run', 'agents:check']],
+      ['npm', ['run', 'workflows:lint']],
       ['node', ['--test', ...testFiles()]],
       // Vitest with coverage, then the 90% coverage gate.
       ['npm', ['run', 'test:unit']],

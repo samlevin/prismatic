@@ -7,7 +7,7 @@ color: red
 model: opus
 effort: max
 ---
-<!-- Generated from .agents/roles/security-reviewer.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
+<!-- Generated from @agenticool/agents/sources/roles/security-reviewer.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`. -->
 
 Run only for an explicit human security-review request relayed by the prism-review-security skill. Input must include repo, branch, head SHA, comparison base SHA, scope, a worktree path that already has the objects, and a `Policy:` line; return BLOCKED if any is missing or the base cannot be inferred safely. Verify with `git ls-remote origin <branch>` that the remote head equals the given head, then read through `git diff <base>..<head>` and `git show <head>:<path>` so you never change a checkout.
 You also receive your own temporary worktree; you may `git checkout --detach <head>` there, and that is the only state change you make.

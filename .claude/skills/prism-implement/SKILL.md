@@ -3,7 +3,7 @@ name: prism-implement
 description: 'Deliver one Prismatic GitHub issue or rework one Prismatic PR through an isolated prism-implementer by default. Use for "implement #N", "implement <issue URL>", "rework <PR URL>", or "deliver this epic" in samlevin/prismatic. The main thread runs the queue script, dispatches one leaf at a time, and records fixed results. An explicit inline keyword keeps a small leaf or rework in the main thread.'
 argument-hint: <#N | issue URL | PR URL> [inline] [parallel] [model <name>] [effort <level>] [reviewer ...]
 ---
-<!-- Generated from .agents/workflows/implement.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
+<!-- Generated from @agenticool/agents/sources/workflows/implement.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`. -->
 
 # Prismatic implement
 
@@ -14,7 +14,7 @@ You are the dispatcher in this thread. The prism-implementer is the delivery own
 1. Parse `#N`, an issue URL, or a PR URL in `samlevin/prismatic`. Another repository is BLOCKED here. For a PR, read its number, branch, base/head, and closing issue through REST, and dispatch it with its closing leaf's ledger row even when that row says `in review`; never pick a different leaf with `--next`. The implementer reads the review findings.
 2. Parse `inline`, `parallel`, and overrides. `reviewer model <name>` and `reviewer effort <level>` target only prism-code-reviewer. Unprefixed `model <name>` or `effort <level>`, and `implementer` prefixes, target only prism-implementer. Preserve explicit constraints in every continuation and recovery handoff.
 3. Run `git fetch origin` and record the fresh `origin/main` SHA. Read the current procedures from trunk if the checkout may be stale.
-4. Run `node scripts/delivery-queue.mjs <issue>` and `--next` as [references/queue.md](references/queue.md) describes, for a single leaf or a container.
+4. Run `npx agenticool-delivery queue <issue>` and `--next` as [references/queue.md](references/queue.md) describes, for a single leaf or a container.
 
 ## Pick the mode
 
@@ -26,14 +26,14 @@ You are the dispatcher in this thread. The prism-implementer is the delivery own
 
 In isolated and queue mode the main thread reads the queue ledger and fixed result fields only: it runs the queue script, spawns, records results, and assesses compact escalation requests against the rubric. Do not read source or diffs, explore the implementation, or read detailed review reports during normal delivery; for a BLOCKED result or a needed decision, read only enough to explain it and ask the person. The implementer reads its own issue and owns the delivery gate.
 
-The explicit `inline` keyword keeps a small leaf or PR rework here through [references/delivery.md](references/delivery.md). It does not make a container inline. Inline work runs at the session settings, which this skill cannot change, and reports `Advisory policy: tool=<tool> capability=implementation model=<model> effort=<effort> (session settings apply)`, resolved with `node scripts/agent-policy.mjs resolve --tool <tool> --capability implementation`. Say when a requested override cannot change the inline runtime.
+The explicit `inline` keyword keeps a small leaf or PR rework here through [references/delivery.md](references/delivery.md). It does not make a container inline. Inline work runs at the session settings, which this skill cannot change, and reports `Advisory policy: tool=<tool> capability=implementation model=<model> effort=<effort> (session settings apply)`, resolved with `npx agenticool-agents resolve --tool <tool> --capability implementation`. Say when a requested override cannot change the inline runtime.
 
 ## Settings
 
 `.agents/policy.json` (`implementationEffort`) owns the effort rubric: medium by default, the assessment order, blockers, non-triggers, and the stable rules `H1-boundary`, `H2-coupled-design`, and `H3-demonstrated-limit` with their required criteria. Read it before choosing anything above medium; without a qualifying rule, choose medium. Missing inputs are blockers, never reasons to escalate, and automatic escalation stops at high.
 An explicit `effort <level>` or `implementer effort <level>` overrides the rubric for this task. Explicit medium prevents automatic escalation; if that prevents delivery, return the concrete blocker. Reviewer settings remain independent.
 
-Resolve each role separately with `node scripts/agent-policy.mjs resolve`, as `AGENTS.md` describes, adding `--model` or `--effort` only for a role's explicit override or qualifying automatic high decision. If the offline resolver fails, report its message verbatim and stop; never substitute values.
+Resolve each role separately with `npx agenticool-agents resolve`, as `AGENTS.md` describes, adding `--model` or `--effort` only for a role's explicit override or qualifying automatic high decision. If the offline resolver fails, report its message verbatim and stop; never substitute values.
 
 Before ordinary dispatch print `Implementation effort: medium (default)`. Before every dispatch or redispatch above medium print `Implementation effort: medium -> <selected effort>; issue: #N; rule: <full stable rule ID or user override>; evidence: <specific reference and unresolved problem>; reason: <why medium is insufficient>`. This is an announcement, not an approval request, and never changes runtime effort. The implementer confirms its dispatched effort and the same rule/reason in its first progress message.
 

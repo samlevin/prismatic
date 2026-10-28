@@ -4,7 +4,7 @@ description: Explicitly requested read-only security review of a pushed Prismati
 argument-hint: <PR number | PR URL | branch> [scope] [model <name>] [effort <level>]
 disable-model-invocation: true
 ---
-<!-- Generated from .agents/workflows/review-security.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
+<!-- Generated from @agenticool/agents/sources/workflows/review-security.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`. -->
 
 # Prismatic review security
 
@@ -19,7 +19,7 @@ Runs only when a person explicitly asked for a security review. If the request c
 
 ## Dispatch
 
-Run `node scripts/agent-policy.mjs resolve --tool <tool> --role security-reviewer`, adding `--model` or `--effort` only for an override. If it exits non-zero, stop and report its message verbatim. Compose `Policy: tool=<tool> role=security-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)`.
+Run `npx agenticool-agents resolve --tool <tool> --role security-reviewer`, adding `--model` or `--effort` only for an override. If it exits non-zero, stop and report its message verbatim. Compose `Policy: tool=<tool> role=security-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)`.
 
 Packet: repo, branch, head SHA, base SHA, scope, the worktree path, and the `Policy:` line.
 

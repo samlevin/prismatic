@@ -16,7 +16,7 @@ Independence record: after the children exist, read the container's current body
 Project: select it by owner and number, never by title.
 `gh api users/samlevin/projectsV2/2/fields --paginate`
 Each single-select field lists its `options` with their `id` and `name`. Add each new issue to the project with the repository script, never with a direct `POST` to the project's `items`:
-`CONTENT_TYPE=issue CONTENT_NUMBER=N DRY_RUN=false node scripts/issue-project-membership.mjs`
+`CONTENT_TYPE=issue CONTENT_NUMBER=N DRY_RUN=false npx agenticool-tracker membership`
 It prints `Issue #N: in Prismatic delivery as item ITEM.`, where ITEM is the numeric item ID. When the membership workflow already added the issue, the script prints that existing item and adds nothing. If the script exits non-zero, or prints no item line (it warns and exits 0 when the GraphQL limit is spent), skip that issue's fields and post-create commands and report it as unfinished: name the issue, say that it is not in the project and its fields are unset, and include the script's output. Once you have the item, write `{"fields":[{"id":FID,"value":"OID"}]}` to a scratch file, with one entry per field (FID is the numeric field ID, OID the option ID), and set the fields:
 `gh api -X PATCH users/samlevin/projectsV2/2/items/ITEM --input /abs/fields.json`
 Resolve IDs from current metadata and never copy them across projects. If project authorization is missing, keep the created issue and report the gap. Never refresh auth or add scopes without permission.

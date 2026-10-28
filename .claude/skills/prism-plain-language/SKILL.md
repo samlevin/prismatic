@@ -2,7 +2,7 @@
 name: prism-plain-language
 description: Style rules for text published for OTHER people to read. Load ONLY when writing or editing a PR title/description, commit message, GitHub issue body or comment, PR review comment, README/docs file, release notes, or email. NEVER load for replies to the user, progress updates, final reports, agent-to-agent handoffs, or code.
 ---
-<!-- Generated from .agents/workflows/plain-language.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
+<!-- Generated from @agenticool/agents/sources/workflows/plain-language.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`. -->
 
 
 # Prismatic plain language

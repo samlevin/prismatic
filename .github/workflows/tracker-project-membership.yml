@@ -26,54 +26,17 @@ jobs:
   add-to-project:
     name: Add the new issue to Prismatic delivery
     if: github.event_name == 'issues' && github.repository == 'samlevin/prismatic'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      # Execute trusted default-branch code.
-      - name: Check out default-branch scripts
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-          sparse-checkout: scripts
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .tool-versions
-      - name: Add the issue to Prismatic delivery
-        env:
-          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
-          CONTENT_TYPE: 'issue'
-          CONTENT_NUMBER: ${{ github.event.issue.number }}
-          DRY_RUN: 'false'
-        run: node scripts/issue-project-membership.mjs
-      # The item exists now, so this is the issue's first triage run.
-      - name: Triage the new issue
-        env:
-          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: node scripts/issue-triage.mjs --apply --issue "$ISSUE_NUMBER"
+    uses: agenticool/agenticool/.github/workflows/_tracker-project-membership.yml@tracker-v0.1.0
+    with:
+      token_env: 'PRISMATIC_PROJECT_TOKEN'
+      issue: ${{ github.event.issue.number }}
+    secrets: inherit
 
   add-missing-issues:
     name: Add missing open issues to Prismatic delivery
     if: github.event_name != 'issues' && github.repository == 'samlevin/prismatic' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      # Execute trusted default-branch code.
-      - name: Check out default-branch scripts
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-          sparse-checkout: scripts
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .tool-versions
-      - name: Add missing open issues to Prismatic delivery
-        env:
-          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
-          SWEEP: 'true'
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
-        run: node scripts/issue-project-membership.mjs
+    uses: agenticool/agenticool/.github/workflows/_tracker-project-membership.yml@tracker-v0.1.0
+    with:
+      token_env: 'PRISMATIC_PROJECT_TOKEN'
+      dry_run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    secrets: inherit

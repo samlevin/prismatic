@@ -1,4 +1,4 @@
-# Generated from .agents/roles/security-reviewer.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`.
+# Generated from @agenticool/agents/sources/roles/security-reviewer.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
 # Model and reasoning effort are intentionally absent: prism skills pass the
 # repository policy (gpt-6-astra, high) or a prompt override to spawn_agent.
 name = "prism-security-reviewer"

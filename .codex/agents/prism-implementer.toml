@@ -1,4 +1,4 @@
-# Generated from .agents/roles/implementer.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`.
+# Generated from @agenticool/agents/sources/roles/implementer.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
 # Model and reasoning effort are intentionally absent: prism skills pass the
 # repository policy (gpt-6.1-sol, medium) or a prompt override to spawn_agent.
 name = "prism-implementer"

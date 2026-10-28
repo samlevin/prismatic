@@ -1,4 +1,4 @@
-# Generated from .agents/workflows/agents.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`.
+# Generated from @agenticool/agents/sources/workflows/agents.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
 interface:
   display_name: 'Prismatic: Maintain agents'
   short_description: Edit agent sources, regenerate both tools, verify, stage

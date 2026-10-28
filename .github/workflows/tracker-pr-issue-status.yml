@@ -15,27 +15,12 @@ concurrency:
 jobs:
   mark-issues-in-review:
     name: Move closing issues to In review
-    # The script reads closing issues from the PR body and never the title, so
-    # an edit that leaves the body unchanged starts no job.
+    # The command reads closing issues from the PR body and never the title,
+    # so an edit that leaves the body unchanged starts no job.
     if: github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft && (github.event.action != 'edited' || github.event.changes.body)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      # Execute trusted default-branch code for fork PRs too.
-      - name: Check out default-branch scripts
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-          sparse-checkout: scripts
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .tool-versions
-      - name: Update project status of closing issues
-        env:
-          PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_ACTION: ${{ github.event.action }}
-          DRY_RUN: 'false'
-        run: node scripts/issue-pr-status.mjs
+    uses: agenticool/agenticool/.github/workflows/_tracker-pr-issue-status.yml@tracker-v0.1.0
+    with:
+      token_env: 'PRISMATIC_PROJECT_TOKEN'
+      pull_request: ${{ github.event.pull_request.number }}
+      action: ${{ github.event.action }}
+    secrets: inherit

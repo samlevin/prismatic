@@ -1,4 +1,4 @@
-# Generated from .agents/workflows/stack.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`.
+# Generated from @agenticool/agents/sources/workflows/stack.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
 interface:
   display_name: 'Prismatic: Stack'
   short_description: Build, link, rebase, and sync stacked Prismatic branches safely

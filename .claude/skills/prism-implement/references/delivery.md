@@ -10,7 +10,7 @@ The assignment from prism-implement's Dispatch supplies the target, trunk and ba
 
 - When the loaded `AGENTS.md` may come from a stale checkout, follow `git show origin/main:AGENTS.md` instead.
 - Read what the inputs did not supply through REST: `gh api repos/samlevin/prismatic/issues/<N>` for the body, plus `/comments`, `/parent` (404 when there is none), `/dependencies/blocked_by`, and `/sub_issues`. An issue with native sub-issues is a container: follow [queue.md](queue.md) instead, or return `BLOCKED: container` when you are an isolated implementer.
-- Open `CONTRIBUTING.md` only when the loaded instructions lack a check command or rule you need, or when the task changes them. Read `.github/pull_request_template.md` when you open the PR.
+- Open `AGENTS.md` only when the loaded instructions lack a check command or rule you need, or when the task changes them. Read `.github/pull_request_template.md` when you open the PR.
 
 ## Gate
 
@@ -18,7 +18,9 @@ Before claiming, check for one logical outcome, testable acceptance criteria, a 
 
 ## Worktree
 
-Use the fresh fetch already recorded; fetch again only if the base may have moved. Print the branch name with `node scripts/branch-name.mjs <issue> --actor agent` (add `--layer <n>` for layer 2 and up).
+Use the fresh fetch already recorded; fetch again only if the base may have moved. Print the branch name with `npx agenticool-delivery branch-name <issue> --actor agent` (add `--layer <n>` for layer 2 and up).
+
+After `git fetch origin` and before any `git worktree add` or `git switch`, run `git worktree list --porcelain` and find the target branch: a new branch, a resumed claim's branch, or a stacked layer. When another worktree, under either tool's directory, has it checked out, stop and report that worktree's path, and never work around the conflict, as `.agents/worktree-isolation.md` forbids. Rework is not blocked, because it detaches at `origin/<branch>` instead of checking the branch out.
 
 In the main thread, run `git worktree add -b <branch> .claude/worktrees/<branch-slug> <base-SHA>` from the checkout root, where `<branch-slug>` is the branch name with `/` replaced by `-`, and run every later command from that worktree, never in the human checkout. An isolated implementer starts in the linked worktree the Agent tool created under `.claude/worktrees/` and runs `git switch -c <branch> <base-SHA>` there.
 
@@ -50,7 +52,7 @@ This gate applies to the initial submission only. Commit, push, and confirm no P
 
 Independent review is required for changes across components, shared contracts, security boundaries, and other substantial behavior changes. It is always required, however small the diff, for changes to agent instructions (`.agents/`, `.claude/`, `.codex/`, `AGENTS.md`, and `scripts/agent-policy*`), `.github/workflows/`, or anything else that changes how prod or shared resources are planned, applied, locked, deployed, or gated. Outside those paths, a localized low-risk change, documentation, or a mechanical edit may skip it, and the PR body then says `Pre-PR review: skipped (<reason>)`.
 
-Resolve the reviewer settings with `node scripts/agent-policy.mjs resolve --tool <tool> --role code-reviewer`, adding `--model` or `--effort` only for a `reviewer` override; if it exits non-zero, return BLOCKED with its message. Spawn a fresh prism-code-reviewer with the resolved model and effort and a packet containing: repo, issue URL, acceptance criteria, accepted decisions, remote branch, immediate base SHA, pushed head SHA, your worktree path, the changed-file summary, relevant validation results, verified prerequisites when applicable, the remaining packet fields from `.agents/review.md`, `review_mode=pre_pr`, and its resolved `Policy:` line (`Policy: tool=<tool> role=code-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)`). Leave out your self-assessment.
+Resolve the reviewer settings with `npx agenticool-agents resolve --tool <tool> --role code-reviewer`, adding `--model` or `--effort` only for a `reviewer` override; if it exits non-zero, return BLOCKED with its message. Spawn a fresh prism-code-reviewer with the resolved model and effort and the review packet, with `review_mode=pre_pr`, your branch as the remote ref, your worktree path, and its resolved `Policy:` line (`Policy: tool=<tool> role=code-reviewer model=<model> effort=<effort> (model: <source>, effort: <source>)`). Review packet: `review_mode=pre_pr|requested`, repo, the URL of every issue that supplies criteria (or `none` when the criteria come from the request), the acceptance criteria for this layer, the remote ref (a branch, or `pull/<N>/head` for a requested PR review), the immediate base SHA, the pushed head SHA, a worktree path that already has the objects, and the reviewer's own resolved `Policy:` line are required. It also carries the accepted decisions, a changed-file summary, the relevant validation results, and verified prerequisites when applicable, each with an explicit `none` or unavailable result, plus the remaining fields from `.agents/review.md`. A re-review packet adds the previous round's base and head SHAs and its complete report; `.agents/review.md` sets its scope. Leave out your self-assessment.
 
 Spawn with the Agent tool: `subagent_type` from the resolver's `spawn.subagent_type`, and pass its `model` and `effort` explicitly so the dispatch never inherits a session default.
 

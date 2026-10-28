@@ -1,4 +1,4 @@
-# Generated from .agents/workflows/implement.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`.
+# Generated from @agenticool/agents/sources/workflows/implement.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
 interface:
   display_name: 'Prismatic: Implement'
   short_description: Dispatch an isolated issue delivery or PR rework
