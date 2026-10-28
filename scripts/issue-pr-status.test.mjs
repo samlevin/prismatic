@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { closingIssues, moveIssuesToReview } from './issue-pr-status.mjs';
 import { REPOSITORY } from './issue-triage.mjs';
+import { evaluate, workflow } from './workflow-test-helpers.mjs';
 
 test('only closing keyword references supply status targets', () => {
   assert.deepEqual(
@@ -272,4 +273,54 @@ test('status events are limited and isolated from metadata reconciliation', () =
     metadata,
     /discover\(|updateProjectStatus\(|moveIssuesToReview\(/,
   );
+});
+
+test('a run discovers project fields once, including the write-boundary re-read', async () => {
+  const f = fixture();
+  await moveIssuesToReview({ ...f, number: 10, dryRun: false });
+  assert.equal(f.writes.length, 1);
+  assert.equal(
+    f.calls.filter(({ query }) => query.includes('projectV2(number:')).length,
+    1,
+  );
+});
+
+test('both PR tracker workflows skip edits that leave the body unchanged', () => {
+  const jobs = {
+    'tracker-pr-metadata': 'copy-issue-metadata',
+    'tracker-pr-issue-status': 'mark-issues-in-review',
+  };
+  for (const [name, id] of Object.entries(jobs)) {
+    const condition = workflow(name).jobs[id].if;
+    const runs = (event) =>
+      evaluate(condition, {
+        format: (text, ...args) =>
+          text.replace(/\{(\d+)\}/g, (_, index) => args[index]),
+        github: {
+          event_name: 'pull_request_target',
+          repository: 'samlevin/prismatic',
+          ref: 'refs/heads/main',
+          event: {
+            repository: { default_branch: 'main' },
+            pull_request: { number: 10, draft: false },
+            ...event,
+          },
+        },
+      });
+    for (const action of ['opened', 'reopened', 'ready_for_review'])
+      assert.equal(runs({ action }), true, `${name} ${action}`);
+    assert.ok(
+      runs({ action: 'edited', changes: { body: { from: 'Closes #1' } } }),
+      `${name} body edit`,
+    );
+    for (const changes of [
+      { title: { from: 'old title' } },
+      { base: { ref: { from: 'other' } } },
+      {},
+    ])
+      assert.ok(
+        !runs({ action: 'edited', changes }),
+        `${name} ${JSON.stringify(changes)}`,
+      );
+  }
 });

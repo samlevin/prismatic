@@ -1,10 +1,10 @@
 import { pathToFileURL } from 'node:url';
-import { failureMessage } from './github-api.mjs';
 import {
   linkedIssues,
   metadataGraphql,
   referenceText,
 } from './issue-pr-metadata.mjs';
+import { failureMessage } from './github-api.mjs';
 import {
   discover,
   paginate,
@@ -126,8 +126,7 @@ export async function moveIssuesToReview({
       throw new Error(
         'Pull request changed during discovery; rerun reconciliation',
       );
-    const freshContext = await discover(api, statuses);
-    const fresh = await readItem(api, item.id, freshContext);
+    const fresh = await readItem(api, item.id, context);
     const freshReason =
       fresh?.content?.number === issueNumber
         ? skipReason(fresh, pr.authorAssociation)
@@ -136,7 +135,7 @@ export async function moveIssuesToReview({
       log(`Issue #${issueNumber}: skipped after re-read, ${freshReason}.`);
       continue;
     }
-    await updateProjectStatus(api, freshContext, fresh.id, 'In review');
+    await updateProjectStatus(api, context, fresh.id, 'In review');
     log(`Issue #${issueNumber}: ${fresh.fields.Status} -> In review.`);
   }
 }

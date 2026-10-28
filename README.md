@@ -16,7 +16,6 @@ Prismatic is a pull request review agent, built as one npm package. Its modules 
 | `tests/` | Cross-cutting suites: `security/` for hostile inputs, `e2e/` for the container smoke test |
 | `tooling/` | The coverage gate and the import boundary lint rule, with their tests |
 | `docs/adr/` | Architecture decision records |
-| `packages/` | npm workspaces, none yet |
 
 ## Setup
 

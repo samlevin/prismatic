@@ -1,7 +1,28 @@
 .claude/scheduled_tasks.lock
+.claude/settings.local.json
 .claude/worktrees/
 CLAUDE.local.md
 node_modules/
 .codex/worktrees/
 coverage/
 dist/
+.playwright-mcp/
+
+# Env files
+.env
+.env.*
+!.env.example
+.envrc
+.envrc.*
+!.envrc.example
+.direnv/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store

@@ -1,3 +1,4 @@
+import { CliHelp, cliError, defineCli, parseCli } from './cli.cjs';
 import { pathToFileURL } from 'node:url';
 import { failureMessage, ghRest } from './github-api.mjs';
 import { REPOSITORY } from './issue-triage.mjs';
@@ -55,28 +56,21 @@ export function branchName({ issue, title, actor = 'agent', layer = 1 }) {
   return name;
 }
 
+const CLI = defineCli(
+  'Usage: branch-name.mjs <issue> [--layer <n>] [--actor <login>]',
+  ['actor', 'layer'],
+);
+
 export function parseArguments(argv) {
-  const options = { actor: 'agent', layer: 1 };
-  const positional = [];
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
-    if (argument === '--actor' || argument === '--layer') {
-      const value = argv[++index];
-      if (value === undefined || value.startsWith('--'))
-        throw new Error(`Option ${argument} requires a value`);
-      if (argument === '--actor') options.actor = value;
-      else {
-        if (!POSITIVE_INTEGER.test(value))
-          throw new Error('--layer requires a positive integer');
-        options.layer = Number(value);
-      }
-    } else if (argument.startsWith('--'))
-      throw new Error(`Unknown option ${argument}`);
-    else positional.push(argument);
-  }
-  if (positional.length > 1) throw new Error('Too many arguments');
-  options.value = positional[0];
-  return options;
+  const { options, positionals } = parseCli(argv, CLI);
+  if (positionals.length > 1) throw cliError(CLI, 'Too many arguments');
+  if (options.layer !== undefined && !POSITIVE_INTEGER.test(options.layer))
+    throw cliError(CLI, '--layer requires a positive integer');
+  return {
+    actor: options.actor ?? 'agent',
+    layer: Number(options.layer ?? 1),
+    value: positionals[0],
+  };
 }
 
 // Returns an issue with a title, or throws a readable error.
@@ -122,7 +116,10 @@ if (
   try {
     console.log(run(process.argv.slice(2)));
   } catch (error) {
-    console.error(failureMessage(error));
-    process.exitCode = 1;
+    if (error instanceof CliHelp) console.log(error.message);
+    else {
+      console.error(failureMessage(error));
+      process.exitCode = 1;
+    }
   }
 }

@@ -1,45 +1,64 @@
 # {{label}} container queue
 
-The main thread running {{prefix}}implement follows this file for a container or epic, meaning any issue with native sub-issues, in `{{repository}}` and the [{{project.name}}]({{project.url}}) project. You build an explicit dependency queue and deliver its leaves yourself, one at a time, each through [delivery.md](delivery.md). No separate orchestrator agent exists. Retrieve evidence as `.agents/evidence.md` describes.
+The main thread running {{prefix}}implement follows this file for a container, single leaf, or PR rework in `{{repository}}`. It runs the queue script, dispatches one {{prefix}}implementer per leaf, and records fixed results. No separate orchestrator agent exists. Read `.agents/evidence.md` once before starting.
 
 ## Build the queue
 
-1. Fetch through REST with `--paginate`: the container's body and comments; every native sub-issue, recursively (`gh api 'repos/{{repository}}/issues/<n>/sub_issues?per_page=100'`); each leaf's native blocked-by edges (`/dependencies/blocked_by?per_page=100`) and comments, for claims; the project's `users/{{project.owner}}/projectsV2/{{project.number}}/fields` and `items?per_page=100&fields=<field IDs>`; and `repos/{{repository}}/pulls?state=all&per_page=100`. List branches with `git ls-remote origin 'refs/heads/agent/*'`.
-2. A nested issue with children is a container too: it gets no branch, no PR, and no acceptance criteria, and its own leaves join the queue. Record an inaccessible child as BLOCKED; never drop one silently.
-3. Detect cycles in the blocked-by edges. Every leaf on a cycle is BLOCKED with the cycle named; leaves outside it still run.
-4. Order the leaves so that every blocker comes before the leaves it blocks, breaking ties by issue number.
-5. Give each leaf one state in the queue ledger, a table you keep in this thread and return at the end:
-   - `done`: closed, or its closing PR merged.
-   - `in review`: an open PR already closes it. Record the PR and skip the leaf.
-   - `owned elsewhere`: another agent or person claimed it and did not release the claim. Record the claim and skip the leaf. Ask the person before taking it over.
-   - `resume`: an earlier run of this delivery claimed it, no PR exists yet, and either the request says to resume that leaf or its claim names a worktree that `git worktree list` shows and that this delivery created. Reuse that worktree and the pushed branch, keeping the branch's name; a stacked branch follows the rework and resume rule of the {{prefix}}stack skill. Any other unreleased claim is `owned elsewhere`, including one whose worktree is missing here, because it may live on another machine or in the other tool.
-   - `waiting`: a blocker is unmet. A blocker is met when it is closed, or when its PR qualifies for stacking under the [Gate](delivery.md#gate).
-   - `ready`: no unmet blocker. It still has to pass the gate before you claim it.
+Run `node scripts/delivery-queue.mjs <issue>` and `--next`. The read-only script refetches recursive native sub-issues, blocked-by edges, project items, PRs, `agent/*` branches, and claims over REST on every run. Detect cycles in the blocked-by edges and record inaccessible children and cross-repository children or blockers as BLOCKED. Order blockers before dependents, with ties by issue number. A nested container has no delivery branch or PR; its leaves join the ledger.
+
+The script prints one ledger line per leaf with state, effort, rule, evidence, reason, branch/head, PR, project state, size, and claim. Its `dispatch` JSON object holds the exact base branch/SHA, dependency edges, prerequisite PRs with stacking eligibility, the validated independence group, declared ownership, and compatible parallel candidates. In Implementation notes, `Files:` lists backticked paths and `Contracts:` or `Provides:` names comma-separated shared contracts, or `none`. Multiple unmerged prerequisite branches need a stacking decision. States apply in this order:
+
+- `done`: closed, or its closing PR merged.
+- `in review`: an open PR closes it. Record and skip it.
+- `owned elsewhere`: an unreleased claim this delivery did not create, including a claim whose worktree is missing here, because it may live elsewhere. Ask the person before taking it over. `--next` reports the earliest owned leaf and its claim instead of skipping to later ready work.
+- `resume`: requested with `--resume <issue>`, or the claim names this delivery's agent (`--actor <delivery-agent>`, never another delivery's identity) and a worktree this delivery created that `git worktree list` shows here. Reuse its pushed branch and name under {{prefix}}stack, in the old worktree when it exists; after it disappeared, check out the existing branch with `git worktree add <path> <branch>`, or `git worktree add --track -b <branch> <path> origin/<branch>` when only the remote exists. Any other claim is `owned elsewhere`.
+- `waiting`: a blocker is unmet. Closed blockers count as met; an open blocker PR must meet [delivery.md](delivery.md#gate)'s stacking rule. Cycles and inaccessible dependencies stay BLOCKED.
+- `ready`: no unmet blocker. The implementer still runs the gate before claiming.
+
+`--next` selects a `resume` leaf before `ready` leaves. Claim records use `<!-- prism-claim {"agent":"<delivery-agent>","branch":"<branch>","worktree":"<path>"} -->`; release uses the same agent with `"released":true`. Legacy claim comments are recognized too. PRs record approval as `Pre-PR review: APPROVE; base=<full SHA>; head=<full SHA>`; the older `Pre-PR review: APPROVE for base..head` form, with optional Markdown around the pair, is accepted too. Stacking needs the approval head to match the current PR head and a REST compare showing the approval base is an ancestor of it; the PR's base-branch tip may advance. Passing checks without that do not permit stacking.
+
+## Effort records
+
+The implementer includes the initial decision with its one claim comment; a missing record means medium. A default decision is:
+
+```html
+<!-- prism-effort {"effort":"medium","rule":"default","evidence":"ticket/spec","reason":"The written plan resolves the design."} -->
+```
+
+A user override uses `rule:"user override"`, the actual selected `effort`, and its explicit constraint as `evidence` and `reason`. Every qualifying high record, initial or later, has the unresolved `question` and the matching policy rule's required `criteria` keys set to true; without them the queue reads it as medium.
+
+For an approved later escalation, the parent posts exactly one new decision comment before redispatch, with the explanation beside the record. It is exempt from the no-repeat-claim rule and never repeats the claim, and its record adds `later:true`:
+
+```html
+<!-- prism-effort {"effort":"high","rule":"H3-demonstrated-limit","later":true,"question":"How can concurrent writes preserve the specified ordering?","evidence":"Reproducible case race-1 and the medium attempt","reason":"The attempt requires revising the ordering design.","criteria":{"mediumAttempt":true,"reproducibleFailureOrFinding":true,"designRevisionRequired":true,"unresolvedReasoning":true}} -->
+```
+
+Post with `gh api repos/{{repository}}/issues/<N>/comments -F body=@<file>`. Reruns and recovery reuse the record, preserving high and the one-transition count. A malformed claim or effort record blocks only its leaf; the script still prints the other rows.
 
 ## Deliver
 
-Delivery is sequential by default. Take the first `ready` leaf, deliver it through [delivery.md](delivery.md), and record its result, an open PR or a recorded blocker, in the ledger before you start the next leaf. After each result, recompute the `waiting` leaves, because a new ready-for-review PR can let a dependent leaf stack on it. An L leaf, or one that fails the gate, gets planning or decomposition through the {{prefix}}create-github-issue skill within the accepted scope, or a recorded blocker. Never relax the gate. When a leaf ends BLOCKED, try one concrete correction if one exists; otherwise record the blocker and move on.
+Delivery is sequential by default: dispatch the `--next` resume or ready leaf to one {{prefix}}implementer, record its result before you start the next leaf, and rerun the script after each result and when resuming. After a recorded BLOCKED result and claim release, rerun the full ledger rather than blindly using `--next`, and select the next resume or ready row excluding issues recorded BLOCKED in this delivery's saved fixed-result file outside tracked paths; retry one only when new evidence resolves its blocker. `BLOCKED: gh stack not installed` keeps its claim and continues in the same implementer, as {{prefix}}implement describes. An earlier `owned elsewhere` row still requires the person's decision and is never silently skipped. An L leaf or failed gate is decomposed as [delivery.md](delivery.md#gate) describes or recorded as blocked; never relax gates.
 
-When one leaf's exploration would crowd out the rest of the queue, you may hand that leaf to one isolated {{prefix}}implementer as the {{prefix}}implement skill describes, and wait for its result before you continue.
+The main thread reads the ledger and fixed result fields under {{prefix}}implement's mode rules. Do not read source, diffs, or detailed review reports.
 
 ## Parallel exception
 
 Leaves run at the same time only when all of these hold:
 
-- The request asks for parallel delivery.
-- Each leaf is `ready`, passes the gate, and is sized M, a substantial task rather than a narrow edit.
-- The leaves sit in different groups of a valid independence record on their immediate parent, as `.agents/issue-creation.md` defines it. Never infer, form, or widen groups yourself, even when the request asks.
-- Their implementation notes name no overlapping files or shared contracts.
+- The person explicitly asked for parallel delivery.
+- Each leaf is `ready`, passes the gate, and is a substantial task sized M.
+- The container records independence groups, the record is valid under `.agents/independence-groups.md`, and the leaves sit in different groups. Never infer, form, extend, or merge groups yourself.
+- The leaves' implementation notes name no overlapping files or shared contracts.
 
-Then each concurrent leaf goes to its own isolated {{prefix}}implementer, with its own worktree and branch, based on trunk or its own prerequisite and never on a leaf in another group. Each assignment carries an `Owned by other running leaves:` field: the issue numbers of the other leaves running at the same time, and the files and shared contracts their implementation notes name. At most one leaf per group runs at a time, and the next leaf in a group starts only after the previous one's PR is open or its blocker is recorded. You deliver no leaf yourself while they run. A leaf the record does not list runs alone. When any condition fails, deliver sequentially and say why. Before any early return, wait for every running implementer and record each result.
+Use only the script's parallel candidates; missing ownership notes keep delivery sequential. Each concurrent leaf goes to its own isolated {{prefix}}implementer, worktree, and branch, based on trunk or its own prerequisite and never on a leaf from another group. Each concurrent assignment carries an `Owned by other running leaves:` field: the issue numbers of the other leaves running at the same time, and the files and shared contracts their implementation notes name. At most one leaf per group runs at a time, and new leaves start only as the tool-specific rule below allows. A leaf that no valid group names runs alone. An implementer that must change a file or shared contract another running leaf owns returns BLOCKED, and you deliver that leaf after the other leaf's PR opens. When any condition fails, deliver sequentially and say why.
 
 <!-- claude-only -->
-Start each concurrent leaf's Agent call with `run_in_background: true` without waiting for the others, and act on each result as its notification arrives, so one group never waits on another.
+Start each concurrent leaf's implementer with `run_in_background: true`. Record each result as its notification arrives. Once a leaf's result is recorded, the next ready leaf in that group may start while leaves in other groups still run, if it passes every condition above against each leaf still running and its `Owned by other running leaves:` field names them. Before any early return, wait for every running implementer and record each result.
 <!-- /claude-only -->
 <!-- codex-only -->
-Spawn every concurrent leaf's implementer before you wait, then wait for their results with the agent tools; never poll with shell loops.
+`spawn_agent` returns at once, so spawn each concurrent leaf's implementer, then wait for their results with the agent tools before you start another leaf in any of their groups.
 <!-- /codex-only -->
 
 ## Report
 
-Return READY FOR REVIEW or BLOCKED with one ledger row per leaf: issue, independence group or `none`, state, branch/base, PR URL(s), local checks, pre-PR approval base/head SHAs, stack id, project state as read, its settings lines, and blocker. Relay an isolated implementer's `Requested settings:` lines verbatim in its row. End with your `Advisory policy:` line, and list acceptance criteria that still depend on merge, deploy, or human verification. No narrative.
+Return one fresh ledger row per leaf with the fixed result from [delivery.md](delivery.md#result), effort decision, and every `Requested settings:` line verbatim. No narrative.

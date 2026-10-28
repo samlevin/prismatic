@@ -60,7 +60,14 @@ function fixture({
     }
     if (query.includes('pullRequest(number:'))
       return {
-        repository: { pullRequest: { id: 'pr', body, state, milestone } },
+        repository: {
+          pullRequest: {
+            id: 'pr',
+            body,
+            state,
+            milestone,
+          },
+        },
       };
     if (query.includes('issueOrPullRequest(')) {
       const issue = sources[variables.number];
@@ -101,7 +108,13 @@ function fixture({
       };
     }
     if (query.includes('... on PullRequest { body'))
-      return { node: { body: changed ? 'Closes #3' : body, state, milestone } };
+      return {
+        node: {
+          body: changed ? 'Closes #3' : body,
+          state,
+          milestone,
+        },
+      };
     throw new Error(`Unexpected query: ${query}`);
   };
   return { api, writes, calls, log: () => {} };
@@ -128,6 +141,10 @@ test('copies the union once while preserving PR labels and assignees', async () 
       (write) =>
         !write.query.includes('assigneeIds') || write.variables.id === 'pr',
     ),
+  );
+  // Project membership comes from tracker-project-membership.yml instead.
+  assert.ok(
+    f.calls.every(({ query }) => !/projectItems|ProjectV2/.test(query)),
   );
 });
 test('unassigned issues add no assignees', async () => {
@@ -256,13 +273,15 @@ test('GitHub NOT_FOUND for a missing issue is skipped while other errors fail', 
     repository: { issueOrPullRequest: null },
   });
   assert.throws(() => metadataGraphql(query, {}, run(response('FORBIDDEN'))), {
+    name: 'GitHubError',
+    kind: 'access',
     message:
-      'GitHub GraphQL request failed: FORBIDDEN: no message. Check the token and Projects access.',
+      'GitHub GraphQL request failed: FORBIDDEN. Check that the token is valid and has issue and Projects access.',
   });
   assert.throws(
     () =>
       metadataGraphql(query, {}, run(response('NOT_FOUND', ['repository']))),
-    /GitHub GraphQL request failed: NOT_FOUND/,
+    { kind: 'not-found', message: 'GitHub GraphQL request failed: NOT_FOUND.' },
   );
   assert.throws(
     () =>
@@ -271,7 +290,7 @@ test('GitHub NOT_FOUND for a missing issue is skipped while other errors fail', 
         {},
         run(response('NOT_FOUND')),
       ),
-    /GitHub GraphQL request failed: NOT_FOUND/,
+    { kind: 'not-found', message: 'GitHub GraphQL request failed: NOT_FOUND.' },
   );
   assert.throws(
     () =>
@@ -286,8 +305,42 @@ test('GitHub NOT_FOUND for a missing issue is skipped while other errors fail', 
           ],
         }),
       ),
-    /GitHub GraphQL request failed: NOT_FOUND: no message; FORBIDDEN: no message\. Check the token/,
+    {
+      kind: 'access',
+      message:
+        'GitHub GraphQL request failed: NOT_FOUND; FORBIDDEN. Check that the token is valid and has issue and Projects access.',
+    },
   );
+});
+
+test('a tolerated NOT_FOUND response with gh headers still passes silently', () => {
+  const query =
+    'query { repository { issueOrPullRequest(number: 999) { id } } }';
+  const calls = [];
+  const data = metadataGraphql(query, { number: 999 }, (command, args) => {
+    calls.push([command, ...args]);
+    throw Object.assign(new Error('gh exited with status 1'), {
+      status: 1,
+      stderr: 'gh: Could not resolve to an issue or pull request',
+      stdout:
+        'HTTP/2.0 200 OK\nX-Ratelimit-Remaining: 4999\r\n\r\n' +
+        JSON.stringify({
+          data: { repository: { issueOrPullRequest: null } },
+          errors: [
+            {
+              type: 'NOT_FOUND',
+              path: ['repository', 'issueOrPullRequest'],
+              message:
+                'Could not resolve to an issue or pull request with the number of 999.',
+            },
+          ],
+        }),
+    });
+  });
+  assert.deepEqual(data, { repository: { issueOrPullRequest: null } });
+  assert.deepEqual(calls, [
+    ['gh', 'api', '--include', 'graphql', '--input', '-'],
+  ]);
 });
 
 test('valid issues still supply metadata alongside missing references', async () => {
@@ -317,17 +370,5 @@ test('valid issues still supply metadata alongside missing references', async ()
       { id: 'pr', assignees: ['u1'] },
       { id: 'pr', milestone: 'm1' },
     ],
-  );
-});
-
-test('project membership is neither read nor copied', async () => {
-  const f = fixture();
-  await copyMetadata({ ...f, number: 10, dryRun: false });
-  assert.ok(f.writes.length > 0);
-  assert.ok(
-    f.calls.every(
-      ({ query }) =>
-        !query.includes('projectItems') && !query.includes('ProjectV2'),
-    ),
   );
 });

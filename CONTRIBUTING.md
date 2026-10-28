@@ -14,33 +14,17 @@ Keep titles plain ("Add CSV export", not "\[Task]: Add CSV export"); labels carr
 
 ## Triage
 
-Each issue gets a priority, a size, and one severity label. Priority defaults to P2.
-
-| Severity | Meaning | Priority |
-| --- | --- | --- |
-| critical | Outage, data loss, serious security impact | P0 while active, else P1 |
-| high | Important functionality broken | P1 |
-| medium | Bounded defect | P2 |
-| low / none | Minor defect / planned work | P2, or P3 if optional |
-
-| Size | Scope |
-| --- | --- |
-| XS | Narrow edit |
-| S | One component |
-| M | One outcome across a few components |
-| L | Too big to start; break it down first |
-
-Add one type label (`bug`, `enhancement`, or `documentation`; an epic gets `epic` instead) and an `area:` label for each part of the repo affected. Each directory under `packages/` that contains a `package.json` is an npm workspace and needs a `package: <directory>` label, and a test fails when one is missing. [.github/labels.json](.github/labels.json) has the full list.
+[ISSUE_TRIAGE.md](ISSUE_TRIAGE.md) defines severity, Priority, Size, labels, and when to split work into sub-issues.
 
 ## Status
 
 | Status | Meaning |
 | --- | --- |
-| Inbox | New and not triaged yet |
-| Ready | Triaged; set automatically once priority, size, and severity are filled in |
+| Inbox, or no Status | New and not triaged yet; the membership workflow sets Inbox on a new issue, and triage treats both the same |
+| Ready | Triaged; triage moves an Inbox issue here once priority, size, and severity are filled in |
 | In progress | Someone is working on it |
 | In review | A PR is open |
-| Done | Closed; set automatically |
+| Done | Closed; set automatically when an issue closes, and a reopened issue moves back to Ready |
 
 ## Dependencies
 
@@ -53,7 +37,7 @@ Before you start, assign yourself, comment with your plan, and move the issue to
 ## Pull requests
 
 - Name the branch `<login>/<issue>-<slug>`, where `<login>` is your GitHub login. Run `node scripts/branch-name.mjs <issue> --actor <login>` and use its output before the first commit; never pick a name by hand. Nothing in CI checks branch names.
-- Title the PR with [Conventional Commits](https://www.conventionalcommits.org/), e.g. `feat: add CSV export`.
+- Title the PR with [Conventional Commits](https://www.conventionalcommits.org/), with a component scope, e.g. `fix(tracker): skip archived items`.
 - Fill in the PR template. Put `Closes #N` for the issue the PR finishes, and link the parent issue if there is one.
 - Add tests for behavior you change, and update docs if you change how something is used or operated.
 - Past roughly 400 lines of changed production code (not counting tests, docs, or lockfiles), split the work into stacked PRs. Each layer is its own branch and PR on top of the previous one; `--layer <n>` names layers 2 and up with `-part-<n>`. Early layers reference the issue, and only the last one closes it.
@@ -77,12 +61,18 @@ The `Require every check selected for the changed files` job always runs, even i
 
 [ci-secret-scan.yml](.github/workflows/ci-secret-scan.yml) runs Gitleaks on every pull request and push to `main`. [ci-pr-title.yml](.github/workflows/ci-pr-title.yml) fails a pull request whose title doesn't follow Conventional Commits.
 
-The tracker workflows need the `PRISMATIC_PROJECT_TOKEN` repository secret, because the default `GITHUB_TOKEN` cannot write to a user project. The token shares its account's API rate limits with that account's local `gh` use. When a GitHub call fails, the script logs GitHub's error type and message, says when a rate limit resets, and never prints the token or `gh` output beyond that.
+The tracker workflows keep the project in step with the work.
 
-[tracker-project-membership.yml](.github/workflows/tracker-project-membership.yml) adds every issue to the board when it opens, however it was created. GitHub's API cannot turn on the project's built-in auto-add, so this workflow does it instead. It also sets a new issue's Status to Inbox, so triage picks it up, and an issue that already has a Status keeps it. Running it again for an issue already on the board changes nothing. GitHub sometimes creates no run for an `opened` event, so the workflow also sweeps once an hour, half an hour after the issue-states sweep. Each sweep lists open issues 100 at a time with their project items and adds each one missing from the board the same way, with Status Inbox. A sweep that finds nothing missing writes nothing. When one issue fails, the sweep logs it, carries on, and fails the run at the end. Run it by hand from the Actions tab with `dry_run`, which defaults to true and lists the issues it would add. Pull requests never go on the board, so the board counts only issues. Nothing else adds items, and the issue forms don't name the project.
+The [project membership workflow](.github/workflows/tracker-project-membership.yml) adds every new issue to Prismatic delivery when it opens, however it was created, sets its Status to Inbox when it has none, and then runs that issue's first triage. An existing Status never changes. GitHub sometimes starts no run for an issue's `opened` event, so the hourly sweep described below adds any open issue that is missing from the project. An issue archived in the project counts as present. An `opened` run that hits the GraphQL rate limit logs a warning and succeeds, and the next sweep adds the issue. A membership sweep logs an issue it cannot add, continues with the rest, and fails at the end. An issue deleted or transferred before the sweep adds it gets a warning and does not fail the sweep. Run a membership sweep alone by hand from this workflow in the Actions tab; a manual run is a dry run that lists the missing issues unless you clear `dry_run`. Pull requests are not added to the project. Adding an item that is already in the project changes nothing. It runs trusted default-branch code only and uses `PRISMATIC_PROJECT_TOKEN`.
 
-[tracker-issue-states.yml](.github/workflows/tracker-issue-states.yml) moves triaged issues from Inbox to Ready, moves every closed issue to Done and every reopened issue out of Done to Ready, and closes a container once all its sub-issues are closed. The project's built-in workflows are off, and the API cannot turn them on, so this workflow is the only thing that sets Done. An issue event reconciles only that issue, its project item, and its parent and sub-issue chain. An hourly sweep, which GitHub can delay, reconciles the whole project in a few GraphQL queries and logs the points it used. The sweep is skipped with a warning when fewer than 1,000 points remain in the token's hourly budget, because people and local agents share that budget. When an issue run hits the rate limit, it logs a warning and succeeds, and the next sweep applies the change. A rate-limit error in a sweep, and any other error, fails the run.
+The [issue states workflow](.github/workflows/tracker-issue-states.yml) uses deterministic GitHub API calls, with no model usage. It moves an open issue whose Status is empty or Inbox to Ready when Priority, exactly one supported severity, and Size are present. Other statuses are left alone by metadata triage. A sweep asks the project only for open issues whose Status is not Ready, In progress, In review, or Done, so it never reads items that cannot qualify. It also keeps Done equal to closed: it moves every closed issue to Done, whatever its Status, and moves a reopened issue still in Done back to Ready. For that, a sweep asks only for closed issues not in Done and open issues in Done. Ready means triaged; implementation still requires clear scope, acceptance criteria, validation, and satisfied dependencies.
 
-Two more tracker workflows run when a pull request opens, is edited, or leaves draft. [tracker-pr-metadata.yml](.github/workflows/tracker-pr-metadata.yml) copies the linked issue's labels, assignees, and milestone onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues.
+It also removes conflicting standard labels and any `type:` label from issues labeled `epic`, preserving severity, area, and risk metadata. It closes any container when all direct children are closed and updates its project status to Done. Nested completion rolls up in the same run. If an unfinished child appears, it reopens only containers carrying the automation's `automation: container-closed` marker and sets their status to Ready. Manually closed containers are left alone. An empty issue is never auto-closed. Closed children count as complete regardless of close reason; a cancelled child should have its scope removed or reassigned before closure.
 
-[tracker-pr-issue-status.yml](.github/workflows/tracker-pr-issue-status.yml) moves every issue the pull request closes to In review, from Ready or In progress for collaborators and from In progress only for everyone else. It logs a skip instead of failing when an issue isn't on the board.
+An issue event reconciles only that issue: triage reads its own project item, and container reconciliation reads its sub-issue subtree and its ancestors. Reopening and closing an issue start a run. Adding or removing a label starts one only for a `severity:` label, `epic`, or `automation: container-closed`, or for any label on an issue labeled `epic`. Opening an issue and editing its title or body start no run. One hourly job in the issue states workflow runs three sweeps in order on one runner: it adds open issues missing from the project, triages every issue, and reconciles every container. It catches project field and hierarchy edits that lack an Actions trigger. Each sweep runs even when an earlier one failed, and the job fails at the end if any sweep failed. A manual run of the issue states workflow runs the same three sweeps and is a dry run unless you clear `dry_run`. Each run logs the GraphQL budget before and after. A sweep skips with a warning when fewer than 1,000 points remain. An issue event that hits the rate limit logs a warning and succeeds, because the next sweep repeats its work.
+
+Right after a batch's metadata and relationships are complete, the filing skills run `scripts/issue-triage.mjs` on each new issue and `scripts/issue-containers.mjs` on each new top-level container. `scripts/issue-containers.mjs --issue N` reconciles the named issue's container subtree and ancestors, never unrelated issues. Both scripts default to dry-run. Actions uses `PRISMATIC_PROJECT_TOKEN`, a token with write access to the Prismatic delivery project. Creating or changing it requires explicit authorization. Local use relies on existing `gh` authentication. Do not print credentials or copy them during ordinary issue filing. Workflow activation requires publication on `main`; runtime field IDs are discovered. Concurrent human edits can race API writes, so avoid competing reconciliation sessions.
+
+[tracker-pr-metadata.yml](.github/workflows/tracker-pr-metadata.yml) copies the linked issue's labels, assignees, and milestone onto the pull request, so a pull request inherits the owner of the issue it closes; nothing assigns people to issues.
+
+When a non-draft PR is opened, reopened, marked ready for review, or has its body edited, the [PR issue status workflow](.github/workflows/tracker-pr-issue-status.yml) moves open issues named by closing keywords to `In review`: from `In progress` for any author, and also from `Ready` for the owner and collaborators. It skips other statuses and ordinary issue mentions, and its run logs each skip with the reason. It runs separately from `tracker-pr-metadata.yml`, so a status lookup failure does not block PR metadata. Both workflows read linked issues from the PR body only, so an edit to the title or base branch starts no job in either. It also uses `PRISMATIC_PROJECT_TOKEN`.

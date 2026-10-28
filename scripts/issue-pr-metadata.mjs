@@ -3,14 +3,10 @@ import { pathToFileURL } from 'node:url';
 import { failureMessage, ghGraphql } from './github-api.mjs';
 import { paginate, REPOSITORY } from './issue-triage.mjs';
 
-// Copies the labels, assignees, and milestone of the issues a pull request
-// links onto the pull request. Project membership comes from
-// tracker-project-membership.yml instead.
-
 const PAGE = 'pageInfo { hasNextPage endCursor }';
 
-// A referenced number that is neither an issue nor a pull request comes back
-// as NOT_FOUND; it supplies no metadata and is not a failure.
+// A referenced number that is not an issue or PR returns NOT_FOUND with null
+// data; that response is expected and every other error still fails.
 export function metadataGraphql(query, variables, run = execFileSync) {
   return ghGraphql(query, variables, {
     run,
@@ -18,7 +14,7 @@ export function metadataGraphql(query, variables, run = execFileSync) {
       query.includes('issueOrPullRequest(number:') &&
       result.errors.every(
         (error) =>
-          error.type === 'NOT_FOUND' &&
+          error?.type === 'NOT_FOUND' &&
           error.path?.join('.') === 'repository.issueOrPullRequest',
       ) &&
       result.data?.repository?.issueOrPullRequest === null,
@@ -173,9 +169,7 @@ if (
   try {
     if (process.env.GITHUB_ACTIONS === 'true') {
       if (!process.env.PRISMATIC_PROJECT_TOKEN)
-        throw new Error(
-          'PRISMATIC_PROJECT_TOKEN is required for Projects access.',
-        );
+        throw new Error('PRISMATIC_PROJECT_TOKEN is required.');
       if (process.env.GITHUB_REPOSITORY !== REPOSITORY)
         throw new Error('Unexpected repository');
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;

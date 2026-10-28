@@ -36,29 +36,59 @@ export function checks({ full }) {
   return commands;
 }
 
-// Runs every command, one at a time so the logs stay readable, and rejects
-// after the last one when any of them failed.
-export async function runChecks(commands, run = runCommand) {
-  const failed = [];
-  for (const [command, args] of commands)
-    if ((await run(command, args)) !== 0)
-      failed.push([command, ...args].join(' '));
-  if (failed.length) throw new Error(`CI checks failed: ${failed.join('; ')}`);
+function commandLine(command, args) {
+  return [command, ...args].join(' ');
 }
 
+// Checks run in parallel, so each one's output is buffered and printed in its
+// own log group when that check ends. A `Started` line outside any group marks
+// each check's start, so a timed-out or cancelled run still shows which checks
+// were running. Every check settles before the gate fails, and the error names
+// each failed command with its exit code.
+export async function runChecks(
+  commands,
+  run = runCommand,
+  write = (text) => process.stdout.write(text),
+) {
+  const results = await Promise.all(
+    commands.map(async ([command, args]) => {
+      const line = commandLine(command, args);
+      write(`Started ${line}\n`);
+      const { code, output } = await run(command, args);
+      write(`::group::${line}\n`);
+      if (output) write(output.endsWith('\n') ? output : `${output}\n`);
+      write('::endgroup::\n');
+      return { line, code };
+    }),
+  );
+  const failed = results.filter(({ code }) => code !== 0);
+  if (failed.length > 0)
+    throw new Error(
+      [
+        `${failed.length} of ${results.length} CI checks failed:`,
+        ...failed.map(({ line, code }) => `  ${line} (exit code ${code})`),
+      ].join('\n'),
+    );
+}
+
+// Collects stdout and stderr together in the order they arrive.
 function runCommand(command, args) {
-  console.log(`::group::${command} ${args.join(' ')}`);
   return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: 'inherit' });
+    const chunks = [];
+    let settled = false;
+    const finish = (code) => {
+      if (settled) return;
+      settled = true;
+      resolve({ code, output: Buffer.concat(chunks).toString() });
+    };
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout.on('data', (chunk) => chunks.push(chunk));
+    child.stderr.on('data', (chunk) => chunks.push(chunk));
     child.on('error', (error) => {
-      console.error(error);
-      console.log('::endgroup::');
-      resolve(1);
+      chunks.push(Buffer.from(`${error.stack ?? error}\n`));
+      finish(1);
     });
-    child.on('exit', (code) => {
-      console.log('::endgroup::');
-      resolve(code ?? 1);
-    });
+    child.on('close', (code) => finish(code ?? 1));
   });
 }
 
@@ -70,15 +100,24 @@ export function parseFull(value) {
 
 async function main() {
   const full = parseFull(process.env.CI_FULL);
+  const summary = process.env.GITHUB_STEP_SUMMARY;
+  if (summary === '')
+    throw new Error('Expected GITHUB_STEP_SUMMARY to name a file when set');
   const scope = full ? 'every check' : 'format check and Markdown lint only';
   console.log(`Selected: ${scope}`);
   await runChecks(checks({ full }));
-  if (process.env.GITHUB_STEP_SUMMARY)
+  if (summary)
     appendFileSync(
-      process.env.GITHUB_STEP_SUMMARY,
+      summary,
       `Selected ${scope}; every selected check passed.\n`,
     );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-  await main();
+  try {
+    await main();
+  } catch (error) {
+    // End the log with the failure summary instead of a stack trace.
+    console.error(error.message);
+    process.exitCode = 1;
+  }

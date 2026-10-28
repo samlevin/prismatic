@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { branchName, isCanonicalBranch, run, slugify } from './branch-name.mjs';
+import { ghRest } from './github-api.mjs';
 
 // Adapts a number-to-issue stub to the ghRest call shape.
 const asApi = (fetch) => (args) =>
@@ -110,7 +111,8 @@ test('run prints the name from the issue title', () => {
 
 test('run rejects non-numeric issues before calling GitHub', () => {
   const api = asApi(() => assert.fail('GitHub must not be called'));
-  for (const value of ['-w', 'abc', '0', '1x'])
+  assert.throws(() => run(['-w'], { api }), /Unknown option -w/);
+  for (const value of ['abc', '0', '1x'])
     assert.throws(() => run([value], { api }), /Issue must be a positive/);
 });
 
@@ -157,5 +159,33 @@ test('run maps a 404 and passes other GitHub failures through', () => {
     () => run(['9'], { api: fail(503) }),
     (error) =>
       error.message === 'GitHub request failed' && error.httpStatus === 503,
+  );
+});
+
+test('ghRest failures keep their HTTP status for the 404 mapping', () => {
+  const gh = (status, body) => (args) =>
+    ghRest(args, {
+      run: () => {
+        throw Object.assign(new Error('Command failed: gh api'), {
+          status: 1,
+          stderr: 'gh: stderr-marker',
+          stdout: `HTTP/2.0 ${status} Status\nX-Ratelimit-Remaining: 0\r\nX-Ratelimit-Reset: 1792126278\r\n\r\n${JSON.stringify(body)}`,
+        });
+      },
+    });
+  assert.throws(
+    () => run(['9'], { api: gh(404, { message: 'Not Found' }) }),
+    /^Error: Issue #9 was not found$/,
+  );
+  assert.throws(
+    () =>
+      run(['9'], {
+        api: gh(403, { message: 'API rate limit exceeded for user ID 1.' }),
+      }),
+    {
+      kind: 'rate-limit',
+      httpStatus: 403,
+      message: `GitHub REST request failed: HTTP 403: API rate limit exceeded for user ID 1. Rate limit reached; the limit resets at ${new Date(1792126278 * 1000).toISOString()}.`,
+    },
   );
 });

@@ -103,7 +103,7 @@ jobs:
   require-scoped-checks:
     name: Require every check selected for the changed files
     needs: [detect-changes, run-checks]
-    if: ${{ always() }}
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

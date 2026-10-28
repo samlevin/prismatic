@@ -10,7 +10,7 @@ import { classify, selectScopes } from './ci-scope.mjs';
 import { evaluate, runScript, workflow } from './workflow-test-helpers.mjs';
 
 const require = createRequire(import.meta.url);
-const ciWorkflow = workflow('ci-checks.yml');
+const ciWorkflow = workflow('ci-checks');
 const documentationChecks = [
   ['npm', ['run', 'format:check']],
   ['npm', ['run', 'lint:md']],
@@ -120,25 +120,140 @@ test('the full selection runs format, lint, typecheck, agent definitions, every 
   );
 });
 
-test('every check runs even after one fails, and any failure rejects', async () => {
+test('checks overlap and any failing check rejects the gate after all checks settle', async () => {
   const started = [];
-  const run = async (command) => {
-    started.push(command);
-    return command === 'second' ? 1 : 0;
-  };
-  await assert.rejects(
-    runChecks(
-      [
-        ['first', []],
-        ['second', ['--flag']],
-        ['third', []],
-      ],
-      run,
-    ),
-    /CI checks failed: second --flag$/,
+  const pending = [];
+  let settled = false;
+  const result = runChecks(
+    [
+      ['first', []],
+      ['second', []],
+    ],
+    (command) => {
+      started.push(command);
+      return new Promise((resolve) => pending.push(resolve));
+    },
+    () => {},
+  ).finally(() => {
+    settled = true;
+  });
+  assert.deepEqual(started, ['first', 'second']);
+  pending[0]({ code: 1, output: '' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  pending[1]({ code: 0, output: '' });
+  await assert.rejects(result, /CI checks failed/);
+});
+
+// Settles each fake check in the given order and records what the gate writes.
+async function runFakeChecks(commands, results, order) {
+  const pending = new Map();
+  const log = [];
+  const result = runChecks(
+    commands,
+    (command) => new Promise((resolve) => pending.set(command, resolve)),
+    (text) => log.push(text),
+  ).then(
+    () => undefined,
+    (error) => error,
   );
-  assert.deepEqual(started, ['first', 'second', 'third']);
-  await runChecks([['first', []]], run);
+  for (const command of order) {
+    pending.get(command)(results[command]);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return { log: log.join(''), error: await result };
+}
+
+const fakeCommands = [
+  ['format', ['run', 'format:check']],
+  ['lint', ['.', '--max-warnings', '0']],
+  ['test', ['--test', 'a.test.mjs']],
+];
+
+test('each check prints a start line outside any group, then its buffered output in one group named after its command, in completion order', async () => {
+  const { log, error } = await runFakeChecks(
+    fakeCommands,
+    {
+      format: { code: 0, output: 'format line 1\nformat line 2\n' },
+      lint: { code: 0, output: 'lint output' },
+      test: { code: 0, output: '' },
+    },
+    ['test', 'format', 'lint'],
+  );
+  assert.equal(error, undefined);
+  assert.equal(
+    log,
+    [
+      'Started format run format:check',
+      'Started lint . --max-warnings 0',
+      'Started test --test a.test.mjs',
+      '::group::test --test a.test.mjs',
+      '::endgroup::',
+      '::group::format run format:check',
+      'format line 1',
+      'format line 2',
+      '::endgroup::',
+      '::group::lint . --max-warnings 0',
+      'lint output',
+      '::endgroup::',
+      '',
+    ].join('\n'),
+  );
+});
+
+test('one failing check is named with its exit code after every check runs', async () => {
+  const { log, error } = await runFakeChecks(
+    fakeCommands,
+    {
+      format: { code: 0, output: 'formatted\n' },
+      lint: { code: 1, output: 'lint error\n' },
+      test: { code: 0, output: 'tests passed\n' },
+    },
+    ['lint', 'format', 'test'],
+  );
+  assert.equal(
+    error?.message,
+    '1 of 3 CI checks failed:\n  lint . --max-warnings 0 (exit code 1)',
+  );
+  for (const output of ['formatted', 'lint error', 'tests passed'])
+    assert.match(log, new RegExp(output));
+});
+
+test('two failing checks are both named with their exit codes in command order', async () => {
+  const { error } = await runFakeChecks(
+    fakeCommands,
+    {
+      format: { code: 2, output: '' },
+      lint: { code: 0, output: '' },
+      test: { code: 1, output: '' },
+    },
+    ['test', 'lint', 'format'],
+  );
+  assert.equal(
+    error?.message,
+    [
+      '2 of 3 CI checks failed:',
+      '  format run format:check (exit code 2)',
+      '  test --test a.test.mjs (exit code 1)',
+    ].join('\n'),
+  );
+});
+
+test('the default runner buffers stdout and stderr and reports a failed exit code', async () => {
+  const log = [];
+  const script =
+    "process.stdout.write('out\\n'); process.stderr.write('err\\n'); process.exit(3)";
+  await assert.rejects(
+    runChecks([[process.execPath, ['-e', script]]], undefined, (text) =>
+      log.push(text),
+    ),
+    (error) => error.message.endsWith('(exit code 3)'),
+  );
+  const output = log.join('');
+  assert.match(output, /^Started .+ -e .+\n::group::.+ -e /);
+  assert.match(output, /out\n/);
+  assert.match(output, /err\n/);
+  assert.match(output, /::endgroup::\n$/);
 });
 
 test('the check runner accepts only an explicit selection', () => {
@@ -153,8 +268,21 @@ test('the check runner accepts only an explicit selection', () => {
     [new URL('./ci-checks.mjs', import.meta.url).pathname],
     { env, encoding: 'utf8' },
   );
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /CI_FULL/);
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr, 'Expected CI_FULL to be true or false\n');
+  const emptySummary = spawnSync(
+    process.execPath,
+    [new URL('./ci-checks.mjs', import.meta.url).pathname],
+    {
+      env: { ...process.env, CI_FULL: 'false', GITHUB_STEP_SUMMARY: '' },
+      encoding: 'utf8',
+    },
+  );
+  assert.equal(emptySummary.status, 1);
+  assert.equal(
+    emptySummary.stderr,
+    'Expected GITHUB_STEP_SUMMARY to name a file when set\n',
+  );
 });
 
 test('the checks job runs after detection with its selection', () => {

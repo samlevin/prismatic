@@ -1,59 +1,61 @@
 ---
 name: prism-implement
-description: "Deliver a Prismatic GitHub issue or rework a Prismatic PR in the current thread. Use for \"implement #N\", \"implement <issue URL>\", \"rework <PR URL>\", or \"deliver this epic\" in samlevin/prismatic. The invoking thread owns the delivery: it creates the worktree, claims the issue, implements, runs the checks, gets the independent pre-PR review from prism-code-reviewer, runs stack operations through prism-stack, and opens the ready-for-review PR. A container runs as a dependency queue in the same thread, one leaf at a time unless parallel delivery is requested. One isolated prism-implementer is an explicit exception, never the default."
+description: "Deliver one Prismatic GitHub issue or rework one Prismatic PR through an isolated prism-implementer by default. Use for \"implement #N\", \"implement <issue URL>\", \"rework <PR URL>\", or \"deliver this epic\" in samlevin/prismatic. The main thread runs the queue script, dispatches one leaf at a time, and records fixed results. An explicit inline keyword keeps a small leaf or rework in the main thread."
 ---
 <!-- Generated from .agents/workflows/implement.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`. -->
 
 # Prismatic implement
 
-You are the delivery owner. This thread does the work: it creates and owns the worktree, claims the issue, implements, validates, gets the independent pre-PR review, runs stack operations, and opens the PR. You spawn only the agents this skill and its procedures name, and only for the reasons they give.
+You are the dispatcher in this thread. The prism-implementer is the delivery owner: it creates and owns the worktree, claims the issue, implements, validates, handles its review findings, runs prism-stack, and opens the ready-for-review PR. No separate orchestrator agent exists.
 
 ## Resolve the target
 
-1. Parse the target: `#N`, an issue URL, or a PR URL in `samlevin/prismatic`. Another repository is BLOCKED here.
-2. Parse `isolated`, `parallel`, and overrides from the request. `reviewer model <name>` and `reviewer effort <level>` apply to prism-code-reviewer. An unprefixed `model <name>` or `effort <level>`, or one with an `implementer` prefix, applies to an isolated prism-implementer when you spawn one. A partial override changes only the named setting. Overrides never modify `.agents/policy.json` or workstation configuration, and they end with this task.
-3. `git fetch origin` (read-only on the human checkout) and record the `origin/main` SHA.
-4. For an issue, read it through REST: `gh api repos/samlevin/prismatic/issues/<N> --jq '{title, body, state, labels: [.labels[].name], id, pull_request}'` (a non-null `pull_request` means N is a PR, not an issue), its project item from `gh api 'users/samlevin/projectsV2/2/items?per_page=100' --paginate --jq '.[] | select(.content.id == ID)'` (ID is the issue's REST `id`), and its native sub-issues from `gh api 'repos/samlevin/prismatic/issues/<N>/sub_issues?per_page=100' --paginate --jq '.[].number'`. Any sub-issue means container; none means leaf. A PR URL means rework of that PR's branch.
-5. For a leaf, read its blocked-by issues through REST with `gh api 'repos/samlevin/prismatic/issues/<N>/dependencies/blocked_by?per_page=100' --paginate --jq '.[] | {number, state}'`. For each open one, list the PRs that close it with GraphQL, because REST has no closing-PR read: `gh api graphql -f query='query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { issue(number: $number) { closedByPullRequestsReferences(first: 10, includeClosedPrs: false) { nodes { number headRefName } } } } }' -f owner=<owner> -f name=<repo> -F number=<B> --jq '.data.repository.issue.closedByPullRequestsReferences.nodes[]'`, where `<owner>/<repo>` is `samlevin/prismatic`. If that call is rate-limited, do not wait: find open PRs whose body names `#<B>` after a closing keyword from `gh api 'repos/samlevin/prismatic/pulls?state=open&per_page=100' --paginate --jq '.[] | {number, head: .head.ref, body}'`.
+1. Parse `#N`, an issue URL, or a PR URL in `samlevin/prismatic`. Another repository is BLOCKED here. For a PR, read its number, branch, base/head, and closing issue through REST, and dispatch it with its closing leaf's ledger row even when that row says `in review`; never pick a different leaf with `--next`. The implementer reads the review findings.
+2. Parse `inline`, `parallel`, and overrides. `reviewer model <name>` and `reviewer effort <level>` target only prism-code-reviewer. Unprefixed `model <name>` or `effort <level>`, and `implementer` prefixes, target only prism-implementer. Preserve explicit constraints in every continuation and recovery handoff.
+3. Run `git fetch origin` and record the fresh `origin/main` SHA. Read the current procedures from trunk if the checkout may be stale.
+4. Run `node scripts/delivery-queue.mjs <issue>` and `--next` as [references/queue.md](references/queue.md) describes, for a single leaf or a container.
 
 ## Pick the mode
 
-| Target | Mode | Procedure |
+| Target | Default mode | Procedure |
 | --- | --- | --- |
-| Leaf issue | this thread | [references/delivery.md](references/delivery.md) |
-| PR rework | this thread | [references/delivery.md](references/delivery.md), its Rework section |
-| Container or epic | dependency queue in this thread, sequential by default | [references/queue.md](references/queue.md) |
+| Leaf issue | isolated prism-implementer | [references/delivery.md](references/delivery.md) |
+| PR rework | isolated prism-implementer | [references/delivery.md](references/delivery.md), Rework section |
+| Container or epic | sequential dependency queue in this thread | [references/queue.md](references/queue.md) |
 
-Read the procedure for the mode and follow it. It holds every gate, safety rule, and result field. The facts you gathered above are its inputs; reuse them instead of fetching them again.
+In isolated and queue mode the main thread reads the queue ledger and fixed result fields only: it runs the queue script, spawns, records results, and assesses compact escalation requests against the rubric. Do not read source or diffs, explore the implementation, or read detailed review reports during normal delivery; for a BLOCKED result or a needed decision, read only enough to explain it and ask the person. The implementer reads its own issue and owns the delivery gate.
+
+The explicit `inline` keyword keeps a small leaf or PR rework here through [references/delivery.md](references/delivery.md). It does not make a container inline. Inline work runs at the session settings, which this skill cannot change, and reports `Advisory policy: tool=<tool> capability=implementation model=<model> effort=<effort> (session settings apply)`, resolved with `node scripts/agent-policy.mjs resolve --tool <tool> --capability implementation`. Say when a requested override cannot change the inline runtime.
 
 ## Settings
 
-This skill runs at the session model and effort. A skill cannot change them in either tool, and you spawn no agent only to enforce a model choice. Resolve the advisory policy with `node scripts/agent-policy.mjs resolve --tool <tool> --capability implementation` (`<tool>` is `claude` or `codex`) and state it in your first message and in your result as `Advisory policy: tool=<tool> capability=implementation model=<model> effort=<effort> (session settings apply)`. Never present it as `Requested settings:`, because no dispatcher requested it. When an override targets the inline work, say that this skill cannot apply it and name the tool's own control.
+`.agents/policy.json` (`implementationEffort`) owns the effort rubric: medium by default, the assessment order, blockers, non-triggers, and the stable rules `H1-boundary`, `H2-coupled-design`, and `H3-demonstrated-limit` with their required criteria. Read it before choosing anything above medium; without a qualifying rule, choose medium. Missing inputs are blockers, never reasons to escalate, and automatic escalation stops at high.
+An explicit `effort <level>` or `implementer effort <level>` overrides the rubric for this task. Explicit medium prevents automatic escalation; if that prevents delivery, return the concrete blocker. Reviewer settings remain independent.
 
-In Codex, start the session with `codex -m <model> -c model_reasoning_effort=<effort>`.
+Resolve each role separately with `node scripts/agent-policy.mjs resolve`, as `AGENTS.md` describes, adding `--model` or `--effort` only for a role's explicit override or qualifying automatic high decision. If the offline resolver fails, report its message verbatim and stop; never substitute values.
 
-Each role you spawn keeps its own policy: resolve it with `node scripts/agent-policy.mjs resolve --tool <tool> --role <role>`, adding `--model` or `--effort` only for an override that targets that role. The resolver prints JSON with the final `model`, `effort`, their `source`, and a `spawn` object. If it exits non-zero, stop and report its message verbatim; it refuses models and efforts the repository does not list, and nothing substitutes another value.
+Before ordinary dispatch print `Implementation effort: medium (default)`. Before every dispatch or redispatch above medium print `Implementation effort: medium -> <selected effort>; issue: #N; rule: <full stable rule ID or user override>; evidence: <specific reference and unresolved problem>; reason: <why medium is insufficient>`. This is an announcement, not an approval request, and never changes runtime effort. The implementer confirms its dispatched effort and the same rule/reason in its first progress message.
 
-## Check gh stack
+Retain effort, rule, evidence, and reason in the ledger, assignment, fixed result, PR body, and `Requested settings:` provenance. Decisions are recorded on the issue as [Effort records](references/queue.md#effort-records) describes.
 
-Stack operations run only through the prism-stack skill and the `gh stack` extension, whose first step is the extension check. When that check fails in this thread, do no branch, stack, or PR work. Run `gh --version` and tell the user:
+## Dispatch and continuation
 
-> `gh stack` is not installed (`<first line of gh --version>`). Run `! gh extension install github/gh-stack` here, then tell me when it finishes.
+Send one bounded assignment: issue number and URL (or PR URL), trunk `main` and fresh SHA, actual base branch and SHA, the leaf's ledger line with its `dispatch` metadata, any verified prerequisite SHAs, `Owned by other running leaves: none` or the queue's ownership value, effort decision and explicit constraints, project 2 owner `samlevin`, the fixed result format in [references/delivery.md](references/delivery.md#result), and `Policy: tool=<tool> role=implementer model=<model> effort=<effort> (model: <source>, effort: <source>); decision: <rule>; evidence: <reference>; reason: <reason>; handoff overrides: <reviewer overrides or none>`. Reference repository instructions by path rather than copying them or this conversation.
 
-Claude Code and Codex both run the same `!` line as a local shell command. Wait for the user to confirm; do not rely on reading the install output. Then run `gh stack --help` again. Continue only when it exits zero, and otherwise give the prompt again. Never run `gh extension install` yourself.
+Use `spawn_agent` with `agent_type`, `model`, and `reasoning_effort` explicitly copied from the implementer's resolver `spawn` object and `fork_turns: "none"`. Always pass both settings: agent files omit them, so an omitted value falls back to the contributor's `[agents]` defaults. An unknown `agent_type` means the project is not trusted in Codex yet; report it and stop. Send a person's correction through the tool's continue mechanism (`followup_task` for an idle agent) to the same implementer at its existing effort.
 
-When an isolated implementer returns `BLOCKED: gh stack not installed`, give the same prompt and run the same check. After the check passes, continue that same agent with `gh stack is installed; run the check again and resume.`, so its claim and worktree carry forward.
+The implementer never spawns another implementer. Replace it only when it is unavailable, with a bounded recovery handoff carrying branch, head SHA, PR URL, open findings, explicit constraints, and the same effort, or under [Later escalation](#later-escalation). Never create duplicate or parallel ownership. Wait as `.agents/evidence.md` describes, and record each result before dependent work.
 
-## Isolated implementer exception
+When an implementer returns `BLOCKED: gh stack not installed`, keep its claim, branch, and worktree and dispatch no replacement. Relay its `gh --version` output and ask the person to run `! gh extension install github/gh-stack`; never install it yourself. After they confirm, a passing `gh stack --help >/dev/null` lets the same implementer continue at its existing effort from the stack step; on failure, show the output and ask again.
 
-By default you deliver the work yourself. You may hand one leaf or one rework to one isolated prism-implementer when the request says `isolated`, or when the leaf is large enough that its exploration would crowd this conversation; say which reason applies. The queue's parallel exception in [references/queue.md](references/queue.md) is the only case where more than one runs at a time. An isolated implementer spawns only prism-code-reviewer, never another implementer, and returns a compact result.
+## Later escalation
 
-Resolve its settings with `--role implementer`, then send a bounded assignment: target URL, trunk `main` and the fresh `origin/main` SHA, the base to build on, acceptance criteria, accepted decisions, verified prerequisites and their SHAs, the project item ID, validation requirements, the project binding (project 2, owner `samlevin`), the `Owned by other running leaves:` field when the queue's parallel exception applies, the result fields from the Result section of [references/delivery.md](references/delivery.md), and its `Policy:` line: `Policy: tool=<tool> role=prism-implementer model=<model> effort=<effort> (model: <source>, effort: <source>); handoff overrides: <reviewer overrides or none>`. Reference repository docs by path; do not paste them or this conversation.
+Validate a medium implementer's escalation request against the rubric, keep explicit medium constraints, and print the announcement before changing runtime settings. After approval and before redispatch, the parent posts exactly one later-escalation record (`later:true`, `question`, `criteria`) as [Effort records](references/queue.md#effort-records) defines. Allow at most one automatic medium-to-high transition per leaf delivery. Continue the same agent only if the runtime can change its effort; otherwise end the old agent's ownership and create one replacement at high with `--effort high` through the resolver, explicit spawn settings, and the bounded recovery handoff. That replacement adds no parallel ownership, duplicate work, or review rounds, and the retry and two-round limits stay. If the runtime cannot apply high, say so and never claim an upgrade.
 
-Use `spawn_agent` with `agent_type`, `model`, and `reasoning_effort` copied from the resolver's `spawn` object and `fork_turns: "none"`, so the child gets only the assignment and none of this conversation. Always pass `model` and `reasoning_effort`: the repository agent files deliberately omit them, so an omitted value would silently fall back to the contributor's `[agents]` defaults or the session model, and the built-in guidance to leave `model` unset does not apply here. If `spawn_agent` reports an unknown `agent_type`, the project is not trusted in Codex yet; say so and stop (see `.agents/README.md`). Wait with the agent tools, never with shell loops. Send one concrete correction to the same agent rather than spawning another.
+## Review depth fallback
 
-Record the implementer's READY FOR REVIEW or BLOCKED result before any dependent work.
+If Codex refuses main -> implementer -> reviewer depth, the implementer sends the factual review packet path here. The main thread spawns the reviewer with its own resolved `model`, `reasoning_effort`, and `fork_turns: "none"`, reads only the verdict and blocker lines, saves the complete report outside tracked paths, and passes its file path to the implementer, which handles the findings under the exact-SHA approval and two-round limit. Read a detailed report only to explain a blocker requiring a person's decision.
 
 ## Report
 
-Return the result the procedure defines, with your `Advisory policy:` line and every `Requested settings:` line verbatim, including an isolated implementer's. Those lines record what each role was requested with; do not call them verified or add remarks about which model ran. Then list what still depends on merge, deploy, or human verification.
+Relay the fixed result fields, including every `Requested settings:` line verbatim, and keep queue state in the queue script's output, not the conversation.

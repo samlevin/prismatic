@@ -15,7 +15,9 @@ concurrency:
 jobs:
   mark-issues-in-review:
     name: Move closing issues to In review
-    if: github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft
+    # The script reads closing issues from the PR body and never the title, so
+    # an edit that leaves the body unchanged starts no job.
+    if: github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft && (github.event.action != 'edited' || github.event.changes.body)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -29,7 +31,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '24.22.0'
+          node-version-file: .tool-versions
       - name: Update project status of closing issues
         env:
           PRISMATIC_PROJECT_TOKEN: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}

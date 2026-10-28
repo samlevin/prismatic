@@ -1,256 +1,200 @@
+import { CliHelp } from './cli.cjs';
 import { pathToFileURL } from 'node:url';
-import { failureMessage, ghGraphql } from './github-api.mjs';
+import { failureMessage } from './github-api.mjs';
 import {
-  checkIssueNumber,
   configuration,
   discover,
-  MISSING_ISSUE,
-  nestedNodes,
+  EMPTY,
+  MissingIssueError,
+  missingIssue,
   paginate,
   REPOSITORY,
+  runTracker,
+  trackerGraphql,
   warning,
-  withinBudget,
 } from './issue-triage.mjs';
 
 const MARKER = 'automation: container-closed';
 const PAGE = 'pageInfo { hasNextPage endCursor }';
-const CHILD = 'id repository { nameWithOwner } subIssuesSummary { total }';
-const STATUS = `fieldValueByName(name: "Status") {
-  ... on ProjectV2ItemFieldSingleSelectValue { name }
-}`;
-const PROJECT_ITEM = `id project { id } ${STATUS}`;
-const PROJECT_ITEMS = `projectItems(first: 20) { nodes { ${PROJECT_ITEM} } ${PAGE} }`;
-// Sub-issues come inside the issue query, so listing every issue costs one
-// GraphQL point per 100 issues.
 const ISSUE = `id number state repository { nameWithOwner }
-  parent { id repository { nameWithOwner } }
-  subIssuesSummary { total completed }
-  subIssues(first: 50) { nodes { ${CHILD} } ${PAGE} }`;
-// Everything a container decision needs about one issue.
-const FULL = `${ISSUE} labels(first: 50) { nodes { name } ${PAGE} } ${PROJECT_ITEMS}`;
+  parent { id repository { nameWithOwner } } subIssuesSummary { total completed }`;
+const ITEMS = `nodes { id project { id } fieldValueByName(name: "Status") {
+  ... on ProjectV2ItemFieldSingleSelectValue { name }
+} } ${PAGE}`;
 
-function connection(api, id, field, selection, value) {
-  return nestedNodes(api, {
-    id,
-    type: 'Issue',
-    field,
-    selection,
-    connection: value,
-  });
-}
+const LABELS = `nodes { name } ${PAGE}`;
+const CHILDREN = `nodes { ${ISSUE} } ${PAGE}`;
 
-// Adds the sub-issue list to an issue read with ISSUE.
-async function withChildren(api, issue) {
-  const { subIssues, ...rest } = issue;
-  return {
-    ...rest,
-    children: await connection(api, issue.id, 'subIssues', CHILD, subIssues),
-  };
-}
+const complete = (issue) =>
+  issue.subIssuesSummary.total > 0 &&
+  issue.subIssuesSummary.total === issue.subIssuesSummary.completed;
 
-// Adds the sub-issues, the marker label, and the project items to an issue
-// read with FULL.
-async function withDetails(api, issue) {
-  if (!issue) return null;
-  const { labels, projectItems, ...rest } = await withChildren(api, issue);
-  const labelNodes = await connection(api, issue.id, 'labels', 'name', labels);
-  return {
-    ...rest,
-    marked: labelNodes.some((label) => label.name === MARKER),
-    projectItems: await connection(
-      api,
-      issue.id,
-      'projectItems',
-      PROJECT_ITEM,
-      projectItems,
-    ),
-  };
-}
-
-async function snapshot(api, id) {
-  const data = await api(
-    `query($id: ID!) { node(id: $id) { ... on Issue { ${FULL} } } }`,
-    { id },
-  );
-  return withDetails(api, data.node);
-}
-
-// Every issue in the repository, plus the marker label's id. Marked issues
-// carry their project items, so a status repair needs no extra read.
-async function everyIssue(api) {
-  let label;
-  const markedIssues = await paginate(async (cursor) => {
+// Reads every page of one connection on an issue, such as `labels` with LABELS.
+// Archived project items never take a Status write, so they are not read.
+async function connection(api, id, field, selection) {
+  const archived = field === 'projectItems' ? ', includeArchived: false' : '';
+  return paginate(async (cursor) => {
     const data = await api(
-      `query($cursor: String) { repository(owner: "samlevin", name: "prismatic") {
-        label(name: "${MARKER}") { id
-          issues(first: 100, after: $cursor, states: [OPEN, CLOSED]) {
-            nodes { id ${PROJECT_ITEMS} } ${PAGE}
-          }
-        }
-      } }`,
-      { cursor },
+      `query($id: ID!, $cursor: String) { node(id: $id) { ... on Issue {
+      ${field}(first: 100, after: $cursor${archived}) { ${selection} }
+    } } }`,
+      { id, cursor },
     );
-    label = data.repository?.label;
-    if (!label) throw new Error(`Missing managed label ${MARKER}`);
-    return label.issues;
+    return data.node?.[field] ?? EMPTY;
   });
-  const listed = await paginate(async (cursor) => {
+}
+
+// Every issue in the repository, without nested connections, so one page of
+// 100 issues costs one point. Parent links give the hierarchy.
+async function everyIssue(api) {
+  const issues = await paginate(async (cursor) => {
     const data = await api(
       `query($cursor: String) { repository(owner: "samlevin", name: "prismatic") {
-        issues(first: 100, after: $cursor, states: [OPEN, CLOSED]) {
-          nodes { ${ISSUE} } ${PAGE}
-        }
-      } }`,
+      issues(first: 100, after: $cursor, states: [OPEN, CLOSED]) { nodes { ${ISSUE} } ${PAGE} }
+    } }`,
       { cursor },
     );
     return data.repository?.issues;
   });
-  const issues = new Map();
-  for (const issue of listed)
-    issues.set(issue.id, {
-      ...(await withChildren(api, issue)),
-      marked: false,
-    });
-  for (const marked of markedIssues) {
-    const issue = issues.get(marked.id);
-    if (!issue) continue;
-    issue.marked = true;
-    issue.projectItems = await connection(
-      api,
-      marked.id,
-      'projectItems',
-      PROJECT_ITEM,
-      marked.projectItems,
-    );
-  }
-  return { label: label.id, issues };
+  const byId = new Map(issues.map((issue) => [issue.id, issue]));
+  const edges = new Map(
+    issues
+      .filter((issue) => issue.subIssuesSummary.total > 0)
+      .map((issue) => [issue.id, []]),
+  );
+  for (const issue of issues)
+    if (edges.has(issue.parent?.id)) edges.get(issue.parent.id).push(issue.id);
+  return { byId, edges, selected: new Set(byId.keys()) };
 }
 
-// One issue, the sub-issues under it that are containers, and its chain of
-// parents in this repository: the issues whose state its change can affect.
-// The reads grow with that chain, not with the repository. Returns null when
-// GitHub cannot find the issue.
-async function issueChain(api, number) {
+// One issue, its sub-issue subtree, and its in-repository ancestors. Calls
+// grow with that hierarchy, never with the repository.
+async function issueHierarchy(api, number) {
   const data = await api(
     `query($number: Int!) { repository(owner: "samlevin", name: "prismatic") {
-      label(name: "${MARKER}") { id }
-      issue(number: $number) { ${FULL} }
-    } }`,
+    issue(number: $number) { ${ISSUE} }
+  } }`,
     { number },
-    MISSING_ISSUE,
   );
-  const label = data.repository?.label?.id;
-  if (!label) throw new Error(`Missing managed label ${MARKER}`);
-  const root = await withDetails(api, data.repository.issue);
-  if (!root) return null;
-  const issues = new Map([[root.id, root]]);
-  const queue = [root];
-  while (queue.length) {
-    for (const child of queue.shift().children) {
-      if (
-        child.repository.nameWithOwner !== REPOSITORY ||
-        !child.subIssuesSummary.total ||
-        issues.has(child.id)
-      )
-        continue;
-      const container = await snapshot(api, child.id);
-      if (!container) continue;
-      issues.set(container.id, container);
-      queue.push(container);
+  const root = data.repository?.issue;
+  if (!root) {
+    if (data.repository) throw new MissingIssueError(number);
+    throw new Error('Requested issue is unavailable');
+  }
+  const byId = new Map([[root.id, root]]);
+  const edges = new Map();
+  const selected = new Set();
+  const pending = [root];
+  while (pending.length) {
+    const issue = pending.pop();
+    if (selected.has(issue.id)) continue;
+    selected.add(issue.id);
+    if (!issue.subIssuesSummary.total) continue;
+    edges.set(issue.id, []);
+    for (const child of await connection(
+      api,
+      issue.id,
+      'subIssues',
+      CHILDREN,
+    )) {
+      if (child.repository.nameWithOwner !== REPOSITORY) continue;
+      if (!byId.has(child.id)) byId.set(child.id, child);
+      edges.get(issue.id).push(child.id);
+      pending.push(byId.get(child.id));
     }
   }
   const seen = new Set([root.id]);
-  let parent = root.parent;
-  while (parent && parent.repository.nameWithOwner === REPOSITORY) {
-    if (seen.has(parent.id)) throw new Error('Issue hierarchy cycle');
-    seen.add(parent.id);
-    let issue = issues.get(parent.id);
-    if (!issue) {
-      issue = await snapshot(api, parent.id);
-      if (!issue) break;
-      issues.set(issue.id, issue);
+  let child = root;
+  while (child.parent && child.parent.repository.nameWithOwner === REPOSITORY) {
+    const id = child.parent.id;
+    if (seen.has(id)) throw new Error('Issue hierarchy cycle');
+    seen.add(id);
+    let parent = byId.get(id);
+    if (!parent) {
+      const read = await api(
+        `query($id: ID!) { node(id: $id) { ... on Issue { ${ISSUE} } } }`,
+        { id },
+      );
+      parent = read.node;
+      if (!parent?.id) break;
+      byId.set(id, parent);
     }
-    parent = issue.parent;
+    selected.add(id);
+    if (!edges.has(id)) edges.set(id, []);
+    if (!edges.get(id).includes(child.id)) edges.get(id).push(child.id);
+    child = parent;
   }
-  return { label, issues };
+  return { byId, edges, selected };
 }
 
-// Containers in the loaded set, each after its loaded sub-issues.
-function childrenFirst(issues) {
-  const ordered = [];
-  const visiting = new Set();
-  const visited = new Set();
-  function visit(id) {
-    if (visiting.has(id)) throw new Error('Issue hierarchy cycle');
-    if (visited.has(id)) return;
-    visiting.add(id);
-    for (const child of issues.get(id).children)
-      if (issues.has(child.id)) visit(child.id);
-    visiting.delete(id);
-    visited.add(id);
-    if (issues.get(id).subIssuesSummary.total > 0) ordered.push(id);
-  }
-  for (const id of issues.keys()) visit(id);
-  return ordered;
-}
-
-async function setStatus(api, context, item, status) {
-  const option = context.fields.Status.options.find(
-    (option) => option.name === status,
-  );
-  if (!option) throw new Error(`Missing project status ${status}`);
-  await api(
-    `mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
-    updateProjectV2ItemFieldValue(input: { projectId: $project, itemId: $item,
-      fieldId: $field, value: { singleSelectOptionId: $option } }) { projectV2Item { id } }
-  }`,
-    {
-      project: context.projectId,
-      item,
-      field: context.fields.Status.id,
-      option: option.id,
-    },
-  );
-}
-
-async function projectStatus(api, id, status, context) {
-  const items = await paginate(async (cursor) => {
+// The marker label and, for a sweep, every issue carrying it with its project
+// items, so a sweep checks marked containers without one read per container.
+async function marker(api, sweep) {
+  if (!sweep) {
     const data = await api(
-      `query($id: ID!, $cursor: String) { node(id: $id) { ... on Issue {
-      projectItems(first: 100, after: $cursor) { nodes { id project { id } } ${PAGE} }
-    } } }`,
-      { id, cursor },
+      `query { repository(owner: "samlevin", name: "prismatic") {
+      label(name: "${MARKER}") { id }
+    } }`,
+      {},
     );
-    return data.node?.projectItems;
+    const id = data.repository?.label?.id;
+    if (!id) throw new Error(`Missing managed label ${MARKER}`);
+    return { id };
+  }
+  let id;
+  const issues = await paginate(async (cursor) => {
+    const data = await api(
+      `query($cursor: String) { repository(owner: "samlevin", name: "prismatic") {
+      label(name: "${MARKER}") { id
+        issues(first: 100, after: $cursor, states: [OPEN, CLOSED]) { nodes { id projectItems(first: 100, includeArchived: false) { ${ITEMS} } } ${PAGE} }
+      }
+    } }`,
+      { cursor },
+    );
+    const label = data.repository?.label;
+    if (!label?.id) throw new Error(`Missing managed label ${MARKER}`);
+    id = label.id;
+    return label.issues;
   });
-  const item = items.find((item) => item.project.id === context.projectId);
-  if (item) await setStatus(api, context, item.id, status);
+  return {
+    id,
+    marked: new Map(
+      issues.map((issue) => [
+        issue.id,
+        issue.projectItems.pageInfo.hasNextPage
+          ? undefined
+          : issue.projectItems.nodes.filter(Boolean),
+      ]),
+    ),
+  };
 }
 
-// Sets the Status of a marked container whose project update may have failed
-// after its state change. An item that already has the Status is left alone.
-// The Status a marked container should have for its state.
-function markedStatus(issue) {
-  return issue.state === 'CLOSED' ? 'Done' : 'Ready';
-}
-
-// Whether a marked container needs a write: an open one loses its marker, and
-// a project item with the wrong Status (or unknown items) needs a repair.
-function needsRepair(issue, context) {
-  if (issue.state === 'OPEN' || !issue.projectItems) return true;
-  const item = issue.projectItems.find(
-    (item) => item.project?.id === context.projectId,
+// A fresh read of one container: state, completion, marker, and project items.
+// Null when the issue was deleted.
+async function snapshot(api, id) {
+  const data = await api(
+    `query($id: ID!) { node(id: $id) { ... on Issue { ${ISSUE}
+    labels(first: 100) { ${LABELS} } projectItems(first: 100, includeArchived: false) { ${ITEMS} }
+  } } }`,
+    { id },
   );
-  return Boolean(item) && item.fieldValueByName?.name !== markedStatus(issue);
-}
-
-async function repairStatus(api, issue, status, context) {
-  if (!issue.projectItems) return projectStatus(api, issue.id, status, context);
-  const item = issue.projectItems.find(
-    (item) => item.project?.id === context.projectId,
-  );
-  if (item && item.fieldValueByName?.name !== status)
-    await setStatus(api, context, item.id, status);
+  const issue = data.node;
+  if (!issue?.id) return null;
+  const labels = issue.labels.pageInfo.hasNextPage
+    ? await connection(api, id, 'labels', LABELS)
+    : issue.labels.nodes.filter(Boolean);
+  const items = issue.projectItems.pageInfo.hasNextPage
+    ? await connection(api, id, 'projectItems', ITEMS)
+    : issue.projectItems.nodes.filter(Boolean);
+  return {
+    id: issue.id,
+    number: issue.number,
+    state: issue.state,
+    repository: issue.repository,
+    subIssuesSummary: issue.subIssuesSummary,
+    marked: labels.some((label) => label.name === MARKER),
+    items,
+  };
 }
 
 export async function reconcileContainers({
@@ -260,90 +204,183 @@ export async function reconcileContainers({
   log = console.log,
   warn = warning,
 }) {
-  checkIssueNumber(issueNumber);
-  const loaded =
-    issueNumber === undefined
-      ? await everyIssue(api)
-      : await issueChain(api, issueNumber);
-  if (!loaded) {
-    warn(
-      `Issue #${issueNumber} was not found; it may have been deleted or transferred. No container to reconcile.`,
-    );
-    return { updated: 0 };
+  if (
+    issueNumber !== undefined &&
+    (!Number.isSafeInteger(issueNumber) || issueNumber <= 0)
+  )
+    throw new Error('--issue requires a positive safe integer');
+  const sweep = issueNumber === undefined;
+  const { byId, edges, selected } = sweep
+    ? await everyIssue(api)
+    : await issueHierarchy(api, issueNumber);
+  const ordered = [];
+  const visiting = new Set();
+  const visited = new Set();
+  function visit(id) {
+    if (visiting.has(id)) throw new Error('Issue hierarchy cycle');
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const child of edges.get(id) ?? [])
+      if (selected.has(child)) visit(child);
+    visiting.delete(id);
+    visited.add(id);
+    if (edges.has(id)) ordered.push(id);
   }
-  const { label, issues } = loaded;
-  const ordered = childrenFirst(issues);
-  const context = await discover(api, { Status: ['Ready', 'Done'] });
-  const removeMarker = (id) =>
-    api(
-      `mutation($id: ID!, $label: ID!) {
-        removeLabelsFromLabelable(input: { labelableId: $id, labelIds: [$label] }) { clientMutationId }
-      }`,
-      { id, label },
+  selected.forEach(visit);
+  const label = await marker(api, sweep);
+  let context;
+  // The project item a status write would change, or undefined when none would.
+  async function statusItem(record, status, onlyIfChanged) {
+    context ??= await discover(api);
+    const item = record.items.find(
+      (item) => item.project?.id === context.projectId,
     );
+    if (!item || (onlyIfChanged && item.fieldValueByName?.name === status))
+      return undefined;
+    return item;
+  }
+  async function setStatus(record, status, { onlyIfChanged = false } = {}) {
+    const item = await statusItem(record, status, onlyIfChanged);
+    if (!item) return;
+    const field = context.fields.Status;
+    const option = field.options.find((option) => option.name === status);
+    if (!option) throw new Error(`Missing project status ${status}`);
+    await api(
+      `mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+      updateProjectV2ItemFieldValue(input: { projectId: $project, itemId: $item,
+        fieldId: $field, value: { singleSelectOptionId: $option } }) { projectV2Item { id } }
+    }`,
+      {
+        project: context.projectId,
+        item: item.id,
+        field: field.id,
+        option: option.id,
+      },
+    );
+  }
+  // A container deleted or transferred out of the repository during the run
+  // is skipped with a warning.
+  async function read(id) {
+    const issue = await snapshot(api, id);
+    if (issue?.repository.nameWithOwner === REPOSITORY) return issue;
+    warn(missingIssue(byId.get(id).number));
+    return null;
+  }
   const changed = new Set();
   let updated = 0;
   for (const id of ordered) {
-    const listed = issues.get(id);
-    // A sub-issue changed state in this run, so the summary read earlier is stale.
-    const current = listed.children.some((child) => changed.has(child.id))
-      ? await snapshot(api, id)
-      : listed;
-    if (
-      !current ||
-      current.repository.nameWithOwner !== REPOSITORY ||
-      !current.subIssuesSummary.total
-    )
-      continue;
-    const complete =
-      current.subIssuesSummary.total === current.subIssuesSummary.completed;
-    const marked = current.marked;
-    const close = complete && current.state === 'OPEN';
-    const reopen = !complete && current.state === 'CLOSED' && marked;
-    if (close || reopen) {
-      log(
-        `${dryRun ? 'DRY_RUN would' : 'Will'} ${close ? 'close' : 'reopen'} container #${current.number}`,
-      );
-      if (dryRun) continue;
-      // Mark before closing so a partial run can recover without losing automation ownership.
-      if (close && !marked)
-        await api(
-          `mutation($id: ID!, $label: ID!) {
-        addLabelsToLabelable(input: { labelableId: $id, labelIds: [$label] }) { clientMutationId }
-      }`,
-          { id, label },
-        );
-      const fresh = await snapshot(api, id);
-      const stillComplete =
-        fresh?.subIssuesSummary.total > 0 &&
-        fresh.subIssuesSummary.total === fresh.subIssuesSummary.completed;
+    // A container deleted or transferred before one of its writes is
+    // skipped; the sweep goes on with the rest.
+    try {
+      // A sweep decides from its listing until a child's state changes in this
+      // run; a single-issue run reads each container in its hierarchy.
+      const stale = (edges.get(id) ?? []).some((child) => changed.has(child));
+      // A decision from the listing is confirmed by a fresh read before its
+      // first write, so a container deleted, closed, or no longer complete
+      // since the listing is skipped.
+      const listed = sweep && !stale;
+      let current = listed
+        ? {
+            ...byId.get(id),
+            marked: label.marked.has(id),
+            items: label.marked.get(id),
+          }
+        : await read(id);
       if (
-        (close && (fresh?.state !== 'OPEN' || !stillComplete)) ||
-        (reopen &&
-          (fresh?.state !== 'CLOSED' || stillComplete || !fresh?.marked))
+        !current ||
+        current.repository.nameWithOwner !== REPOSITORY ||
+        !current.subIssuesSummary.total
       )
         continue;
-      await api(
-        close
-          ? `mutation($id: ID!) { closeIssue(input: { issueId: $id, stateReason: COMPLETED }) { issue { id } } }`
-          : `mutation($id: ID!) { reopenIssue(input: { issueId: $id }) { issue { id } } }`,
-        { id },
-      );
-      await projectStatus(api, id, close ? 'Done' : 'Ready', context);
-      changed.add(id);
-      updated++;
-      // A reopened container is open and still marked.
-      if (reopen) await removeMarker(id);
-      continue;
+      const done = complete(current);
+      const close = done && current.state === 'OPEN';
+      const reopen = !done && current.state === 'CLOSED' && current.marked;
+      if (close || reopen) {
+        log(
+          `${dryRun ? 'DRY_RUN would' : 'Will'} ${close ? 'close' : 'reopen'} container #${current.number}`,
+        );
+        if (dryRun) continue;
+        // Mark before closing so a partial run can recover without losing automation ownership.
+        if (close && !current.marked) {
+          if (listed) {
+            const confirmed = await read(id);
+            if (
+              !confirmed ||
+              confirmed.state !== 'OPEN' ||
+              !complete(confirmed)
+            )
+              continue;
+          }
+          await api(
+            `mutation($id: ID!, $label: ID!) {
+        addLabelsToLabelable(input: { labelableId: $id, labelIds: [$label] }) { clientMutationId }
+      }`,
+            { id, label: label.id },
+          );
+        }
+        const fresh = await read(id);
+        if (!fresh) continue;
+        const stillComplete = complete(fresh);
+        if (
+          (close && (fresh.state !== 'OPEN' || !stillComplete)) ||
+          (reopen &&
+            (fresh.state !== 'CLOSED' || stillComplete || !fresh.marked))
+        )
+          continue;
+        await api(
+          close
+            ? `mutation($id: ID!) { closeIssue(input: { issueId: $id, stateReason: COMPLETED }) { issue { id } } }`
+            : `mutation($id: ID!) { reopenIssue(input: { issueId: $id }) { issue { id } } }`,
+          { id },
+        );
+        changed.add(id);
+        updated++;
+        await setStatus(fresh, close ? 'Done' : 'Ready');
+        // A closed container keeps its marker; a reopened one loses it below
+        // unless it is closed or complete again by then.
+        if (close) continue;
+      } else if (current.marked && !dryRun) {
+        // Repair status if a prior state mutation succeeded but its project update failed.
+        if (
+          !current.items ||
+          (listed &&
+            (await statusItem(
+              current,
+              current.state === 'CLOSED' ? 'Done' : 'Ready',
+              true,
+            )))
+        )
+          current = await read(id);
+        if (!current) continue;
+        if (current.marked)
+          await setStatus(
+            current,
+            current.state === 'CLOSED' ? 'Done' : 'Ready',
+            {
+              onlyIfChanged: true,
+            },
+          );
+        if (current.state !== 'OPEN' || !current.marked) continue;
+      } else continue;
+      // Runs for sibling issues reconcile the same container concurrently. A
+      // container that is closed or complete again may belong to another run
+      // that marked it and is about to close it, so it keeps the marker.
+      const after = await read(id);
+      if (
+        after?.state === 'OPEN' &&
+        after.marked &&
+        after.subIssuesSummary.total !== after.subIssuesSummary.completed
+      )
+        await api(
+          `mutation($id: ID!, $label: ID!) {
+        removeLabelsFromLabelable(input: { labelableId: $id, labelIds: [$label] }) { clientMutationId }
+      }`,
+          { id, label: label.id },
+        );
+    } catch (error) {
+      if (!(error instanceof MissingIssueError)) throw error;
+      warn(error.message);
     }
-    if (!marked || dryRun || !needsRepair(current, context)) continue;
-    // Repair status if a prior state mutation succeeded but its project
-    // update failed. Another run may have changed the container since it was
-    // listed, so act on a fresh read.
-    const fresh = await snapshot(api, id);
-    if (!fresh?.marked) continue;
-    await repairStatus(api, fresh, markedStatus(fresh), context);
-    if (fresh.state === 'OPEN') await removeMarker(id);
   }
   log(`Container reconciliation: ${updated} state changes; DRY_RUN=${dryRun}`);
   return { updated };
@@ -357,13 +394,15 @@ if (
     const config = configuration(process.env, process.argv.slice(2));
     if (process.env.GITHUB_ACTIONS === 'true')
       process.env.GH_TOKEN = process.env.PRISMATIC_PROJECT_TOKEN;
-    const options = { api: ghGraphql, ...config };
-    await withinBudget(() => reconcileContainers(options), {
-      ...options,
-      name: 'Container',
+    process.exitCode = await runTracker({
+      sweep: config.issueNumber === undefined,
+      task: () => reconcileContainers({ api: trackerGraphql, ...config }),
     });
   } catch (error) {
-    console.error(failureMessage(error));
-    process.exitCode = 1;
+    if (error instanceof CliHelp) console.log(error.message);
+    else {
+      console.error(failureMessage(error));
+      process.exitCode = 1;
+    }
   }
 }

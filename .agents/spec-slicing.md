@@ -124,7 +124,7 @@ Its body follows `container.yml`. What names the specification and says the issu
 
 `epic` is the only work-category label on an epic, and the root never carries `epic`. Bodies follow `.github/ISSUE_TEMPLATE/epic.yml`, `container.yml`, and `task.yml`. A child of an epic uses the `Parent epic` heading; an epic uses `Parent issue` for the root. The skill never creates labels; every label the plan needs must already exist.
 
-For each epic with two or more direct leaf slices, the skill asks `prism-issue-triager` to sort those leaves into independence groups from their `Files` and blocked-by edges, and records the groups in the epic's body as `.agents/issue-creation.md` defines. Slices whose `Files` overlap never land in different groups, so the delivery queue's parallel exception never runs them together.
+For each epic with two or more direct leaf slices, the skill asks `prism-issue-triager` to sort those leaves into independence groups from their `Files` and blocked-by edges, and records the groups in the epic's body as `.agents/independence-groups.md` defines. Slices whose `Files` overlap never land in different groups, so the delivery queue's parallel exception never runs them together.
 
 ## Pre-flight rules
 

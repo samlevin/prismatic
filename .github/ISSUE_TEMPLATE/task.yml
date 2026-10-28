@@ -4,7 +4,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Define one executable logical change with acceptance criteria. For a parent with sub-issues, use the container template; use the epic template only when explicitly requested. Follow [CONTRIBUTING.md](https://github.com/samlevin/prismatic/blob/main/CONTRIBUTING.md#triage) for concise metadata and planning rules.
+        Define one executable logical change with acceptance criteria. For a parent with sub-issues, use the container template; use the epic template only when explicitly requested. Follow [ISSUE_TRIAGE.md](https://github.com/samlevin/prismatic/blob/main/ISSUE_TRIAGE.md) for concise metadata and planning rules.
   - type: input
     id: parent
     attributes:
@@ -24,7 +24,7 @@ body:
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: Use observable, testable conditions. For a removal or rewrite, also list what must stay unchanged.
+      description: Use observable, testable conditions. When the task removes or rewrites text or behavior, also list what must stay unchanged.
       placeholder: |
         - [ ] Given ..., when ..., then ...
         - [ ] Existing ... remains unchanged
@@ -34,7 +34,7 @@ body:
     id: approach
     attributes:
       label: Implementation notes
-      description: Name likely boundaries, contracts, risks, and decisions. For a removal or rewrite, describe the intent and the behavior it affects, not only the strings to replace. Leave implementation freedom where it is useful.
+      description: Name likely boundaries, contracts, risks, and decisions. Describe intent and affected behavior instead of only listing strings to replace. Leave implementation freedom where it is useful.
   - type: textarea
     id: validation
     attributes:

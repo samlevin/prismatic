@@ -10,7 +10,7 @@ The modules still need firm import rules. The review pipeline must not reach the
 
 ## Decision
 
-The product is the root npm package. Each module is a directory under `src/`, and the entrypoints live under `apps/`. The root `package.json` provides the `lint`, `typecheck`, `test`, and `build` scripts. The repository's existing `packages/*` workspace entry holds no product code.
+The product is the root npm package. Each module is a directory under `src/`, and the entrypoints live under `apps/`. The root `package.json` provides the `lint`, `typecheck`, `test`, and `build` scripts.
 
 An ESLint rule, `boundaries/imports` in `tooling/eslint/importBoundaries.ts`, enforces the import rules on every production file under `src/` and `apps/`. Tests beside the source (`*.test.ts`) are exempt. A violation fails `npm run lint`, and so fails CI.
 

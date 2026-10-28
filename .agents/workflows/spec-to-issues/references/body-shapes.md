@@ -73,7 +73,7 @@ Definition of done for every slice: §<n> (@@issue:<owner>@@).
 
 In the epic that owns the definition-of-done section, its pointer stays bare: `Definition of done for every slice: §<n>.` Every other epic and every leaf gets `§<n> (@@issue:<owner>@@)`, by the same rule as any carried reference. The `Deferred:` paragraph appears only for a deferred phase. It lists every `Deferred until` Plan ID, comma-separated in `Deferred until` order, and ends in `closes` for one and `close` for several (`blocked until P1.2 (#11), P1.3 (#12) close`). The container lines appear only when the phase has a stack. Leave out the Contracts heading when the phase claims no sections. Slices are listed in specification order.
 
-When the triager returned groups for the epic, the skill's independence-groups step appends the section that `.agents/issue-creation.md` shows to the end of `bodies/<epic>.md`, one list item per group, with `@@issue:<Plan ID>@@` for each leaf in place of an issue number. The record then goes through every fill and patch like the rest of the body.
+When the triager returned groups for the epic, the skill's independence-groups step appends the section that `.agents/independence-groups.md` shows to the end of `bodies/<epic>.md`, one list item per group, with `@@issue:<Plan ID>@@` for each leaf in place of an issue number. The record then goes through every fill and patch like the rest of the body.
 
 ## Container
 
@@ -143,4 +143,4 @@ Read the `label` of every non-markdown field in `.github/ISSUE_TEMPLATE/epic.yml
 
 ## Size check (rule `body-size`)
 
-Fill every placeholder with `#9999999` and count characters. The result must be under 65,536. Pre-flight runs before the groups step, so an epic with two or more direct leaf children also counts the largest record that step can append: the section `.agents/issue-creation.md` shows, with each of those leaves as `#9999999` in a group of its own.
+Fill every placeholder with `#9999999` and count characters. The result must be under 65,536. Pre-flight runs before the groups step, so an epic with two or more direct leaf children also counts the largest record that step can append: the section `.agents/independence-groups.md` shows, with each of those leaves as `#9999999` in a group of its own.

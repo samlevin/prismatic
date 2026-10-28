@@ -1,81 +1,350 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
-import {
-  addMissingIssues,
-  addToProject,
-  configuration,
-  PROJECT,
-} from './issue-project-membership.mjs';
+import { addToProject, sweep } from './issue-project-membership.mjs';
+import { REPOSITORY } from './issue-triage.mjs';
+import { evaluate, workflow } from './workflow-test-helpers.mjs';
 
-const PAGE = { hasNextPage: false };
-const STATUS_OPTIONS = [
-  { id: 'OPT_INBOX', name: 'Inbox' },
-  { id: 'OPT_READY', name: 'Ready' },
-];
-
-// A mock project that behaves like addProjectV2ItemById: adding content that
-// is already in the project returns the existing item. `existing` maps content
-// IDs to items already on the board, each with an optional Status option ID.
-// `repository` lists the issues and pull requests the sweep can find, each
-// with a number, and `failing` holds content IDs whose add fails.
-function fixture({
-  content = { __typename: 'Issue', id: 'I_1' },
-  project = { id: 'PVT_1', closed: false },
-  statusOptions = STATUS_OPTIONS,
-  existing = {},
-  repository = [],
-  pageSize = 100,
-  failing = [],
-} = {}) {
-  const items = new Map(
-    Object.entries(existing).map(([contentId, item]) => [contentId, item]),
-  );
-  const byItem = () =>
-    new Map([...items].map(([contentId, item]) => [item.id, contentId]));
-  const calls = [];
-  const writes = [];
-  const api = async (query, variables) => {
-    calls.push({ query, variables });
-    if (query.startsWith('mutation')) {
-      writes.push(variables);
-      if (/updateProjectV2ItemFieldValue/.test(query)) {
-        assert.equal(variables.project, project.id);
-        assert.equal(variables.field, 'FIELD_STATUS');
-        items.get(byItem().get(variables.item)).status = variables.option;
-        return { updateProjectV2ItemFieldValue: { projectV2Item: { id: 1 } } };
-      }
-      assert.match(query, /addProjectV2ItemById/);
-      if (failing.includes(variables.content))
-        throw new Error('API rate limit exceeded');
-      if (!items.has(variables.content))
-        items.set(variables.content, { id: `PVTI_${items.size + 1}` });
+// Answers the Status field discovery, project item reads, and Status writes.
+// `statuses` maps project item node IDs to their Status.
+function board(statuses, projectId = 'P_1') {
+  const page = (nodes) => ({ nodes, pageInfo: { hasNextPage: false } });
+  const statusWrites = [];
+  const answer = (query, variables) => {
+    if (query.includes('fields(first: 100'))
       return {
-        addProjectV2ItemById: {
-          item: { id: items.get(variables.content).id },
+        user: {
+          projectV2: {
+            id: projectId,
+            fields: page([
+              {
+                id: 'F_status',
+                name: 'Status',
+                options: ['Inbox', 'Ready', 'In progress'].map((name) => ({
+                  id: `O_${name}`,
+                  name,
+                })),
+              },
+            ]),
+          },
+        },
+      };
+    if (query.includes('updateProjectV2ItemFieldValue')) {
+      statusWrites.push(variables);
+      statuses.set(variables.item, variables.option.slice('O_'.length));
+      return {};
+    }
+    if (query.includes('... on ProjectV2Item {')) {
+      const status = statuses.get(variables.id);
+      return {
+        node: {
+          id: variables.id,
+          type: 'ISSUE',
+          project: { id: projectId },
+          fieldValues: page(
+            status
+              ? [{ field: { id: 'F_status' }, optionId: `O_${status}` }]
+              : [],
+          ),
+          content: {
+            __typename: 'Issue',
+            id: 'I',
+            number: 1,
+            state: 'OPEN',
+            repository: { nameWithOwner: REPOSITORY },
+            labels: page([]),
+          },
         },
       };
     }
-    if (/issues\(first: 100/.test(query)) {
-      // Like GitHub, the issues connection holds open issues and no pull requests.
-      const open = repository.filter(
-        (issue) => issue.__typename === 'Issue' && issue.state === 'OPEN',
-      );
-      const start = Number(variables.cursor ?? 0);
+    return undefined;
+  };
+  return { answer, statusWrites };
+}
+
+// A mocked GitHub that keeps one project item per content node, as
+// addProjectV2ItemById does.
+function github({
+  issues = { 7: 'I_7' },
+  project = { id: 'P_1', closed: false },
+  items = new Map(),
+  statuses = new Map(),
+} = {}) {
+  const reads = [];
+  const writes = [];
+  const { answer, statusWrites } = board(statuses, project?.id);
+  const api = async (query, variables) => {
+    const answered = answer(query, variables);
+    if (answered) return answered;
+    if (query.startsWith('mutation')) {
+      assert.match(query, /addProjectV2ItemById/);
+      writes.push(variables);
+      assert.equal(variables.project, project.id);
+      assert.match(query, /item \{ id fullDatabaseId \}/);
+      if (!items.has(variables.content))
+        items.set(variables.content, String(100 + items.size + 1));
+      const item = items.get(variables.content);
+      return {
+        addProjectV2ItemById: {
+          item: { id: `PVTI_${item}`, fullDatabaseId: item },
+        },
+      };
+    }
+    reads.push({ query, variables });
+    assert.deepEqual(variables, {
+      owner: 'samlevin',
+      name: 'prismatic',
+      number: variables.number,
+    });
+    assert.match(query, /user\(login: "samlevin"\) \{ projectV2\(number: 2\)/);
+    assert.match(query, /issue\(number: \$number\)/);
+    assert.doesNotMatch(query, /pullRequest/);
+    const id = issues[variables.number];
+    const item = items.get(id);
+    return {
+      repository: {
+        issue: id
+          ? {
+              id,
+              projectItems: {
+                nodes: item ? [{ id: `PVTI_${item}`, project }] : [],
+              },
+            }
+          : null,
+      },
+      user: { projectV2: project },
+    };
+  };
+  return { api, reads, writes, items, statuses, statusWrites, log: () => {} };
+}
+
+test('adds a new issue to the project and prints its REST item ID', async () => {
+  const f = github();
+  const logs = [];
+  assert.equal(
+    await addToProject({
+      ...f,
+      kind: 'issue',
+      number: 7,
+      dryRun: false,
+      log: (line) => logs.push(line),
+    }),
+    '101',
+  );
+  assert.deepEqual(f.writes, [{ project: 'P_1', content: 'I_7' }]);
+  assert.deepEqual(f.statusWrites, [
+    { project: 'P_1', item: 'PVTI_101', field: 'F_status', option: 'O_Inbox' },
+  ]);
+  assert.deepEqual(logs, [
+    'Issue #7: in Prismatic delivery as item 101.',
+    'Issue #7: set its Status to Inbox.',
+  ]);
+});
+
+test('an existing Status never changes', async () => {
+  const f = github({
+    items: new Map([['I_7', '276979720']]),
+    statuses: new Map([['PVTI_276979720', 'In progress']]),
+  });
+  const logs = [];
+  assert.equal(
+    await addToProject({
+      ...f,
+      kind: 'issue',
+      number: 7,
+      dryRun: false,
+      log: (line) => logs.push(line),
+    }),
+    '276979720',
+  );
+  assert.deepEqual(f.statusWrites, []);
+  assert.equal(f.statuses.get('PVTI_276979720'), 'In progress');
+  assert.deepEqual(logs, [
+    'Issue #7: in Prismatic delivery as item 276979720.',
+    'Issue #7: kept its Status In progress.',
+  ]);
+});
+
+test('a missing Status field or Inbox option fails before adding', async () => {
+  for (const options of [[], ['Inbox', 'Inbox']]) {
+    const f = github();
+    const api = async (query, variables) => {
+      const data = await f.api(query, variables);
+      if (query.includes('fields(first: 100'))
+        data.user.projectV2.fields.nodes[0].options = options.map((name) => ({
+          id: `O_${name}`,
+          name,
+        }));
+      return data;
+    };
+    await assert.rejects(
+      addToProject({ ...f, api, kind: 'issue', number: 7, dryRun: false }),
+      /Status option Inbox/,
+    );
+    assert.deepEqual(f.writes, []);
+  }
+});
+
+test('pull request input fails before any API call, including dry runs', async () => {
+  for (const dryRun of [true, false]) {
+    const f = github();
+    await assert.rejects(
+      addToProject({ ...f, kind: 'pull_request', number: 9, dryRun }),
+      /CONTENT_TYPE must be issue/,
+    );
+    assert.deepEqual(f.reads, []);
+    assert.deepEqual(f.writes, []);
+  }
+});
+
+test('an item already in the project is returned without a duplicate', async () => {
+  const f = github({ items: new Map([['I_7', '276979720']]) });
+  for (let run = 0; run < 2; run++)
+    assert.equal(
+      await addToProject({ ...f, kind: 'issue', number: 7, dryRun: false }),
+      '276979720',
+    );
+  assert.equal(f.items.size, 1);
+});
+
+test('dry runs read but never write, and say what they would do', async () => {
+  for (const [items, statuses, line] of [
+    [
+      new Map(),
+      new Map(),
+      'Issue #7: would add to Prismatic delivery and set its Status to Inbox (dry run).',
+    ],
+    [
+      new Map([['I_7', '5']]),
+      new Map(),
+      'Issue #7: would keep in Prismatic delivery and set its Status to Inbox (dry run).',
+    ],
+    [
+      new Map([['I_7', '5']]),
+      new Map([['PVTI_5', 'Ready']]),
+      'Issue #7: would keep its Status Ready (dry run).',
+    ],
+  ]) {
+    const f = github({ items, statuses });
+    const logs = [];
+    assert.equal(
+      await addToProject({
+        ...f,
+        kind: 'issue',
+        number: 7,
+        log: (text) => logs.push(text),
+      }),
+      null,
+    );
+    assert.equal(f.reads.length, 1);
+    assert.deepEqual(f.writes, []);
+    assert.deepEqual(f.statusWrites, []);
+    assert.deepEqual(logs, [line]);
+  }
+});
+
+test('invalid input, missing content, and an unavailable project fail before writing', async () => {
+  const cases = [
+    [{ kind: 'discussion', number: 7 }, /CONTENT_TYPE/],
+    [{ kind: 'constructor', number: 7 }, /CONTENT_TYPE/],
+    [{ kind: undefined, number: 7 }, /CONTENT_TYPE/],
+    [{ kind: 'issue', number: 0 }, /positive/],
+    [{ kind: 'issue', number: Number.NaN }, /positive/],
+    [
+      { kind: 'issue', number: 8 },
+      { name: 'MissingIssueError', message: /Issue #8 no longer exists/ },
+    ],
+  ];
+  for (const [options, error] of cases) {
+    const f = github();
+    await assert.rejects(
+      addToProject({ ...f, ...options, dryRun: false }),
+      error,
+    );
+    assert.deepEqual(f.writes, []);
+  }
+  for (const project of [null, { id: 'P_1', closed: true }]) {
+    const f = github({ project });
+    await assert.rejects(
+      addToProject({ ...f, kind: 'issue', number: 7, dryRun: false }),
+      /project is unavailable/,
+    );
+    assert.deepEqual(f.writes, []);
+  }
+});
+
+test('a mutation without a REST item ID fails', async () => {
+  for (const response of [
+    { addProjectV2ItemById: null },
+    { addProjectV2ItemById: { item: { id: 'PVTI_1' } } },
+    { addProjectV2ItemById: { item: { id: 'PVTI_1', fullDatabaseId: 'x1' } } },
+  ]) {
+    const f = github();
+    const api = async (query, variables) =>
+      query.startsWith('mutation') ? response : f.api(query, variables);
+    await assert.rejects(
+      addToProject({ ...f, api, kind: 'issue', number: 7, dryRun: false }),
+      /no project item/,
+      JSON.stringify(response),
+    );
+  }
+});
+
+// A mocked GitHub for sweeps: `open` lists open issues as [number, projects],
+// served `pageSize` per page, and `failing` holds issue numbers whose add
+// fails.
+function repository({
+  open = [],
+  project = { id: 'P_1', closed: false },
+  pageSize = 2,
+  failing = new Set(),
+  deleted = new Set(),
+} = {}) {
+  const calls = [];
+  const writes = [];
+  const logs = [];
+  const errors = [];
+  const warnings = [];
+  const { answer } = board(new Map(), project?.id);
+  const api = async (query, variables) => {
+    const answered = answer(query, variables);
+    if (answered) return answered;
+    if (query.startsWith('mutation')) {
+      const number = Number(variables.content.slice(2));
+      if (failing.has(number))
+        throw new Error(`Issue #${number} could not be added`);
+      writes.push(number);
+      return {
+        addProjectV2ItemById: {
+          item: { id: `PVTI_${number}`, fullDatabaseId: String(number) },
+        },
+      };
+    }
+    if (query.includes('issue(number: $number)')) {
+      calls.push(['read', variables.number]);
+      return {
+        repository: {
+          issue: deleted.has(variables.number)
+            ? null
+            : { id: `I_${variables.number}`, projectItems: { nodes: [] } },
+        },
+        user: { projectV2: project },
+      };
+    }
+    if (query.includes('issues(first: 100')) {
+      assert.match(query, /states: \[OPEN\]/);
+      assert.doesNotMatch(query, /pullRequest/);
+      assert.equal(variables.owner, 'samlevin');
+      assert.equal(variables.name, 'prismatic');
+      const start = variables.cursor ? Number(variables.cursor) : 0;
+      calls.push(['list', start]);
       const end = start + pageSize;
       return {
         repository: {
           issues: {
-            nodes: open.slice(start, end).map((issue) => ({
-              number: issue.number,
+            nodes: open.slice(start, end).map(([number, projects]) => ({
+              number,
               projectItems: {
-                nodes: [
-                  ...(issue.otherProject ? [{ project: { id: 'PVT_9' } }] : []),
-                  ...(items.has(issue.id)
-                    ? [{ project: { id: project?.id } }]
-                    : []),
-                ],
+                nodes: projects.map((id) => ({ project: { id } })),
               },
             })),
             pageInfo: {
@@ -84,430 +353,292 @@ function fixture({
             },
           },
         },
-        user: { projectV2: project },
       };
     }
-    if (/issueOrPullRequest\(number: \$number\)/.test(query)) {
-      const found =
-        repository.find((issue) => issue.number === variables.number) ??
-        content;
-      const nodes = [...items.entries()]
-        .filter(([contentId]) => contentId === found?.id)
-        .map(([, item]) => ({ id: item.id, project: { id: project?.id } }));
-      return {
-        repository: {
-          issueOrPullRequest:
-            found?.__typename === 'Issue'
-              ? {
-                  __typename: 'Issue',
-                  id: found.id,
-                  projectItems: { nodes },
-                }
-              : found,
-        },
-        user: { projectV2: project },
-      };
-    }
-    if (/fields\(first: 100/.test(query)) {
-      const options = statusOptions;
-      return {
-        user: {
-          projectV2: {
-            id: project.id,
-            fields: {
-              nodes: [{ id: 'FIELD_STATUS', name: 'Status', options }],
-              pageInfo: PAGE,
-            },
-          },
-        },
-      };
-    }
-    if (/on ProjectV2Item/.test(query)) {
-      const item = items.get(byItem().get(variables.id));
-      return {
-        node: {
-          id: item.id,
-          type: 'ISSUE',
-          project: { id: project.id },
-          content: { __typename: 'Issue', id: content.id },
-          fieldValues: {
-            nodes: item.status
-              ? [{ optionId: item.status, field: { id: 'FIELD_STATUS' } }]
-              : [],
-            pageInfo: PAGE,
-          },
-        },
-      };
-    }
-    assert.match(query, /labels\(first: 100/);
-    return {
-      node: {
-        id: variables.id,
-        __typename: 'Issue',
-        labels: { nodes: [], pageInfo: PAGE },
-      },
-    };
+    assert.match(query, /user\(login: "samlevin"\) \{ projectV2\(number: 2\)/);
+    calls.push(['project']);
+    return { user: { projectV2: project } };
   };
-  const lines = [];
-  return { api, calls, writes, items, lines, log: (line) => lines.push(line) };
+  return {
+    api,
+    calls,
+    writes,
+    logs,
+    errors,
+    warnings,
+    log: (line) => logs.push(line),
+    logError: (line) => errors.push(line),
+    warn: (line) => warnings.push(line),
+  };
 }
 
-const statusWrites = (f) =>
-  f.writes.filter((write) => 'option' in write).map((write) => write.option);
-
-test('adds a new issue by node ID and sets its Status to Inbox', async () => {
-  const f = fixture();
-  const item = await addToProject({ ...f, number: 7, dryRun: false });
-  assert.equal(item, 'PVTI_1');
-  assert.deepEqual(f.calls[0].variables, {
-    owner: 'samlevin',
-    name: 'prismatic',
-    number: 7,
-    login: PROJECT.owner,
-    project: PROJECT.number,
+test('a sweep adds only the open issues missing from the project', async () => {
+  const f = repository({
+    open: [
+      [4, ['P_1']],
+      [9, []],
+      [5, ['P_other']],
+      [6, ['P_other', 'P_1']],
+      [3, []],
+    ],
   });
-  assert.deepEqual(f.writes, [
-    { project: 'PVT_1', content: 'I_1' },
-    {
-      project: 'PVT_1',
-      item: 'PVTI_1',
-      field: 'FIELD_STATUS',
-      option: 'OPT_INBOX',
-    },
-  ]);
-  assert.equal(f.items.get('I_1').status, 'OPT_INBOX');
-  assert.deepEqual(f.lines, [
-    'Added issue #7 to Prismatic delivery as item PVTI_1.',
-    'Set Status Inbox on issue #7.',
-  ]);
-});
-
-test('an issue already on the board keeps its Status', async () => {
-  const f = fixture({
-    existing: { I_1: { id: 'PVTI_5', status: 'OPT_READY' } },
+  assert.deepEqual(await sweep({ ...f, dryRun: false }), {
+    missing: [3, 5, 9],
+    failed: [],
   });
-  assert.equal(
-    await addToProject({ ...f, number: 7, dryRun: false }),
-    'PVTI_5',
+  assert.deepEqual(f.writes, [3, 5, 9]);
+  assert.deepEqual(
+    f.calls.filter(([kind]) => kind === 'list'),
+    [
+      ['list', 0],
+      ['list', 2],
+      ['list', 4],
+    ],
   );
-  assert.deepEqual(statusWrites(f), []);
-  assert.equal(f.items.get('I_1').status, 'OPT_READY');
-  assert.deepEqual(f.lines, [
-    'Added issue #7 to Prismatic delivery as item PVTI_5.',
-    'Kept Status Ready on issue #7.',
-  ]);
+  assert.deepEqual(f.errors, []);
 });
 
-test('an issue already on the board without a Status gets Inbox', async () => {
-  const f = fixture({ existing: { I_1: { id: 'PVTI_5' } } });
-  await addToProject({ ...f, number: 7, dryRun: false });
-  assert.deepEqual(statusWrites(f), ['OPT_INBOX']);
+test('a sweep with nothing missing makes no write and no per-issue read', async () => {
+  const f = repository({
+    open: [
+      [1, ['P_1']],
+      [2, ['P_1']],
+      [3, ['P_1']],
+    ],
+  });
+  assert.deepEqual(await sweep({ ...f, dryRun: false }), {
+    missing: [],
+    failed: [],
+  });
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(
+    f.calls.filter(([kind]) => kind === 'read'),
+    [],
+  );
+  assert.deepEqual(f.logs, ['All 3 open issues are in Prismatic delivery.']);
 });
 
-test('a pull request is skipped without writing', async () => {
-  for (const dryRun of [false, true]) {
-    const f = fixture({
-      content: { __typename: 'PullRequest', id: 'PR_9' },
-      statusOptions: [],
+test('a dry-run sweep reports missing issues without writing', async () => {
+  for (const options of [{}, { dryRun: true }]) {
+    const f = repository({
+      open: [
+        [8, []],
+        [2, ['P_1']],
+      ],
     });
-    assert.equal(await addToProject({ ...f, number: 9, dryRun }), null);
+    assert.deepEqual(await sweep({ ...f, ...options }), {
+      missing: [8],
+      failed: [],
+    });
     assert.deepEqual(f.writes, []);
-    assert.equal(f.calls.length, 1);
-    assert.deepEqual(f.lines, [
-      'Skipped pull request #9; only issues go on the board.',
+    assert.deepEqual(f.logs, [
+      'Open issues missing from Prismatic delivery: #8.',
+      'Issue #8: would add to Prismatic delivery and set its Status to Inbox (dry run).',
     ]);
   }
 });
 
-test('adding content already in the project returns the same item', async () => {
-  const f = fixture();
-  const first = await addToProject({ ...f, number: 7, dryRun: false });
-  const second = await addToProject({ ...f, number: 7, dryRun: false });
-  assert.equal(second, first);
-  assert.equal(f.items.size, 1);
-  assert.deepEqual(statusWrites(f), ['OPT_INBOX']);
-});
-
-test('dry runs report the planned Status but never write', async () => {
-  for (const [options, number, line] of [
-    [
-      {},
-      7,
-      'DRY_RUN would add issue #7 to Prismatic delivery and set its Status to Inbox.',
+test('a failing issue is logged, the rest are added, and the sweep fails', async () => {
+  const f = repository({
+    open: [
+      [1, []],
+      [2, []],
+      [3, []],
     ],
-    [
-      { existing: { I_1: { id: 'PVTI_5' } } },
-      7,
-      'DRY_RUN would keep issue #7 as item PVTI_5 and set its Status to Inbox.',
-    ],
-    [
-      { existing: { I_1: { id: 'PVTI_5', status: 'OPT_READY' } } },
-      7,
-      'DRY_RUN would keep issue #7 as item PVTI_5 with Status Ready.',
-    ],
-  ]) {
-    const f = fixture(options);
-    assert.equal(await addToProject({ ...f, number }), null);
-    assert.deepEqual(f.writes, []);
-    assert.deepEqual(f.lines, [line]);
-  }
-});
-
-test('a missing Status field or Inbox option fails an issue before writing', async () => {
-  for (const [statusOptions, message] of [
-    [
-      [{ id: 'OPT_READY', name: 'Ready' }],
-      /Missing or ambiguous Status option Inbox/,
-    ],
-    [
-      [...STATUS_OPTIONS, { id: 'OPT_INBOX_2', name: 'Inbox' }],
-      /Missing or ambiguous Status option Inbox/,
-    ],
-  ]) {
-    for (const dryRun of [false, true]) {
-      const f = fixture({ statusOptions });
-      await assert.rejects(addToProject({ ...f, number: 7, dryRun }), message);
-      assert.deepEqual(f.writes, []);
-    }
-  }
-  const f = fixture();
-  const original = f.api;
-  f.api = async (query, variables) => {
-    const data = await original(query, variables);
-    if (/fields\(first: 100/.test(query))
-      data.user.projectV2.fields.nodes[0].name = 'State';
-    return data;
-  };
-  await assert.rejects(
-    addToProject({ ...f, number: 7, dryRun: false }),
-    /Expected one Status single-select field/,
-  );
-  assert.deepEqual(f.writes, []);
-});
-
-test('missing content, a missing or closed project, and bad numbers fail before writing', async () => {
-  for (const [options, message] of [
-    [{ content: null }, /#7 not found in samlevin\/prismatic/],
-    [{ project: null }, /project is unavailable/],
-    [{ project: { id: 'PVT_1', closed: true } }, /project is unavailable/],
-  ]) {
-    const f = fixture(options);
-    await assert.rejects(
-      addToProject({ ...f, number: 7, dryRun: false }),
-      message,
-    );
-    assert.deepEqual(f.writes, []);
-  }
-  for (const number of [0, -1, 1.5, NaN]) {
-    const f = fixture();
-    await assert.rejects(
-      addToProject({ ...f, number, dryRun: false }),
-      /positive issue number/,
-    );
-    assert.deepEqual(f.calls, []);
-  }
-});
-
-test('a mutation without an item fails', async () => {
-  const f = fixture();
-  const original = f.api;
-  f.api = async (query, variables) =>
-    query.startsWith('mutation')
-      ? { addProjectV2ItemById: null }
-      : original(query, variables);
-  await assert.rejects(
-    addToProject({ ...f, number: 7, dryRun: false }),
-    /did not return a project item/,
-  );
-});
-
-const issue = (number, options = {}) => ({
-  __typename: 'Issue',
-  id: `I_${number}`,
-  number,
-  state: 'OPEN',
-  ...options,
-});
-const listings = (f) =>
-  f.calls.filter(({ query }) => /issues\(first: 100/.test(query));
-
-test('a sweep adds only open issues missing from the project, across pages', async () => {
-  const f = fixture({
-    repository: [
-      issue(1),
-      issue(2),
-      issue(3, { otherProject: true }),
-      issue(4),
-      issue(5, { state: 'CLOSED' }),
-      { __typename: 'PullRequest', id: 'PR_6', number: 6, state: 'OPEN' },
-      issue(7),
-    ],
-    existing: {
-      I_2: { id: 'PVTI_2', status: 'OPT_READY' },
-      I_4: { id: 'PVTI_4' },
-    },
-    pageSize: 2,
+    failing: new Set([2]),
   });
-  assert.deepEqual(await addMissingIssues({ ...f, dryRun: false }), {
-    missing: [1, 3, 7],
-    added: 3,
+  await assert.rejects(
+    sweep({ ...f, dryRun: false }),
+    /Could not add 1 of 3 missing issues: #2$/,
+  );
+  assert.deepEqual(f.writes, [1, 3]);
+  assert.deepEqual(f.errors, ['Issue #2: Issue #2 could not be added']);
+});
+
+test('a sweep warns about an issue deleted or transferred before its add and still succeeds', async () => {
+  const f = repository({
+    open: [
+      [1, []],
+      [2, []],
+      [3, []],
+    ],
+    deleted: new Set([2]),
+  });
+  assert.deepEqual(await sweep({ ...f, dryRun: false }), {
+    missing: [1, 2, 3],
     failed: [],
   });
-  assert.match(
-    listings(f)[0].query,
-    /repository\(owner: \$owner, name: \$name\) \{\s*issues\(first: 100, after: \$cursor, states: \[OPEN\]\)/,
-  );
-  assert.deepEqual(
-    listings(f).map(({ variables }) => variables.cursor),
-    [null, '2', '4'],
-  );
-  assert.deepEqual(
-    f.writes
-      .filter((write) => 'content' in write)
-      .map((write) => write.content),
-    ['I_1', 'I_3', 'I_7'],
-  );
-  assert.deepEqual(statusWrites(f), ['OPT_INBOX', 'OPT_INBOX', 'OPT_INBOX']);
-  assert.equal(f.items.get('I_2').status, 'OPT_READY');
-  assert.equal(f.items.get('I_4').status, undefined);
-  assert.equal(f.items.has('PR_6'), false);
-  assert.equal(f.items.has('I_5'), false);
-  assert.equal(
-    f.lines.at(-1),
-    'Project membership sweep: 5 open, 3 missing, 3 added, 0 failed; DRY_RUN=false',
-  );
-});
-
-test('a sweep that finds nothing missing makes one query per page and no writes', async () => {
-  const f = fixture({
-    repository: [issue(1), issue(2)],
-    existing: { I_1: { id: 'PVTI_1' }, I_2: { id: 'PVTI_2' } },
-  });
-  assert.deepEqual(await addMissingIssues({ ...f, dryRun: false }), {
-    missing: [],
-    added: 0,
-    failed: [],
-  });
-  assert.equal(f.calls.length, 1);
-  assert.deepEqual(f.writes, []);
-  assert.deepEqual(f.lines, [
-    'Project membership sweep: 2 open, 0 missing, 0 added, 0 failed; DRY_RUN=false',
+  assert.deepEqual(f.writes, [1, 3]);
+  assert.deepEqual(f.errors, []);
+  assert.deepEqual(f.warnings, [
+    'Issue #2 no longer exists in the repository; skipping',
   ]);
 });
 
-test('a dry-run sweep reports the missing issues and writes nothing', async () => {
-  const f = fixture({
-    repository: [issue(1), issue(2)],
-    existing: { I_2: { id: 'PVTI_2' } },
-  });
-  assert.deepEqual(await addMissingIssues(f), {
-    missing: [1],
-    added: 0,
-    failed: [],
-  });
-  assert.deepEqual(f.writes, []);
-  assert.deepEqual(f.lines, [
-    'DRY_RUN would add issue #1 to Prismatic delivery and set its Status to Inbox.',
-    'Project membership sweep: 2 open, 1 missing, 0 added, 0 failed; DRY_RUN=true',
-  ]);
-});
-
-test('a sweep logs a failing issue, adds the rest, and then fails', async () => {
-  const f = fixture({
-    repository: [issue(1), issue(2), issue(3)],
-    failing: ['I_2'],
-  });
-  await assert.rejects(
-    addMissingIssues({ ...f, dryRun: false }),
-    /Could not add #2 to Prismatic delivery/,
-  );
-  assert.deepEqual([...f.items.keys()], ['I_1', 'I_3']);
-  assert.deepEqual(statusWrites(f), ['OPT_INBOX', 'OPT_INBOX']);
-  assert.ok(
-    f.lines.includes('Could not add issue #2: API rate limit exceeded'),
-    f.lines.join('\n'),
-  );
-  assert.equal(
-    f.lines.at(-1),
-    'Project membership sweep: 3 open, 3 missing, 2 added, 1 failed; DRY_RUN=false',
-  );
-});
-
-test('a sweep fails before writing when the project is missing or closed', async () => {
-  for (const project of [null, { id: 'PVT_1', closed: true }]) {
-    const f = fixture({ project, repository: [issue(1)] });
+test('a sweep against an unavailable project fails before listing issues', async () => {
+  for (const project of [null, { id: 'P_1', closed: true }]) {
+    const f = repository({ open: [[1, []]], project });
     await assert.rejects(
-      addMissingIssues({ ...f, dryRun: false }),
+      sweep({ ...f, dryRun: false }),
       /project is unavailable/,
     );
+    assert.deepEqual(f.calls, [['project']]);
     assert.deepEqual(f.writes, []);
   }
 });
 
-test('configuration requires the token and repository in Actions and defaults to a dry run', () => {
-  assert.deepEqual(configuration({}, ['--sweep']), {
-    sweep: true,
-    dryRun: true,
+// Evaluate a workflow expression such as `${{ a && format('x{0}', b) }}`.
+const expression = (value, context) =>
+  evaluate(value.replace(/^\$\{\{\s*|\s*\}\}$/g, ''), {
+    format: (text, ...args) =>
+      text.replace(/\{(\d+)\}/g, (_, index) => args[index]),
+    ...context,
   });
-  assert.deepEqual(configuration({ DRY_RUN: 'false' }, ['--sweep']), {
-    sweep: true,
-    dryRun: false,
-  });
-  for (const args of [['--apply'], ['--sweep', '--sweep']])
-    assert.throws(
-      () => configuration({ ISSUE_NUMBER: '12' }, args),
-      /only option is --sweep/,
-    );
-  assert.throws(
-    () => configuration({ GITHUB_ACTIONS: 'true' }, ['--sweep']),
-    /PRISMATIC_PROJECT_TOKEN/,
-  );
-  assert.deepEqual(configuration({ ISSUE_NUMBER: '12' }), {
-    number: 12,
-    dryRun: true,
-  });
-  assert.deepEqual(
-    configuration({
-      GITHUB_ACTIONS: 'true',
-      GITHUB_REPOSITORY: 'samlevin/prismatic',
-      PRISMATIC_PROJECT_TOKEN: 'token',
-      ISSUE_NUMBER: '12',
-      DRY_RUN: 'false',
-    }),
-    { number: 12, dryRun: false },
-  );
-  const actions = {
-    GITHUB_ACTIONS: 'true',
-    GITHUB_REPOSITORY: 'samlevin/prismatic',
-    PRISMATIC_PROJECT_TOKEN: 'token',
-    ISSUE_NUMBER: '12',
+const DEFAULT_BRANCH = { repository: { default_branch: 'main' } };
+
+// The hourly membership sweep runs in tracker-issue-states.yml.
+test('the workflow adds opened issues and sweeps by hand', () => {
+  const definition = workflow('tracker-project-membership');
+  const { issues, workflow_dispatch: dispatch } = definition.on;
+  assert.deepEqual(Object.keys(definition.on).sort(), [
+    'issues',
+    'workflow_dispatch',
+  ]);
+  assert.deepEqual(issues, { types: ['opened'] });
+  assert.equal(dispatch.inputs.dry_run.type, 'boolean');
+  assert.equal(dispatch.inputs.dry_run.default, true);
+  assert.equal(definition.name, 'Tracker: add issues to the project');
+  assert.deepEqual(definition.permissions, { contents: 'read' });
+  const opened = {
+    event_name: 'issues',
+    event: { issue: { number: 7 }, ...DEFAULT_BRANCH },
   };
-  for (const [env, message] of [
-    [{ ...actions, PRISMATIC_PROJECT_TOKEN: '' }, /PRISMATIC_PROJECT_TOKEN/],
-    [{ ...actions, GITHUB_REPOSITORY: 'other/repo' }, /Unexpected repository/],
-    [{ ISSUE_NUMBER: '12', DRY_RUN: 'yes' }, /DRY_RUN/],
-    [{}, /ISSUE_NUMBER/],
-    [{ ISSUE_NUMBER: '0' }, /ISSUE_NUMBER/],
-    [{ ISSUE_NUMBER: '12abc' }, /ISSUE_NUMBER/],
-    [{ ISSUE_NUMBER: '99999999999999999999' }, /ISSUE_NUMBER/],
-  ])
-    assert.throws(() => configuration(env), message);
+  assert.equal(
+    expression(definition['run-name'], { github: opened }),
+    'Add issue #7 to Prismatic delivery',
+  );
+  assert.equal(
+    expression(definition.concurrency.group, { github: opened }),
+    'project-membership-issue-7',
+  );
+  {
+    const event_name = 'workflow_dispatch';
+    const github = { event_name, event: DEFAULT_BRANCH };
+    assert.equal(
+      expression(definition['run-name'], { github }),
+      `Add missing issues to Prismatic delivery (${event_name})`,
+    );
+    assert.equal(
+      expression(definition.concurrency.group, { github }),
+      'project-membership-sweep',
+    );
+  }
+  assert.equal(definition.concurrency['cancel-in-progress'], false);
+  assert.deepEqual(Object.keys(definition.jobs), [
+    'add-to-project',
+    'add-missing-issues',
+  ]);
+  for (const job of Object.values(definition.jobs)) {
+    const checkout = job.steps.find((step) =>
+      step.uses?.startsWith('actions/checkout@'),
+    );
+    assert.deepEqual(checkout.with, {
+      ref: '${{ github.event.repository.default_branch }}',
+      'persist-credentials': false,
+      'sparse-checkout': 'scripts',
+    });
+    const runs = job.steps.filter((step) => step.run);
+    assert.equal(runs[0].run, 'node scripts/issue-project-membership.mjs');
+    for (const run of runs)
+      assert.equal(
+        run.env.PRISMATIC_PROJECT_TOKEN,
+        '${{ secrets.PRISMATIC_PROJECT_TOKEN }}',
+      );
+  }
+  assert.equal(
+    definition.jobs['add-missing-issues'].steps.filter((step) => step.run)
+      .length,
+    1,
+  );
 });
 
-test('the command line reports configuration errors without calling GitHub', () => {
-  const script = fileURLToPath(
-    new URL('./issue-project-membership.mjs', import.meta.url),
+test('opened issues are added to the project, then triaged once', () => {
+  const job = workflow('tracker-project-membership').jobs['add-to-project'];
+  assert.equal(job.name, 'Add the new issue to Prismatic delivery');
+  const [run, triage, ...rest] = job.steps.filter((step) => step.run);
+  assert.deepEqual(rest, []);
+  assert.equal(triage.name, 'Triage the new issue');
+  assert.equal(
+    triage.run,
+    'node scripts/issue-triage.mjs --apply --issue "$ISSUE_NUMBER"',
   );
-  let failure;
-  try {
-    execFileSync(process.execPath, [script], {
-      env: { PATH: process.env.PATH, GITHUB_ACTIONS: 'true' },
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (error) {
-    failure = error;
-  }
-  assert.equal(failure?.status, 1);
-  assert.match(failure.stderr, /PRISMATIC_PROJECT_TOKEN is required/);
+  assert.deepEqual(Object.keys(triage.env).sort(), [
+    'ISSUE_NUMBER',
+    'PRISMATIC_PROJECT_TOKEN',
+  ]);
+  assert.equal(
+    expression(triage.env.ISSUE_NUMBER, {
+      github: { event: { issue: { number: 7 } } },
+    }),
+    7,
+  );
+  assert.deepEqual(Object.keys(run.env).sort(), [
+    'CONTENT_NUMBER',
+    'CONTENT_TYPE',
+    'DRY_RUN',
+    'PRISMATIC_PROJECT_TOKEN',
+  ]);
+  assert.equal(run.env.DRY_RUN, 'false');
+  assert.equal(run.env.CONTENT_TYPE, 'issue');
+  assert.equal(
+    expression(run.env.CONTENT_NUMBER, {
+      github: { event: { issue: { number: 7 } } },
+    }),
+    7,
+  );
+});
+
+test('each event runs one job, and the sweep runs only from the default branch', () => {
+  const { jobs } = workflow('tracker-project-membership');
+  const runs = (github) =>
+    Object.entries(jobs)
+      .filter(([, job]) => expression(job.if, { github }))
+      .map(([id]) => id);
+  const github = (event_name, overrides = {}) => ({
+    event_name,
+    repository: 'samlevin/prismatic',
+    ref: 'refs/heads/main',
+    event: { issue: { number: 7 }, ...DEFAULT_BRANCH },
+    ...overrides,
+  });
+  assert.deepEqual(runs(github('issues')), ['add-to-project']);
+  assert.deepEqual(runs(github('issues', { ref: 'refs/heads/feature' })), [
+    'add-to-project',
+  ]);
+  assert.deepEqual(runs(github('workflow_dispatch')), ['add-missing-issues']);
+  assert.deepEqual(
+    runs(github('workflow_dispatch', { ref: 'refs/heads/feature' })),
+    [],
+  );
+  for (const event_name of ['issues', 'workflow_dispatch'])
+    assert.deepEqual(
+      runs(github(event_name, { repository: 'someone/fork' })),
+      [],
+    );
+});
+
+test('a manual sweep follows its dry_run input', () => {
+  const job = workflow('tracker-project-membership').jobs['add-missing-issues'];
+  assert.equal(job.name, 'Add missing open issues to Prismatic delivery');
+  const run = job.steps.find((step) => step.run);
+  assert.deepEqual(Object.keys(run.env).sort(), [
+    'DRY_RUN',
+    'PRISMATIC_PROJECT_TOKEN',
+    'SWEEP',
+  ]);
+  assert.equal(run.env.SWEEP, 'true');
+  const dryRun = (event_name, inputs = {}) =>
+    expression(run.env.DRY_RUN, { github: { event_name }, inputs });
+  assert.equal(dryRun('workflow_dispatch', { dry_run: true }), 'true');
+  assert.equal(dryRun('workflow_dispatch', { dry_run: false }), 'false');
 });

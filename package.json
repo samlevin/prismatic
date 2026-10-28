@@ -7,9 +7,6 @@
   "engines": {
     "node": ">=24.2"
   },
-  "workspaces": [
-    "packages/*"
-  ],
   "scripts": {
     "agents:generate": "node scripts/agent-policy.mjs generate",
     "agents:check": "node scripts/agent-policy.mjs check",
