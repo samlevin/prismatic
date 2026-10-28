@@ -692,6 +692,81 @@ test('a sweep re-reads a container decided from its listing before the first wri
   ]);
 });
 
+test('a sweep marks no container closed or no longer complete since the listing', async () => {
+  // After the listing, #1 is closed by hand or its child #2 reopens. #1 takes
+  // no write; #5 still closes.
+  for (const change of [
+    (model) => (model.issues.get('I_1').state = 'CLOSED'),
+    (model) => (model.issues.get('I_2').state = 'OPEN'),
+  ]) {
+    const model = github([
+      { number: 1 },
+      { number: 2, parent: 1, state: 'CLOSED' },
+      { number: 5 },
+      { number: 6, parent: 5, state: 'CLOSED' },
+    ]);
+    const api = async (query, variables) => {
+      if (query.includes('label(')) change(model);
+      return model.api(query, variables);
+    };
+    await reconcileContainers({ api, dryRun: false, ...quiet });
+    assert.deepEqual(model.mutations(), [
+      'addLabelsToLabelable I_5',
+      'closeIssue I_5',
+      'updateProjectV2ItemFieldValue item-5 Done',
+    ]);
+    assert.equal(model.issues.get('I_1').marked, false);
+  }
+});
+
+test('a sweep skips a container whose write target was deleted and writes the rest', async () => {
+  const message =
+    'A write target was deleted or transferred during the run; skipping it';
+  // Each case fails one of #1's writes; the writes before it stand.
+  for (const [failing, before] of [
+    ['addLabelsToLabelable I_1', []],
+    ['closeIssue I_1', ['addLabelsToLabelable I_1']],
+    [
+      'updateProjectV2ItemFieldValue item-1 Done',
+      ['addLabelsToLabelable I_1', 'closeIssue I_1'],
+    ],
+  ]) {
+    const model = github([
+      { number: 1 },
+      { number: 2, parent: 1, state: 'CLOSED' },
+      { number: 5 },
+      { number: 6, parent: 5, state: 'CLOSED' },
+    ]);
+    const warnings = [];
+    const api = async (query, variables) => {
+      if (
+        query.startsWith('mutation') &&
+        model.mutations().length === before.length &&
+        failing.includes(variables.id ?? variables.item)
+      )
+        throw new MissingIssueError(undefined, message);
+      return model.api(query, variables);
+    };
+    await reconcileContainers({
+      api,
+      dryRun: false,
+      warn: (line) => warnings.push(line),
+      ...quiet,
+    });
+    assert.deepEqual(warnings, [message], failing);
+    assert.deepEqual(
+      model.mutations(),
+      [
+        ...before,
+        'addLabelsToLabelable I_5',
+        'closeIssue I_5',
+        'updateProjectV2ItemFieldValue item-5 Done',
+      ],
+      failing,
+    );
+  }
+});
+
 test('invalid programmatic issue filters fail before any API access', async () => {
   for (const issueNumber of [0, -1, 1.5, '1', Number.MAX_SAFE_INTEGER + 1])
     await assert.rejects(

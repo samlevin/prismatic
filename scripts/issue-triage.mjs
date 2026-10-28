@@ -94,7 +94,8 @@ function missingWriteTarget(result) {
 
 // The GraphQL client of the tracker scripts: a missing issue reads as null,
 // and a write to a target deleted mid-run raises MissingIssueError, which
-// runTracker reports as a warning; the next sweep reconciles the rest.
+// each per-item write loop reports as a warning before it moves to the next
+// item.
 export function trackerGraphql(query, variables, run = execFileSync) {
   let missingTarget = false;
   const data = ghGraphql(query, variables, {
@@ -107,7 +108,7 @@ export function trackerGraphql(query, variables, run = execFileSync) {
   if (missingTarget)
     throw new MissingIssueError(
       undefined,
-      'A write target was deleted or transferred during the run; skipping the rest of this run',
+      'A write target was deleted or transferred during the run; skipping it',
     );
   return data;
 }
@@ -126,6 +127,19 @@ export class MissingIssueError extends Error {
 }
 
 export const warning = (message) => console.log(`::warning::${message}`);
+
+// Runs one item's write and returns whether it happened. A target deleted
+// mid-run is skipped with a warning so the run goes on with the next item.
+export async function skipWrite(warn, write) {
+  try {
+    await write();
+    return true;
+  } catch (error) {
+    if (!(error instanceof MissingIssueError)) throw error;
+    warn(error.message);
+    return false;
+  }
+}
 
 export async function discover(
   api,
@@ -330,8 +344,12 @@ export async function reconcile({
       `${dryRun ? 'DRY_RUN would move' : 'Moving'} issue #${fresh.content.number} ${fresh.fields.Status ?? 'empty Status'} -> Ready`,
     );
     if (dryRun) continue;
-    await updateProjectStatus(api, context, fresh.id, 'Ready');
-    updated++;
+    if (
+      await skipWrite(warn, () =>
+        updateProjectStatus(api, context, fresh.id, 'Ready'),
+      )
+    )
+      updated++;
   }
   log(
     `Triage reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
@@ -405,8 +423,12 @@ export async function reconcileDone({
       `${dryRun ? 'DRY_RUN would move' : 'Moving'} ${target === 'Done' ? 'closed' : 'reopened'} issue #${fresh.content.number} ${fresh.fields.Status ?? 'without Status'} -> ${target}`,
     );
     if (dryRun) continue;
-    await updateProjectStatus(api, context, fresh.id, target);
-    updated++;
+    if (
+      await skipWrite(warn, () =>
+        updateProjectStatus(api, context, fresh.id, target),
+      )
+    )
+      updated++;
   }
   log(
     `Done reconciliation: ${candidates} eligible, ${updated} updated; DRY_RUN=${dryRun}`,
@@ -419,6 +441,7 @@ export async function reconcileEpicLabels({
   dryRun = true,
   issueNumber,
   log = console.log,
+  warn = warning,
 }) {
   const forbidden = new Set([
     'bug',
@@ -476,11 +499,13 @@ export async function reconcileEpicLabels({
       `${dryRun ? 'DRY_RUN would remove' : 'Removing'} ${remove.length} conflicting category labels from epic #${epic.number}`,
     );
     if (!dryRun)
-      await api(
-        `mutation($id: ID!, $labels: [ID!]!) {
+      await skipWrite(warn, () =>
+        api(
+          `mutation($id: ID!, $labels: [ID!]!) {
       removeLabelsFromLabelable(input: { labelableId: $id, labelIds: $labels }) { clientMutationId }
     }`,
-        { id: epic.id, labels: remove.map((label) => label.id) },
+          { id: epic.id, labels: remove.map((label) => label.id) },
+        ),
       );
   }
 }

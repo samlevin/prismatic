@@ -1501,6 +1501,71 @@ test('a write to a target deleted mid-run warns instead of failing the run', asy
   });
   assert.equal(status, 0);
   assert.match(warnings.join('\n'), /deleted or transferred during the run/);
+  // In a sweep, the item whose target is gone is skipped and later items are
+  // still written.
+  const skipped = [
+    'A write target was deleted or transferred during the run; skipping it',
+  ];
+  const deleted = () =>
+    trackerGraphql(
+      mutation,
+      {},
+      notFound({ closeIssue: null }, ['closeIssue']),
+    );
+  const ready = mockApi({ additionalIssue: true });
+  const readyWarnings = [];
+  assert.deepEqual(
+    await reconcile({
+      api: async (query, variables) =>
+        query.startsWith('mutation') && variables.item === 'item'
+          ? deleted()
+          : ready.api(query, variables),
+      dryRun: false,
+      log: () => {},
+      warn: (line) => readyWarnings.push(line),
+    }),
+    { candidates: 2, updated: 1 },
+  );
+  assert.deepEqual(readyWarnings, skipped);
+  assert.deepEqual(
+    ready.state.mutations.map((mutation) => mutation.item),
+    ['item-2'],
+  );
+  const done = board([
+    { number: 1, state: 'CLOSED', status: 'In review' },
+    { number: 2, state: 'CLOSED', status: 'Ready' },
+  ]);
+  const doneWarnings = [];
+  assert.deepEqual(
+    await reconcileDone({
+      api: async (query, variables) =>
+        query.startsWith('mutation') && variables.item === 'item-1'
+          ? deleted()
+          : done.api(query, variables),
+      dryRun: false,
+      log: () => {},
+      warn: (line) => doneWarnings.push(line),
+    }),
+    { candidates: 2, updated: 1 },
+  );
+  assert.deepEqual(doneWarnings, skipped);
+  assert.deepEqual(
+    done.mutations.map((mutation) => mutation.item),
+    ['item-2'],
+  );
+  const epics = epicApi();
+  const epicWarnings = [];
+  await reconcileEpicLabels({
+    api: async (query, variables) =>
+      query.startsWith('mutation') && variables.id === 'E7'
+        ? deleted()
+        : epics.api(query, variables),
+    dryRun: false,
+    log: () => {},
+    warn: (line) => epicWarnings.push(line),
+  });
+  assert.deepEqual(epicWarnings, skipped);
+  assert.deepEqual(epics.writes, [{ id: 'E9', labels: ['L_docs'] }]);
 });
 
 test('the tracker client reads a missing issue as null and fails on every other error', () => {

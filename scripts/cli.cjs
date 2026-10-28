@@ -9,7 +9,8 @@ const definitions = {
   actor: {
     type: 'string',
     alias: 'a',
-    description: 'Branch owner (defaults to agent)',
+    description:
+      'Agent identity: branch owner, or the delivery ID that claims belong to',
   },
   layer: {
     type: 'string',

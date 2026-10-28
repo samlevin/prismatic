@@ -25,6 +25,10 @@ const ITEMS = `nodes { id project { id } fieldValueByName(name: "Status") {
 const LABELS = `nodes { name } ${PAGE}`;
 const CHILDREN = `nodes { ${ISSUE} } ${PAGE}`;
 
+const complete = (issue) =>
+  issue.subIssuesSummary.total > 0 &&
+  issue.subIssuesSummary.total === issue.subIssuesSummary.completed;
+
 // Reads every page of one connection on an issue, such as `labels` with LABELS.
 // Archived project items never take a Status write, so they are not read.
 async function connection(api, id, field, selection) {
@@ -265,104 +269,118 @@ export async function reconcileContainers({
   const changed = new Set();
   let updated = 0;
   for (const id of ordered) {
-    // A sweep decides from its listing until a child's state changes in this
-    // run; a single-issue run reads each container in its hierarchy.
-    const stale = (edges.get(id) ?? []).some((child) => changed.has(child));
-    // A decision from the listing is confirmed by a fresh read before its
-    // first write, so a container deleted since the listing is skipped.
-    const listed = sweep && !stale;
-    let current = listed
-      ? {
-          ...byId.get(id),
-          marked: label.marked.has(id),
-          items: label.marked.get(id),
+    // A container deleted or transferred before one of its writes is
+    // skipped; the sweep goes on with the rest.
+    try {
+      // A sweep decides from its listing until a child's state changes in this
+      // run; a single-issue run reads each container in its hierarchy.
+      const stale = (edges.get(id) ?? []).some((child) => changed.has(child));
+      // A decision from the listing is confirmed by a fresh read before its
+      // first write, so a container deleted, closed, or no longer complete
+      // since the listing is skipped.
+      const listed = sweep && !stale;
+      let current = listed
+        ? {
+            ...byId.get(id),
+            marked: label.marked.has(id),
+            items: label.marked.get(id),
+          }
+        : await read(id);
+      if (
+        !current ||
+        current.repository.nameWithOwner !== REPOSITORY ||
+        !current.subIssuesSummary.total
+      )
+        continue;
+      const done = complete(current);
+      const close = done && current.state === 'OPEN';
+      const reopen = !done && current.state === 'CLOSED' && current.marked;
+      if (close || reopen) {
+        log(
+          `${dryRun ? 'DRY_RUN would' : 'Will'} ${close ? 'close' : 'reopen'} container #${current.number}`,
+        );
+        if (dryRun) continue;
+        // Mark before closing so a partial run can recover without losing automation ownership.
+        if (close && !current.marked) {
+          if (listed) {
+            const confirmed = await read(id);
+            if (
+              !confirmed ||
+              confirmed.state !== 'OPEN' ||
+              !complete(confirmed)
+            )
+              continue;
+          }
+          await api(
+            `mutation($id: ID!, $label: ID!) {
+        addLabelsToLabelable(input: { labelableId: $id, labelIds: [$label] }) { clientMutationId }
+      }`,
+            { id, label: label.id },
+          );
         }
-      : await read(id);
-    if (
-      !current ||
-      current.repository.nameWithOwner !== REPOSITORY ||
-      !current.subIssuesSummary.total
-    )
-      continue;
-    const complete =
-      current.subIssuesSummary.total === current.subIssuesSummary.completed;
-    const close = complete && current.state === 'OPEN';
-    const reopen = !complete && current.state === 'CLOSED' && current.marked;
-    if (close || reopen) {
-      log(
-        `${dryRun ? 'DRY_RUN would' : 'Will'} ${close ? 'close' : 'reopen'} container #${current.number}`,
-      );
-      if (dryRun) continue;
-      // Mark before closing so a partial run can recover without losing automation ownership.
-      if (close && !current.marked) {
-        if (listed && !(await read(id))) continue;
+        const fresh = await read(id);
+        if (!fresh) continue;
+        const stillComplete = complete(fresh);
+        if (
+          (close && (fresh.state !== 'OPEN' || !stillComplete)) ||
+          (reopen &&
+            (fresh.state !== 'CLOSED' || stillComplete || !fresh.marked))
+        )
+          continue;
+        await api(
+          close
+            ? `mutation($id: ID!) { closeIssue(input: { issueId: $id, stateReason: COMPLETED }) { issue { id } } }`
+            : `mutation($id: ID!) { reopenIssue(input: { issueId: $id }) { issue { id } } }`,
+          { id },
+        );
+        changed.add(id);
+        updated++;
+        await setStatus(fresh, close ? 'Done' : 'Ready');
+        // A closed container keeps its marker; a reopened one loses it below
+        // unless it is closed or complete again by then.
+        if (close) continue;
+      } else if (current.marked && !dryRun) {
+        // Repair status if a prior state mutation succeeded but its project update failed.
+        if (
+          !current.items ||
+          (listed &&
+            (await statusItem(
+              current,
+              current.state === 'CLOSED' ? 'Done' : 'Ready',
+              true,
+            )))
+        )
+          current = await read(id);
+        if (!current) continue;
+        if (current.marked)
+          await setStatus(
+            current,
+            current.state === 'CLOSED' ? 'Done' : 'Ready',
+            {
+              onlyIfChanged: true,
+            },
+          );
+        if (current.state !== 'OPEN' || !current.marked) continue;
+      } else continue;
+      // Runs for sibling issues reconcile the same container concurrently. A
+      // container that is closed or complete again may belong to another run
+      // that marked it and is about to close it, so it keeps the marker.
+      const after = await read(id);
+      if (
+        after?.state === 'OPEN' &&
+        after.marked &&
+        after.subIssuesSummary.total !== after.subIssuesSummary.completed
+      )
         await api(
           `mutation($id: ID!, $label: ID!) {
-        addLabelsToLabelable(input: { labelableId: $id, labelIds: [$label] }) { clientMutationId }
+        removeLabelsFromLabelable(input: { labelableId: $id, labelIds: [$label] }) { clientMutationId }
       }`,
           { id, label: label.id },
         );
-      }
-      const fresh = await read(id);
-      if (!fresh) continue;
-      const stillComplete =
-        fresh.subIssuesSummary.total > 0 &&
-        fresh.subIssuesSummary.total === fresh.subIssuesSummary.completed;
-      if (
-        (close && (fresh.state !== 'OPEN' || !stillComplete)) ||
-        (reopen && (fresh.state !== 'CLOSED' || stillComplete || !fresh.marked))
-      )
-        continue;
-      await api(
-        close
-          ? `mutation($id: ID!) { closeIssue(input: { issueId: $id, stateReason: COMPLETED }) { issue { id } } }`
-          : `mutation($id: ID!) { reopenIssue(input: { issueId: $id }) { issue { id } } }`,
-        { id },
-      );
-      changed.add(id);
-      await setStatus(fresh, close ? 'Done' : 'Ready');
-      updated++;
-      // A closed container keeps its marker; a reopened one loses it below
-      // unless it is closed or complete again by then.
-      if (close) continue;
-    } else if (current.marked && !dryRun) {
-      // Repair status if a prior state mutation succeeded but its project update failed.
-      if (
-        !current.items ||
-        (listed &&
-          (await statusItem(
-            current,
-            current.state === 'CLOSED' ? 'Done' : 'Ready',
-            true,
-          )))
-      )
-        current = await read(id);
-      if (!current) continue;
-      if (current.marked)
-        await setStatus(
-          current,
-          current.state === 'CLOSED' ? 'Done' : 'Ready',
-          {
-            onlyIfChanged: true,
-          },
-        );
-      if (current.state !== 'OPEN' || !current.marked) continue;
-    } else continue;
-    // Runs for sibling issues reconcile the same container concurrently. A
-    // container that is closed or complete again may belong to another run
-    // that marked it and is about to close it, so it keeps the marker.
-    const after = await read(id);
-    if (
-      after?.state === 'OPEN' &&
-      after.marked &&
-      after.subIssuesSummary.total !== after.subIssuesSummary.completed
-    )
-      await api(
-        `mutation($id: ID!, $label: ID!) {
-        removeLabelsFromLabelable(input: { labelableId: $id, labelIds: [$label] }) { clientMutationId }
-      }`,
-        { id, label: label.id },
-      );
+    } catch (error) {
+      if (!(error instanceof MissingIssueError)) throw error;
+      warn(error.message);
+    }
   }
   log(`Container reconciliation: ${updated} state changes; DRY_RUN=${dryRun}`);
   return { updated };
