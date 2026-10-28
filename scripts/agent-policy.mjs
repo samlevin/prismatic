@@ -247,48 +247,6 @@ export function implementationEffort(
   return { ...decision };
 }
 
-export function effortAnnouncement(issue, decision) {
-  if (decision.rule === 'default')
-    return 'Implementation effort: medium (default)';
-  return `Implementation effort: medium -> ${decision.effort}; issue: #${issue}; rule: ${decision.rule}; evidence: ${decision.evidence}; reason: ${decision.reason}`;
-}
-
-// Each role gets its own resolver call and spawn object, including on escalation.
-export function implementationDispatch(
-  policy,
-  {
-    tool,
-    issue,
-    model,
-    effort,
-    reviewer = {},
-    decision,
-    transitions = 0,
-    blocker,
-  } = {},
-) {
-  const selected = implementationEffort(policy, {
-    override: effort,
-    decision,
-    transitions,
-    blocker,
-  });
-  if (selected.blocker) throw new Error(selected.blocker);
-  const implementer = resolve(policy, {
-    tool,
-    role: 'implementer',
-    model,
-    ...(selected.rule === 'default' ? {} : { effort: selected.effort }),
-  });
-  const review = resolve(policy, { tool, role: 'code-reviewer', ...reviewer });
-  return {
-    selected,
-    implementer,
-    reviewer: review,
-    announcement: effortAnnouncement(issue, selected),
-  };
-}
-
 // Shared Markdown sources carry YAML frontmatter plus optional blocks that
 // belong to one tool: <!-- claude-only --> ... <!-- /claude-only -->.
 export function parseSource(text) {

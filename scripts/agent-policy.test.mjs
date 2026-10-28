@@ -15,9 +15,7 @@ import {
   check,
   generate,
   loadPolicy,
-  implementationDispatch,
   implementationEffort,
-  effortAnnouncement,
   parseReviewReport,
   parseSource,
   placeholders,
@@ -1724,8 +1722,10 @@ test('evidence reuse retains complete relevant output and meaningful validation'
     'targeted `rg` searches',
     'Read each unchanged file once',
     'A new commit SHA alone does not invalidate',
-    'local temporary file outside tracked paths',
-    'Keep the file available',
+    'temporary file from `mktemp` outside tracked paths',
+    'keeping the file available',
+    'A read-only role, such as a code reviewer, never writes that file',
+    'reruns the query in narrower bounded pieces',
     'Never let a filter hide a failing exit status',
     'retrieve the missing part',
     'Never act on partial output',
@@ -1885,29 +1885,23 @@ test('the heading and size checks allow for the independence record on an epic',
 
 test('implementation is medium while every review dispatch has its own high settings', () => {
   for (const tool of TOOLS) {
-    const packet = implementationDispatch(policy, { tool, issue: 1 });
-    assert.equal(packet.implementer.effort, 'medium');
-    assert.equal(packet.reviewer.effort, 'high');
+    const implementer = resolve(policy, { tool, role: 'implementer' });
+    const reviewer = resolve(policy, { tool, role: 'code-reviewer' });
+    assert.equal(implementer.effort, 'medium');
+    assert.equal(reviewer.effort, 'high');
     assert.equal(
-      packet.implementer.model,
+      implementer.model,
       tool === 'claude' ? 'claude-opus-5-5' : 'gpt-6.1-sol',
     );
-    assert.equal(
-      packet.reviewer.model,
-      tool === 'claude' ? 'opus' : 'gpt-6.1-sol',
-    );
-    for (const role of ['implementer', 'reviewer']) {
-      assert.equal(packet[role].spawn.model, packet[role].model);
+    assert.equal(reviewer.model, tool === 'claude' ? 'opus' : 'gpt-6.1-sol');
+    for (const packet of [implementer, reviewer]) {
+      assert.equal(packet.spawn.model, packet.model);
       assert.equal(
-        packet[role].spawn[tool === 'claude' ? 'effort' : 'reasoning_effort'],
-        packet[role].effort,
+        packet.spawn[tool === 'claude' ? 'effort' : 'reasoning_effort'],
+        packet.effort,
       );
-      if (tool === 'codex') assert.equal(packet[role].spawn.fork_turns, 'none');
+      if (tool === 'codex') assert.equal(packet.spawn.fork_turns, 'none');
     }
-    assert.equal(
-      packet.announcement,
-      'Implementation effort: medium (default)',
-    );
   }
   const files = render();
   for (const path of DELIVERY) {
@@ -1989,61 +1983,32 @@ test('specified mechanisms and routine corrections fail the high criteria', () =
 });
 
 test('explicit medium prevents escalation and missing inputs remain blockers', () => {
-  const packet = implementationDispatch(policy, {
-    tool: 'codex',
-    issue: 2,
-    effort: 'medium',
+  const selected = implementationEffort(policy, {
+    override: 'medium',
     decision: assessment('H2-coupled-design'),
   });
-  assert.equal(packet.implementer.effort, 'medium');
-  assert.equal(packet.selected.rule, 'user override');
-  assert.equal(packet.reviewer.effort, 'high');
+  assert.equal(selected.effort, 'medium');
+  assert.equal(selected.rule, 'user override');
   for (const blocker of policy.implementationEffort.blockers)
-    assert.throws(
-      () =>
-        implementationDispatch(policy, {
-          tool: 'codex',
-          blocker,
-          decision: assessment('H1-boundary'),
-        }),
-      new RegExp(blocker),
+    assert.equal(
+      implementationEffort(policy, {
+        blocker,
+        decision: assessment('H1-boundary'),
+      }).blocker,
+      blocker,
     );
 });
 
-test('later escalation announces evidence and explicitly applies high once without new review rounds', () => {
-  for (const tool of TOOLS) {
-    const decision = { ...assessment('H3-demonstrated-limit'), later: true };
-    const packet = implementationDispatch(policy, {
-      tool,
-      issue: 7,
-      decision,
-      transitions: 0,
-    });
-    assert.equal(
-      packet.implementer.spawn[
-        tool === 'codex' ? 'reasoning_effort' : 'effort'
-      ],
-      'high',
-    );
-    assert.equal(packet.implementer.source.effort, 'override');
-    assert.equal(packet.reviewer.effort, 'high');
-    assert.equal(packet.announcement, effortAnnouncement(7, decision));
-    assert.match(
-      packet.announcement,
-      /medium -> high; issue: #7; rule: H3-demonstrated-limit; evidence: spec/,
-    );
-    assert.match(packet.announcement, /reason: The supplied plan/);
-    assert.throws(
-      () =>
-        implementationDispatch(policy, {
-          tool,
-          issue: 7,
-          decision,
-          transitions: 1,
-        }),
-      /Only one automatic/,
-    );
-  }
+test('later escalation applies high once', () => {
+  const decision = { ...assessment('H3-demonstrated-limit'), later: true };
+  assert.equal(
+    implementationEffort(policy, { decision, transitions: 0 }).effort,
+    'high',
+  );
+  assert.throws(
+    () => implementationEffort(policy, { decision, transitions: 1 }),
+    /Only one automatic/,
+  );
 });
 
 test('delivery instructions persist later effort decisions and advance after a released blocker', () => {

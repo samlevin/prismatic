@@ -605,6 +605,30 @@ test('a container deleted or transferred during a run is skipped with a warning'
   }
 });
 
+test('a container deleted between its read and its sub-issue read is skipped', async () => {
+  const model = github([
+    { number: 1 },
+    { number: 2, parent: 1, state: 'CLOSED' },
+  ]);
+  const gone = new Set();
+  const warnings = [];
+  const api = async (query, variables) => {
+    if (query.includes('issue(number: $number)')) gone.add('I_1');
+    return withDeleted(model, gone)(query, variables);
+  };
+  await reconcileContainers({
+    api,
+    dryRun: false,
+    issueNumber: 1,
+    warn: (line) => warnings.push(line),
+    ...quiet,
+  });
+  assert.deepEqual(warnings, [
+    'Issue #1 no longer exists in the repository; skipping',
+  ]);
+  assert.deepEqual(model.mutations(), []);
+});
+
 test('a sweep skips a container deleted after the listing and finishes the rest', async () => {
   // Closing #2 makes #1 stale, so the sweep reads #1 fresh and finds it gone.
   const model = github([

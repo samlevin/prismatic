@@ -15,7 +15,7 @@ export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'none'].map(
 const PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
 const SIZES = ['XS', 'S', 'M', 'L'];
 const PAGE = 'pageInfo { hasNextPage endCursor }';
-const EMPTY = { nodes: [], pageInfo: { hasNextPage: false } };
+export const EMPTY = { nodes: [], pageInfo: { hasNextPage: false } };
 const VALUES = `nodes {
   ... on ProjectV2ItemFieldSingleSelectValue { optionId field {
     ... on ProjectV2SingleSelectField { id }
@@ -438,7 +438,7 @@ export async function reconcileEpicLabels({
       } } }`,
         { id: epic.id, cursor },
       );
-      return data.node?.labels;
+      return data.node?.labels ?? EMPTY;
     }, epic.labels);
     if (!labels.some((label) => label.name === 'epic')) continue;
     const remove = labels.filter(

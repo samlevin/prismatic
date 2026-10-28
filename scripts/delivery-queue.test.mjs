@@ -29,6 +29,7 @@ const claimed = (agent = 'delivery', worktree = '.codex/worktrees/one') =>
   );
 const pull = (number, state = 'open') => ({
   number: number + 100,
+  author_association: 'OWNER',
   body: `Closes #${number}\nPre-PR review: APPROVE; base=${base}; head=${head}`,
   state,
   base: { sha: base, ref: 'main' },
@@ -296,7 +297,7 @@ test('released, untrusted, and legacy claims follow ownership rules', () => {
     null,
   );
   const legacy = comment(
-    'Agent `delivery` claims #1 on branch `agent/1-one` in `.codex/worktrees/one`.',
+    'Claiming #1 for agent `delivery` on branch `agent/1-one` in `.codex/worktrees/one`.',
   );
   assert.equal(claimRecord([legacy]).branch, 'agent/1-one');
   assert.equal(claimRecord([legacy, comment('Released the claim.')]), null);
@@ -322,6 +323,72 @@ test('released, untrusted, and legacy claims follow ownership rules', () => {
       other('Released the claim.'),
     ]).branch,
     'agent/1-one',
+  );
+});
+
+test('legacy claims and releases count only by their opening words', () => {
+  for (const opening of ['Claimed', 'Claiming', 'Re-claimed', 'Re-claiming'])
+    assert.equal(
+      claimRecord([comment(`${opening} #1 on branch \`agent/1-one\`.`)]).branch,
+      'agent/1-one',
+      opening,
+    );
+  for (const body of [
+    'The docs claim `agent/1-one` is stale.',
+    'Agent `delivery` claims #1 on branch `agent/1-one`.',
+    '<!-- note -->\nClaimed #1 on branch `agent/1-one`.',
+  ])
+    assert.equal(claimRecord([comment(body)]), null, body);
+  const legacy = comment('Claimed #1 on branch `agent/1-one`.');
+  for (const opening of [
+    'Releasing',
+    'Released',
+    'Claim released',
+    'Pausing this claim',
+  ])
+    assert.equal(claimRecord([legacy, comment(`${opening}.`)]), null, opening);
+  for (const body of [
+    'The reviewer released the claim notes.',
+    'Note: released the claim earlier.',
+  ])
+    assert.equal(
+      claimRecord([legacy, comment(body)]).branch,
+      'agent/1-one',
+      body,
+    );
+});
+
+test('untrusted PR bodies never mark a leaf in review or approve a stack base', () => {
+  const untrusted = (number) => ({
+    ...pull(number),
+    author_association: 'NONE',
+  });
+  const { rows } = queue({
+    tree: { 10: [1, 2] },
+    deps: { 1: [99] },
+    pulls: [untrusted(2), untrusted(99)],
+  });
+  const leaf = rows.find((row) => row.issue === 1);
+  assert.equal(rows.find((row) => row.issue === 2).state, 'ready');
+  assert.equal(leaf.state, 'waiting');
+  assert.deepEqual(leaf.prerequisites[0], {
+    issue: 99,
+    repository: policy.binding.repository,
+    met: false,
+    pr: undefined,
+    branch: undefined,
+    head: undefined,
+    base: undefined,
+    stackReady: false,
+  });
+  assert.equal(
+    stackReady(
+      untrusted(99),
+      [{ status: 'completed', conclusion: 'success' }],
+      [],
+      base,
+    ),
+    false,
   );
 });
 
@@ -451,7 +518,8 @@ test('an explicit medium constraint persists across later recorded high assessme
   const high = comment(`<!-- prism-effort ${JSON.stringify(decision)} -->`);
   assert.equal(effortRecord([medium, high], policy).effort, 'medium');
   assert.equal(
-    claimRecord([comment('Agent `other` claimed #1 on `agent/1-one`.')]).agent,
+    claimRecord([comment('Claimed #1 for agent `other` on `agent/1-one`.')])
+      .agent,
     'other',
   );
 });
@@ -548,6 +616,23 @@ test('ledger output validates parallel groups and supplies other-leaf ownership 
     },
   ]);
   assert.equal(rows[1].parallelWith[0].issue, 1);
+});
+
+test('older independence records without group names read as g1, g2, in order', () => {
+  const { rows } = queue({
+    tree: { 10: [1, 2] },
+    sizes: { 1: 'M', 2: 'M' },
+    bodies: {
+      10: '<!-- prism-independence-groups -->\n- #1\n- #2\n<!-- /prism-independence-groups -->',
+      1: notes('scripts/a.mjs'),
+      2: notes('scripts/b.mjs'),
+    },
+  });
+  assert.deepEqual(
+    rows.map((row) => row.group),
+    ['10/g1', '10/g2'],
+  );
+  assert.equal(rows[0].parallelWith[0].issue, 2);
 });
 
 test('parallel dispatch is blocked for invalid groups, dependency chains, shared open blockers, missing notes, and overlapping ownership', () => {

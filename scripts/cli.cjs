@@ -42,10 +42,9 @@ const definitions = {
   base: { type: 'string', description: 'Full base commit SHA' },
   head: { type: 'string', description: 'Full head commit SHA' },
   report: { type: 'string', description: 'Review report file' },
-  output: { type: 'string', alias: 'o', description: 'Output file' },
 };
 
-function defineCli(usage, names = [], { passthrough = false } = {}) {
+function defineCli(usage, names = []) {
   const options = Object.fromEntries(
     ['help', ...names].map((name) => {
       if (!Object.hasOwn(definitions, name))
@@ -72,7 +71,7 @@ function defineCli(usage, names = [], { passthrough = false } = {}) {
     .join(
       '\n',
     )}\n\nString options accept OPTION=value or OPTION value. Use = for values beginning with a dash.\nUse -- to end wrapper options. Short options are exact; they cannot be grouped.`;
-  return { options, aliases, help, passthrough };
+  return { options, aliases, help };
 }
 
 function cliError(cli, message) {
@@ -82,21 +81,18 @@ function cliError(cli, message) {
 function parseCli(argv, cli) {
   const normalized = [];
   const positionals = [];
-  const passthrough = [];
   const seen = new Set();
   for (let index = 0; index < argv.length; index++) {
     const token = argv[index];
     if (token === '--') {
-      if (cli.passthrough) passthrough.push(...argv.slice(index));
-      else positionals.push(...argv.slice(index + 1));
+      positionals.push(...argv.slice(index + 1));
       break;
     }
     const equals = token.indexOf('=');
     const spelling = equals < 0 ? token : token.slice(0, equals);
     const name = cli.aliases.get(spelling);
     if (!name) {
-      if (cli.passthrough) passthrough.push(token);
-      else if (token.startsWith('-') && token !== '-')
+      if (token.startsWith('-') && token !== '-')
         throw cliError(cli, `Unknown option ${spelling}`);
       else positionals.push(token);
       continue;
@@ -141,7 +137,7 @@ function parseCli(argv, cli) {
       throw cliError(cli, `--${name} requires a value`);
   }
   if (values.help) throw new CliHelp(cli.help);
-  return { options: { ...values }, positionals, passthrough };
+  return { options: { ...values }, positionals };
 }
 
 exports.CliError = CliError;

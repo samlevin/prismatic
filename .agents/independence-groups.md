@@ -25,6 +25,8 @@ When the triager returns groups, record them once the children exist by appendin
 <!-- /prism-independence-groups -->
 ```
 
+New records use the `gN:` form. Older records whose lines omit it, such as `- #101 #103`, still read: their lines number the groups g1, g2, and so on, in order.
+
 Leave out the section when the triager returns no groups. Group membership never goes in labels.
 
 ## Reading the record

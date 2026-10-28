@@ -581,7 +581,6 @@ function mockApi({
     }
     if (query.includes('projectItems(first: 20')) {
       state.queries.push(`issue-items-${variables.number}`);
-      assert.match(query, /includeArchived: false/);
       const id = { 1: 'item', 2: 'item-2' }[variables.number];
       // Issue 404 was deleted; any other unknown issue is outside the project.
       if (!id || !listed().includes(id))
@@ -593,9 +592,15 @@ function mockApi({
       // The same issue in another project is never read or written.
       const own = node(id);
       const elsewhere = { ...own, id: 'elsewhere', project: { id: 'x' } };
+      // An archived item is listed only to a read that includes archived items.
+      const hidden =
+        state.archived?.includes(id) &&
+        query.includes('includeArchived: false');
       return {
         repository: {
-          issue: { projectItems: connection([elsewhere, own]) },
+          issue: {
+            projectItems: connection(hidden ? [elsewhere] : [elsewhere, own]),
+          },
         },
       };
     }
@@ -863,6 +868,18 @@ test('an issue outside the project reads no item metadata and performs no writes
   );
   assert.deepEqual(state.readItems, []);
   assert.deepEqual(state.mutations, []);
+});
+
+test('an archived project item is excluded from a single-issue run', async () => {
+  const { api, state } = mockApi();
+  state.archived = ['item'];
+  assert.deepEqual(
+    await reconcile({ api, issueNumber: 1, dryRun: false, log: () => {} }),
+    { candidates: 0, updated: 0 },
+  );
+  assert.deepEqual(state.readItems, []);
+  assert.deepEqual(state.mutations, []);
+  assert.equal(state.status, 'Inbox');
 });
 
 test('issue filter is rechecked against fresh issue metadata before mutation', async () => {
@@ -1389,6 +1406,16 @@ test('epic label reconciliation for one issue reads only that issue', async () =
   });
   assert.deepEqual(plain.writes, []);
   assert.equal(plain.calls.length, 1);
+});
+
+test('epic label reconciliation skips an epic deleted after the listing', async () => {
+  const github = epicApi();
+  const api = async (query, variables) =>
+    variables?.id === 'E9' && /node\(id: \$id\)/.test(query)
+      ? { node: null }
+      : github.api(query, variables);
+  await reconcileEpicLabels({ api, dryRun: false, log: () => {} });
+  assert.deepEqual(github.writes, [{ id: 'E7', labels: ['L_bug', 'L_type'] }]);
 });
 
 test('the sweep filter excludes exactly the statuses eligible() never moves', () => {

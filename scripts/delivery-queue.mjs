@@ -54,10 +54,12 @@ export function claimRecord(comments) {
           url: comment.html_url,
           login: comment.user?.login,
         };
-    } else if (
-      /\b(?:claims?|claimed|claiming)\b/i.test(body) &&
-      !/\b(?:releases?|released|releasing)\b/i.test(body)
-    ) {
+      continue;
+    }
+    // Legacy comments count only by their opening words, so prose that
+    // mentions a claim never creates or releases one.
+    const first = body.trimStart().split('\n', 1)[0];
+    if (/^(?:Claimed|Claiming|Re-claimed|Re-claiming)\b/.test(first))
       active = {
         agent: /Agent\s+`([^`]+)`/i.exec(body)?.[1] ?? comment.user?.login,
         branch: /`(agent\/[^`\s]+)`/.exec(body)?.[1],
@@ -67,10 +69,14 @@ export function claimRecord(comments) {
         url: comment.html_url,
         login: comment.user?.login,
       };
-    } else if (/\b(?:releases?|released|releasing)\b.*\bclaim\b/i.test(body)) {
+    else if (
+      /^(?:Releasing|Released|Claim released|Pausing this claim)\b/.test(
+        first,
+      ) &&
       // Legacy releases belong to the GitHub account that wrote the claim.
-      if (active && comment.user?.login === active.login) active = null;
-    }
+      comment.user?.login === active?.login
+    )
+      active = null;
   }
   return active;
 }
@@ -171,6 +177,7 @@ export function orderLeaves(leaves, nodes) {
 }
 
 export function approvalPair(pr) {
+  if (!TRUSTED.has(pr?.author_association)) return null;
   const match =
     /Pre-PR review: APPROVE(?:; base=([0-9a-f]{40}); head=([0-9a-f]{40})| for [`*_]*([0-9a-f]{40})\.\.([0-9a-f]{40}))/.exec(
       pr?.body ?? '',
@@ -248,11 +255,13 @@ function parallelMetadata(nodes, rows, merged) {
     if (matches.length !== 1) continue;
     const groups = new Map();
     let valid = true;
-    for (const line of matches[0][1]
+    for (const [index, line] of matches[0][1]
       .split('\n')
       .map((line) => line.trim())
-      .filter(Boolean)) {
-      const match = /^- (g\d+):((?: #\d+)+)$/.exec(line);
+      .filter(Boolean)
+      .entries()) {
+      // Older records omit `gN:`; their lines number the groups in order.
+      const match = /^-(?: (g\d+):)?((?: #\d+)+)$/.exec(line);
       if (!match) {
         valid = false;
         break;
@@ -266,7 +275,7 @@ function parallelMetadata(nodes, rows, merged) {
           !byNumber.has(n)
         )
           valid = false;
-        groups.set(n, `${container}/${match[1]}`);
+        groups.set(n, `${container}/${match[1] ?? `g${index + 1}`}`);
       }
     }
     const entries = [...groups];
@@ -403,7 +412,11 @@ export function deliveryQueue(
     .list(`${repo}/branches`)
     .filter((branch) => branch.name.startsWith('agent/'));
   const closing = (n) =>
-    prs.filter((pr) => closingIssues(pr.body, repository).includes(n));
+    prs.filter(
+      (pr) =>
+        TRUSTED.has(pr.author_association) &&
+        closingIssues(pr.body, repository).includes(n),
+    );
   const merged = (n) => closing(n).find((pr) => pr.merged_at);
   const open = (n) => closing(n).find((pr) => pr.state === 'open');
   // Cache eligibility only within this ledger run.

@@ -4,6 +4,7 @@ import { failureMessage } from './github-api.mjs';
 import {
   configuration,
   discover,
+  EMPTY,
   MissingIssueError,
   missingIssue,
   paginate,
@@ -35,7 +36,7 @@ async function connection(api, id, field, selection) {
     } } }`,
       { id, cursor },
     );
-    return data.node?.[field];
+    return data.node?.[field] ?? EMPTY;
   });
 }
 

@@ -29,7 +29,6 @@ test('exact aliases, equals forms, and values preserve their meaning', () => {
   assert.deepEqual(parseCli(['-a=--layer=x', '--', '-l', '2', '--help'], cli), {
     options: { actor: '--layer=x' },
     positionals: ['-l', '2', '--help'],
-    passthrough: [],
   });
   assert.equal(parseCli(['-a', '-sam'], cli).options.actor, '-sam');
   assert.equal(
