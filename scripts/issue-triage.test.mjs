@@ -1249,6 +1249,14 @@ test('invalid programmatic issue filters fail before any API access', async () =
   }
 });
 
+test('label descriptions do not name OpenTofu or Terraform', () => {
+  const { labels } = JSON.parse(
+    readFileSync(new URL('../.github/labels.json', import.meta.url), 'utf8'),
+  );
+  for (const label of labels)
+    assert.doesNotMatch(label.description, /OpenTofu|Terraform/, label.name);
+});
+
 test('catalog has unique names and supported severities', () => {
   const catalog = JSON.parse(
     readFileSync(new URL('../.github/labels.json', import.meta.url), 'utf8'),

@@ -5,7 +5,7 @@ argument-hint: "[what to file] [triager model <name>] [triager effort <level>]"
 capability: issue-creation
 codex:
   display_name: "{{label}}: Create GitHub issue"
-  short_description: "File typed {{label}} issues with independent triage"
+  short_description: "File typed {{label}} issues, triaged inline or independently"
   default_prompt: "Use ${{prefix}}create-github-issue to file this as one {{label}} issue."
 ---
 # {{label}} create GitHub issues

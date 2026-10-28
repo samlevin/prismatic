@@ -201,7 +201,7 @@ export function resolve(
 // Recorded effort assessments contain evidence, never a score derived from labels.
 export function implementationEffort(
   policy,
-  { override, decision, transitions = 0, blocker } = {},
+  { decision, transitions = 0 } = {},
 ) {
   const rubric = policy.implementationEffort;
   const ordinary = {
@@ -210,14 +210,6 @@ export function implementationEffort(
     evidence: 'ticket/spec',
     reason: 'The written plan resolves the design.',
   };
-  if (blocker) return { ...ordinary, blocker };
-  if (override)
-    return {
-      effort: override,
-      rule: 'user override',
-      evidence: 'explicit user constraint',
-      reason: 'The request selects this effort.',
-    };
   if (!decision) return ordinary;
   if (decision.rule === 'user override') {
     if (

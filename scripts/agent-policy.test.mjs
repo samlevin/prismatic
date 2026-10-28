@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   binding,
   check,
@@ -1384,6 +1385,7 @@ test('a merged or closed pull request gets no review and says why', () => {
   for (const [options, reason] of [
     [{ state: 'closed', merged: true }, 'pull request is merged'],
     [{ state: 'closed' }, 'pull request is closed'],
+    [{ state: 'locked' }, 'pull request state is locked, not open'],
   ])
     for (const verdict of REVIEW_VERDICTS) {
       const github = mockGitHub(options);
@@ -1502,6 +1504,29 @@ test('the publish-review command reports every failure as not posted', () => {
     /^Review not posted: cannot load \.agents\/policy\.json: /,
   );
   assert.equal(noPolicy.stdout, '');
+  const unreadable = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL('./agent-policy.mjs', import.meta.url)),
+      'publish-review',
+      '--pr',
+      '7',
+      '--base',
+      BASE,
+      '--head',
+      HEAD,
+      '--report',
+      join(base, 'missing.md'),
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(unreadable.status, 1);
+  assert.match(
+    unreadable.stderr,
+    new RegExp(
+      `^Review not posted: cannot read ${join(base, 'missing.md').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: `,
+    ),
+  );
   const noReport = publishCommand('--pr', '7');
   assert.equal(noReport.status, 1);
   assert.match(
@@ -1982,21 +2007,21 @@ test('specified mechanisms and routine corrections fail the high criteria', () =
   );
 });
 
-test('explicit medium prevents escalation and missing inputs remain blockers', () => {
-  const selected = implementationEffort(policy, {
-    override: 'medium',
-    decision: assessment('H2-coupled-design'),
-  });
+test('a recorded user override sets the effort and needs its evidence', () => {
+  const override = {
+    effort: 'medium',
+    rule: 'user override',
+    evidence: 'explicit user constraint',
+    reason: 'The request selects this effort.',
+  };
+  const selected = implementationEffort(policy, { decision: override });
   assert.equal(selected.effort, 'medium');
   assert.equal(selected.rule, 'user override');
-  for (const blocker of policy.implementationEffort.blockers)
-    assert.equal(
-      implementationEffort(policy, {
-        blocker,
-        decision: assessment('H1-boundary'),
-      }).blocker,
-      blocker,
-    );
+  assert.throws(
+    () =>
+      implementationEffort(policy, { decision: { ...override, reason: '' } }),
+    /needs effort, evidence, and reason/,
+  );
 });
 
 test('later escalation applies high once', () => {
