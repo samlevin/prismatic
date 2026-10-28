@@ -20,19 +20,24 @@ const toolingDirectories = [
   'evals/',
 ];
 
+// Root Markdown files that `agenticool-agents sync` writes and
+// `agenticool-agents check` verifies.
+const syncedFiles = ['AGENTS.md', 'ISSUE_TRIAGE.md'];
+
 // Returns 'documentation' for a path that only the format check and the
 // Markdown lint read, and 'full' for everything else, including a path this
 // file does not know.
 export function classify(path) {
   if (toolingDirectories.some((directory) => path.startsWith(directory)))
     return 'full';
+  if (syncedFiles.includes(path)) return 'full';
   if (path === 'LICENSE' || path.endsWith('.md')) return 'documentation';
   return 'full';
 }
 
 // `full` selects lint of every file, typecheck, the agent definition check,
-// every script test, and the coverage-gated unit tests on top of the format
-// check, which always runs. Otherwise the Markdown lint joins the format check. An empty list selects every check
+// the workflow lint, every script test, and the coverage-gated unit tests on
+// top of the format check, which always runs. Otherwise the Markdown lint joins the format check. An empty list selects every check
 // because it means the comparison found nothing to classify.
 export function selectScopes(paths) {
   return {

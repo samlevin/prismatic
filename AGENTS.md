@@ -13,7 +13,7 @@ While editing, run only the focused tests for what you touched. Before the first
 | Changed | Run |
 | --- | --- |
 | Docs only | `npm run lint:md` |
-| `src/`, `apps/`, `tooling/`, `scripts/`, `.github/`, or root configuration | `npm run check` (format, lint with import boundaries, typecheck, generated and synced agent files, workflow lint, every script test, and the unit tests with the 90% coverage gate) |
+| `src/`, `apps/`, `tooling/`, `scripts/`, `.github/`, `AGENTS.md`, `ISSUE_TRIAGE.md`, or root configuration | `npm run check` (format, lint with import boundaries, typecheck, generated and synced agent files, workflow lint, every script test, and the unit tests with the 90% coverage gate) |
 | `Dockerfile`, `.dockerignore`, `docker/`, or `apps/action/` | `npm run check`, then `npm run test:container` (needs Docker) |
 | `.agents/`, `.claude/`, `.codex/`, or the `@agenticool/*` versions | `npm run agents:generate` and `npx agenticool-agents sync` after changing the policy or a version, then `npm run check` |
 

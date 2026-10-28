@@ -20,7 +20,7 @@ test('Markdown and LICENSE changes select the format check and the Markdown lint
   for (const paths of [
     ['README.md'],
     ['LICENSE'],
-    ['CONTRIBUTING.md', 'AGENTS.md', 'CLAUDE.md', 'LICENSE'],
+    ['CONTRIBUTING.md', 'CLAUDE.md', 'LICENSE'],
     ['docs/guide/setup.md'],
     ['packages/api/README.md'],
   ]) {
@@ -39,6 +39,8 @@ test('tooling, manifest, and unknown paths select every check', () => {
     'scripts/README.md',
     '.agents/policy.json',
     '.agents/evidence.md',
+    'AGENTS.md',
+    'ISSUE_TRIAGE.md',
     '.agents/local/roles/reviewer.md',
     '.claude/agents/prism-implementer.md',
     '.claude/settings.json',
