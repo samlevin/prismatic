@@ -675,7 +675,7 @@ test('advanced live PR base keeps approval when REST verifies the recorded base 
   const row = rows.find((row) => row.issue === 1);
   assert.equal(row.state, 'ready');
   assert.equal(row.prerequisites[0].base, base);
-  assert.ok(calls.includes(`${repo}/compare/${base}...${head}`));
+  assert.ok(calls.includes(`${repo}/compare/${base}...${head}?per_page=1`));
   assert.equal(
     queue({
       deps: { 1: [99] },

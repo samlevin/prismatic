@@ -1462,6 +1462,47 @@ function notFound(data, path, extra = []) {
   );
 }
 
+test('a write to a target deleted mid-run warns instead of failing the run', async () => {
+  const mutation =
+    'mutation($id: ID!) { closeIssue(input: { issueId: $id }) { issue { id } } }';
+  assert.throws(
+    () =>
+      trackerGraphql(
+        mutation,
+        {},
+        notFound({ closeIssue: null }, ['closeIssue']),
+      ),
+    {
+      name: 'MissingIssueError',
+      message: /deleted or transferred during the run/,
+    },
+  );
+  // A query with the same error shape is not a write and still fails.
+  assert.throws(
+    () =>
+      trackerGraphql(
+        'query { viewer { login } }',
+        {},
+        notFound({ viewer: null }, ['viewer']),
+      ),
+    { name: 'GitHubError', kind: 'not-found' },
+  );
+  const warnings = [];
+  const status = await runTracker({
+    sweep: true,
+    budget: () => null,
+    warn: (message) => warnings.push(message),
+    task: () =>
+      trackerGraphql(
+        mutation,
+        {},
+        notFound({ closeIssue: null }, ['closeIssue']),
+      ),
+  });
+  assert.equal(status, 0);
+  assert.match(warnings.join('\n'), /deleted or transferred during the run/);
+});
+
 test('the tracker client reads a missing issue as null and fails on every other error', () => {
   const query = 'query { repository { issue(number: 5) { id } } }';
   for (const [data, path] of [

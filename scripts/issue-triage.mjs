@@ -80,9 +80,36 @@ function missingIssueOnly(result) {
   });
 }
 
-// The GraphQL client of the tracker scripts: a missing issue reads as null.
+// A write to an issue or project item deleted after its re-read fails with
+// NOT_FOUND at the top-level mutation field, whose value is null.
+function missingWriteTarget(result) {
+  return result.errors.every(
+    (error) =>
+      error?.type === 'NOT_FOUND' &&
+      Array.isArray(error.path) &&
+      error.path.length === 1 &&
+      result.data?.[error.path[0]] === null,
+  );
+}
+
+// The GraphQL client of the tracker scripts: a missing issue reads as null,
+// and a write to a target deleted mid-run raises MissingIssueError, which
+// runTracker reports as a warning; the next sweep reconciles the rest.
 export function trackerGraphql(query, variables, run = execFileSync) {
-  return ghGraphql(query, variables, { run, allowErrors: missingIssueOnly });
+  let missingTarget = false;
+  const data = ghGraphql(query, variables, {
+    run,
+    allowErrors: (result) =>
+      missingIssueOnly(result) ||
+      (missingTarget =
+        /^\s*mutation\b/.test(query) && missingWriteTarget(result)),
+  });
+  if (missingTarget)
+    throw new MissingIssueError(
+      undefined,
+      'A write target was deleted or transferred during the run; skipping the rest of this run',
+    );
+  return data;
 }
 
 export function missingIssue(number) {
@@ -92,8 +119,8 @@ export function missingIssue(number) {
 // A single-issue run whose issue was deleted or transferred out of the
 // repository after the run was queued warns and succeeds.
 export class MissingIssueError extends Error {
-  constructor(number) {
-    super(missingIssue(number));
+  constructor(number, message = missingIssue(number)) {
+    super(message);
     this.name = 'MissingIssueError';
   }
 }

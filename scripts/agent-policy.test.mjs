@@ -76,6 +76,11 @@ test('missing and unknown commands show an actionable error and combined help', 
     assert.equal(result.stdout, '');
     assert.equal(result.stderr, `${message}\n\n${help.stdout}`);
   }
+  // Any other usage error exits 1, with the command's usage.
+  const option = run('resolve', '--bogus');
+  assert.equal(option.status, 1);
+  assert.equal(option.stdout, '');
+  assert.match(option.stderr, /^Unknown option --bogus\n\nUsage: /);
 });
 
 test('the binding resolves every placeholder and feature section', () => {

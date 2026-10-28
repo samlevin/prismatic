@@ -654,8 +654,6 @@ export function publishReview(
     author,
     identityError,
   });
-  if (!['COMMENT', 'REQUEST_CHANGES'].includes(event))
-    throw new ReviewNotPosted(`refusing to submit a ${event} review`);
   let posted;
   try {
     posted = ghJson(`repos/${repository}/pulls/${pr}/reviews`, run, {

@@ -433,8 +433,10 @@ export function deliveryQueue(
           pr,
           api.list(`${repo}/commits/${pr.head.sha}/check-runs`, 'check_runs'),
           api.get(`${repo}/commits/${pr.head.sha}/status`).statuses ?? [],
-          api.get(`${repo}/compare/${approval.base}...${pr.head.sha}`)
-            .merge_base_commit?.sha,
+          // One page is enough: only the merge base is read, never the file patches.
+          api.get(
+            `${repo}/compare/${approval.base}...${pr.head.sha}?per_page=1`,
+          ).merge_base_commit?.sha,
         ),
       );
     return checks.get(identity);
