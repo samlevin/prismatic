@@ -29,6 +29,7 @@ jobs:
     uses: agenticool/agenticool/.github/workflows/_tracker-project-membership.yml@tracker-v0.1.0
     with:
       token_env: 'PRISMATIC_PROJECT_TOKEN'
+      tracker_version: '0.1.0'
       issue: ${{ github.event.issue.number }}
     secrets:
       project_token: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
@@ -39,6 +40,7 @@ jobs:
     uses: agenticool/agenticool/.github/workflows/_tracker-project-membership.yml@tracker-v0.1.0
     with:
       token_env: 'PRISMATIC_PROJECT_TOKEN'
+      tracker_version: '0.1.0'
       dry_run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
     secrets:
       project_token: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}

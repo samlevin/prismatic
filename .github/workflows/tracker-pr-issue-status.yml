@@ -21,6 +21,7 @@ jobs:
     uses: agenticool/agenticool/.github/workflows/_tracker-pr-issue-status.yml@tracker-v0.1.0
     with:
       token_env: 'PRISMATIC_PROJECT_TOKEN'
+      tracker_version: '0.1.0'
       pull_request: ${{ github.event.pull_request.number }}
       action: ${{ github.event.action }}
     secrets:

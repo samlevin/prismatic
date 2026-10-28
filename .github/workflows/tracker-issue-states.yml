@@ -45,6 +45,7 @@ jobs:
     uses: agenticool/agenticool/.github/workflows/_tracker-issue-states.yml@tracker-v0.1.0
     with:
       token_env: 'PRISMATIC_PROJECT_TOKEN'
+      tracker_version: '0.1.0'
       issue: ${{ github.event.issue.number || 0 }}
       dry_run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
     secrets:
