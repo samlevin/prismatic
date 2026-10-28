@@ -13,7 +13,7 @@ While editing, run only the focused tests for what you touched. Before the first
 | Changed | Run |
 | --- | --- |
 | Docs only | `npm run lint:md` |
-| `src/`, `apps/`, `tooling/`, `scripts/`, `.github/`, `AGENTS.md`, `ISSUE_TRIAGE.md`, or root configuration | `npm run check` (format, lint with import boundaries, typecheck, generated and synced agent files, workflow lint, every script test, and the unit tests with the 90% coverage gate) |
+| `src/`, `apps/`, `tooling/`, `scripts/`, `.github/`, `AGENTS.md`, `ISSUE_TRIAGE.md`, or root configuration | `npm run check` (format, lint with import boundaries, typecheck, generated and synced agent files, every script test, and the unit tests with the 90% coverage gate) |
 | `Dockerfile`, `.dockerignore`, `docker/`, or `apps/action/` | `npm run check`, then `npm run test:container` (needs Docker) |
 | `.agents/`, `.claude/`, `.codex/`, or the `@agenticool/*` versions | `npm run agents:generate` and `npx agenticool-agents sync` after changing the policy or a version, then `npm run check` |
 
@@ -66,7 +66,7 @@ Version-controlled agents and skills under `.claude/agents/` and `.claude/skills
 
 - Public repo: never commit secrets, account IDs, personal addresses, domains, state, plans, or populated env files.
 - Run `npx agenticool-tracker` with `--apply`, and `npx agenticool-spec confirm`, `file`, or `resume`, only as the `prism-create-github-issue` and `prism-spec-to-issues` skills direct. The tracker defaults to a dry run.
-- `workflowLint.requiredChecks` in `.agents/policy.json` lists the jobs the main ruleset requires. Renaming one needs a ruleset change at merge.
+- GitHub Actions file, workflow, job, and step names follow the naming convention in [Automation](CONTRIBUTING.md#automation), which `scripts/workflow-names.test.mjs` enforces. Read that section before adding or renaming a workflow. Renaming a required check needs a ruleset change at merge.
 
 <!-- agenticool-agents sync: begin binding -->
 
@@ -98,15 +98,3 @@ For issue work, never type a branch name by hand. Print it with `npx agenticool-
 <!-- agenticool-agents sync: end branches -->
 
 [Pull requests](CONTRIBUTING.md#pull-requests) gives people the branch name rules. Change it when this section changes.
-
-<!-- agenticool-agents sync: begin workflow-names -->
-
-## GitHub Actions workflow names
-
-- Workflow files are named `<area>-<purpose>.yml` in lowercase kebab-case, and each workflow's `name` starts with the area's prefix and `: `, as in `tracker-issue-states.yml`, named `Tracker: reconcile issue states`. `workflowLint.areas` in `.agents/policy.json` maps each area to its prefix; add an area there before you use it.
-- A reusable workflow, one that runs on `workflow_call`, has a file name that starts with `_` and a `name` that ends in ` (reusable)`, as in `_tracker-issue-states.yml`, named `Tracker: reconcile issue states (reusable)`. A workflow that runs only on `workflow_call` must follow this rule; no workflow without `workflow_call` starts with `_` or ends its name with ` (reusable)`.
-- Job IDs are kebab-case. Every job and every step has a name that says what it does and starts with a capital letter; a job name may start with an expression instead.
-- A workflow that `pull_request`, `push`, or `workflow_call` does not start sets a `run-name` with an expression that names its subject. A `workflow_run` trigger names an existing workflow by its `name`.
-- Vendor workflows listed in `workflowLint.exclude` keep the vendor's names. `npx agenticool-workflow-lint` checks these rules.
-
-<!-- agenticool-agents sync: end workflow-names -->

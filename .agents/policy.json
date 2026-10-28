@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@agenticool/policy/src/policy.schema.json",
-  "description": "Repository binding, model and effort policy, and workflow lint config. agenticool-agents generates and syncs the agent files from it, and agenticool-workflow-lint reads workflowLint.",
+  "description": "Repository binding and model and effort policy for the agent workflows. agenticool-agents generates and syncs the agent files from it.",
   "binding": {
     "namespace": "prism",
     "label": "Prismatic",
@@ -170,32 +170,5 @@
         ]
       }
     }
-  },
-  "workflowLint": {
-    "areas": {
-      "ci": "CI",
-      "tracker": "Tracker"
-    },
-    "pullRequestTarget": [
-      "tracker-pr-issue-status.yml",
-      "tracker-pr-metadata.yml"
-    ],
-    "requiredChecks": [
-      {
-        "file": "ci-checks.yml",
-        "job": "require-scoped-checks",
-        "name": "Require every check selected for the changed files"
-      },
-      {
-        "file": "ci-pr-title.yml",
-        "job": "check-pr-title",
-        "name": "Check PR title"
-      },
-      {
-        "file": "ci-secret-scan.yml",
-        "job": "scan-secrets",
-        "name": "Scan secrets"
-      }
-    ]
   }
 }

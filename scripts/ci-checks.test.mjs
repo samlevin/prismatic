@@ -73,7 +73,7 @@ test('tooling, manifest, and unknown paths select every check', () => {
   assert.deepEqual(selectScopes([]), { full: true });
 });
 
-test('the full selection runs format, lint, typecheck, agent definitions, workflow lint, every script test, and the coverage-gated unit tests', () => {
+test('the full selection runs format, lint, typecheck, agent definitions, every script test, and the coverage-gated unit tests', () => {
   const tests = readdirSync(new URL('.', import.meta.url))
     .filter((name) => name.endsWith('.test.mjs'))
     .map((name) => `scripts/${name}`)
@@ -85,7 +85,6 @@ test('the full selection runs format, lint, typecheck, agent definitions, workfl
     ['npm', ['run', 'lint']],
     ['npm', ['run', 'typecheck']],
     ['npm', ['run', 'agents:check']],
-    ['npm', ['run', 'workflows:lint']],
     ['node', ['--test', ...tests]],
     ['npm', ['run', 'test:unit']],
   ]);
@@ -98,7 +97,6 @@ test('the full selection runs format, lint, typecheck, agent definitions, workfl
     'lint',
     'lint:md',
     'agents:check',
-    'workflows:lint',
     'typecheck',
     'test:unit',
   ])

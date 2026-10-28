@@ -36,8 +36,8 @@ export function classify(path) {
 }
 
 // `full` selects lint of every file, typecheck, the agent definition check,
-// the workflow lint, every script test, and the coverage-gated unit tests on
-// top of the format check, which always runs. Otherwise the Markdown lint joins the format check. An empty list selects every check
+// every script test, and the coverage-gated unit tests on top of the format
+// check, which always runs. Otherwise the Markdown lint joins the format check. An empty list selects every check
 // because it means the comparison found nothing to classify.
 export function selectScopes(paths) {
   return {

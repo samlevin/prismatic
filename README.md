@@ -1,6 +1,6 @@
 # Prismatic
 
-Prismatic is a pull request review agent, built as one npm package. Its modules under `src/` are empty so far. This repository also holds the tooling that delivers it: GitHub issue forms and labels, tracker workflows that keep the [Prismatic delivery](https://github.com/users/samlevin/projects/2) board in sync, CI checks, and delivery agents for Claude Code and Codex. The tracker, the agents, and the workflow lint come from the `@agenticool/*` packages.
+Prismatic is a pull request review agent, built as one npm package. Its modules under `src/` are empty so far. This repository also holds the tooling that delivers it: GitHub issue forms and labels, tracker workflows that keep the [Prismatic delivery](https://github.com/users/samlevin/projects/2) board in sync, CI checks, and delivery agents for Claude Code and Codex. The tracker and the agents come from the `@agenticool/*` packages.
 
 ## Layout
 
@@ -23,7 +23,7 @@ Install the Node version pinned in `.tool-versions`: with [asdf](https://asdf-vm
 
 ## Checks
 
-`npm run check` runs the format check, lint of JavaScript, TypeScript, and Markdown, the strict TypeScript check, the check that generated agent definitions and synced files are current, the workflow lint, every script test, and the Vitest unit tests. `npm test` fails when unit test coverage drops below 90% for statements, branches, functions, or lines; `tooling/CoverageGate.ts` reads the summary Vitest writes to `coverage/`. `npm run build` compiles `src/` and `apps/` to `dist/`. `npm run test:container` builds the Action image and runs the container smoke test in `tests/e2e/` against it. It needs Docker, and the build needs the network. `npm run format` and `npm run lint:fix` fix what they can in code. Fix Markdown lint problems by hand.
+`npm run check` runs the format check, lint of JavaScript, TypeScript, and Markdown, the strict TypeScript check, the check that generated agent definitions and synced files are current, every script test, and the Vitest unit tests. `npm test` fails when unit test coverage drops below 90% for statements, branches, functions, or lines; `tooling/CoverageGate.ts` reads the summary Vitest writes to `coverage/`. `npm run build` compiles `src/` and `apps/` to `dist/`. `npm run test:container` builds the Action image and runs the container smoke test in `tests/e2e/` against it. It needs Docker, and the build needs the network. `npm run format` and `npm run lint:fix` fix what they can in code. Fix Markdown lint problems by hand.
 
 ## Contributing
 

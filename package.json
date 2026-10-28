@@ -10,7 +10,6 @@
   "scripts": {
     "agents:generate": "agenticool-agents generate",
     "agents:check": "agenticool-agents check",
-    "workflows:lint": "agenticool-workflow-lint",
     "build": "tsc -p tsconfig.build.json",
     "format": "prettier . --write --ignore-unknown",
     "format:check": "prettier . --check --ignore-unknown",
@@ -22,7 +21,7 @@
     "test:scripts": "node --test scripts/*.test.mjs",
     "test:unit": "vitest run --coverage && node tooling/CoverageGate.ts coverage/coverage-summary.json",
     "test:container": "vitest run --config tests/e2e/vitest.config.ts",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run agents:check && npm run workflows:lint && npm test"
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run agents:check && npm test"
   },
   "devDependencies": {
     "@agenticool/agents": "0.1.0",
@@ -31,7 +30,6 @@
     "@agenticool/spec-parser": "0.1.0",
     "@agenticool/spec-to-issues": "0.1.0",
     "@agenticool/tracker": "0.1.0",
-    "@agenticool/workflow-lint": "0.1.0",
     "@eslint/js": "^10.0.1",
     "@eslint/markdown": "^8.0.3",
     "@types/estree": "1.0.9",

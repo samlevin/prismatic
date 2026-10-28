@@ -10,8 +10,13 @@ on:
       - synchronize
 
 jobs:
-  # The main ruleset requires this job's check, named
-  # "Check PR title / Check PR title follows Conventional Commits".
+  # The main ruleset requires this job's name.
   check-pr-title:
-    name: Check PR title
-    uses: agenticool/agenticool/.github/workflows/ci-pr-title.yml@workflow-lint-v0.1.0
+    name: Check PR title follows Conventional Commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check PR title
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
