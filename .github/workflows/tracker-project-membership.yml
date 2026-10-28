@@ -30,7 +30,8 @@ jobs:
     with:
       token_env: 'PRISMATIC_PROJECT_TOKEN'
       issue: ${{ github.event.issue.number }}
-    secrets: inherit
+    secrets:
+      project_token: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
 
   add-missing-issues:
     name: Add missing open issues to Prismatic delivery
@@ -39,4 +40,5 @@ jobs:
     with:
       token_env: 'PRISMATIC_PROJECT_TOKEN'
       dry_run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-    secrets: inherit
+    secrets:
+      project_token: ${{ secrets.PRISMATIC_PROJECT_TOKEN }}
