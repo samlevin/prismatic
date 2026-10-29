@@ -1,0 +1,27 @@
+name: 'Board: move closing issues to In review'
+run-name: 'Move issues closed by PR #${{ github.event.pull_request.number }} to In review'
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-issue-status-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  mark-issues-in-review:
+    name: Move closing issues to In review
+    # The command reads closing issues from the PR body and never the title,
+    # so an edit that leaves the body unchanged starts no job.
+    if: github.repository == 'samlevin/prismatic' && !github.event.pull_request.draft && (github.event.action != 'edited' || github.event.changes.body)
+    uses: agenticool/agenticool/.github/workflows/_board-pr-issue-status.yml@board-v0.1.0
+    with:
+      board_version: '0.1.0'
+      pull_request: ${{ github.event.pull_request.number }}
+      action: ${{ github.event.action }}
+    secrets:
+      project_token: ${{ secrets.AGENTICOOL_PROJECT_TOKEN }}

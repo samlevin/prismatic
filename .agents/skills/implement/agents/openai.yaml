@@ -1,0 +1,7 @@
+# Generated from @agenticool/agents/sources/workflows/implement.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
+interface:
+  display_name: 'Prismatic: Implement'
+  short_description: Dispatch an isolated issue delivery or PR rework
+  default_prompt: Use $implement to deliver this Prismatic issue.
+policy:
+  allow_implicit_invocation: true

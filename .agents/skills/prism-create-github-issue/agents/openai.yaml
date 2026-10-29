@@ -1,7 +1,0 @@
-# Generated from @agenticool/agents/sources/workflows/create-github-issue.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
-interface:
-  display_name: 'Prismatic: Create GitHub issue'
-  short_description: File typed Prismatic issues, triaged inline or independently
-  default_prompt: Use $prism-create-github-issue to file this as one Prismatic issue.
-policy:
-  allow_implicit_invocation: true

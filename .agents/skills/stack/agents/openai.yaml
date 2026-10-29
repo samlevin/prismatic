@@ -1,0 +1,7 @@
+# Generated from @agenticool/agents/sources/workflows/stack.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
+interface:
+  display_name: 'Prismatic: Stack'
+  short_description: Build, link, rebase, and sync stacked Prismatic branches safely
+  default_prompt: Use $stack to manage the stacked branches for this Prismatic delivery.
+policy:
+  allow_implicit_invocation: true
