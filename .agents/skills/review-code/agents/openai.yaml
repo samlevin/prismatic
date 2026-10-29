@@ -1,7 +1,0 @@
-# Generated from @agenticool/agents/sources/workflows/review-code.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
-interface:
-  display_name: 'Prismatic: Review code'
-  short_description: Independent review of one Prismatic pull request or branch, posted to the PR
-  default_prompt: Use $review-code to review this Prismatic pull request or branch.
-policy:
-  allow_implicit_invocation: true

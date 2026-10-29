@@ -1,0 +1,7 @@
+# Generated from @agenticool/agents/sources/workflows/ac-spec-to-issues.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
+interface:
+  display_name: 'Prismatic: Specification to issues'
+  short_description: File a specification's delivery plan as a root container, epics, and leaves
+  default_prompt: Use $ac-spec-to-issues to file this specification's delivery plan as Prismatic issues.
+policy:
+  allow_implicit_invocation: true

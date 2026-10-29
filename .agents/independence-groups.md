@@ -1,8 +1,8 @@
 # Independence groups
 
-`issue-triager` reads this file to form groups, the filing skills read it only when the triager returned groups, and `implement` reads it to validate a container's record.
+`ac-issue-triager` reads this file to form groups, the filing skills read it only when the triager returned groups, and `ac-implement` reads it to validate a container's record.
 
-Only `issue-triager` forms independence groups, for a new container or epic with two or more leaf children, and for a whole specification delivery plan when `spec-to-issues` asks for plan-wide groups. Two leaves are independent when all of these hold:
+Only `ac-issue-triager` forms independence groups, for a new container or epic with two or more leaf children, and for a whole specification delivery plan when `ac-spec-to-issues` asks for plan-wide groups. Two leaves are independent when all of these hold:
 
 - No chain of blocked-by edges links them in either direction, directly or through another leaf.
 - They share no blocker that is still open, because both would stack on its unmerged PR.
@@ -31,10 +31,10 @@ Leave out the section when the triager returns no groups. Group membership never
 
 ### Plan-wide record
 
-`spec-to-issues` asks the triager to group every leaf of the plan at once, across phase epics, and appends that record, in the same format, to the plan's root container body. Its groups may hold leaves of different epics, including layers of a stack container. The epics then carry no record of their own.
+`ac-spec-to-issues` asks the triager to group every leaf of the plan at once, across phase epics, and appends that record, in the same format, to the plan's root container body. Its groups may hold leaves of different epics, including layers of a stack container. The epics then carry no record of their own.
 
 ## Reading the record
 
-`implement` reads only the lines between the markers, and only for the container that holds them. A record may name any leaf in that container's subtree: a direct leaf child, or a leaf under one of its epics or nested containers. It ignores the whole record, and treats the container as having none, when the section is malformed, names an issue outside that container's subtree or one that is not a leaf, lists an issue twice, or when leaves in different groups are now linked by a chain of blocked-by edges or share a blocker that is still open. Each record is read on its own, so an ignored root record leaves an epic's valid record in force, and the reverse.
+`ac-implement` reads only the lines between the markers, and only for the container that holds them. A record may name any leaf in that container's subtree: a direct leaf child, or a leaf under one of its epics or nested containers. It ignores the whole record, and treats the container as having none, when the section is malformed, names an issue outside that container's subtree or one that is not a leaf, lists an issue twice, or when leaves in different groups are now linked by a chain of blocked-by edges or share a blocker that is still open. Each record is read on its own, so an ignored root record leaves an epic's valid record in force, and the reverse.
 
 A leaf may sit in groups of more than one valid record, such as its epic's and the root's. Two leaves are in different groups when a valid record puts them in different groups and no valid record puts them in the same group. A valid record makes leaves eligible for the queue's parallel exception; delivery stays sequential unless a person explicitly asks for parallel delivery. For leaves of different phase epics, that request names the plan's root container.

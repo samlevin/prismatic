@@ -36,7 +36,7 @@ An agent sets only In progress, when it claims an issue before coding. It never 
 
 ## Dependencies
 
-When one issue has to wait on another, mark it with GitHub's blocked-by relationship on the issue that waits. Leaves that share files or contracts, or where one uses the other's output, get a blocked-by edge even when either order works, and edges never form a cycle. A blocked issue waits for its blocker to merge, unless its branch stacks on the blocker's open, ready-for-review PR, as [leaf delivery](.agents/skills/implement/references/delivery.md) describes.
+When one issue has to wait on another, mark it with GitHub's blocked-by relationship on the issue that waits. Leaves that share files or contracts, or where one uses the other's output, get a blocked-by edge even when either order works, and edges never form a cycle. A blocked issue waits for its blocker to merge, unless its branch stacks on the blocker's open, ready-for-review PR, as [leaf delivery](.agents/skills/ac-implement/references/delivery.md) describes.
 
 ## Labels
 

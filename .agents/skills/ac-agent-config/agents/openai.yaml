@@ -1,0 +1,7 @@
+# Generated from @agenticool/agents/sources/workflows/ac-agent-config.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
+interface:
+  display_name: 'Prismatic: Maintain agents'
+  short_description: Edit the agent policy or local sources, regenerate, verify, stage
+  default_prompt: Use $ac-agent-config to apply this change to the repository agent workflows.
+policy:
+  allow_implicit_invocation: true
