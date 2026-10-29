@@ -1,0 +1,7 @@
+# Generated from @agenticool/agents/sources/workflows/ac-plain-language.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
+interface:
+  display_name: 'Prismatic: Plain language'
+  short_description: Style rules for PR bodies, issue bodies, comments, and docs
+  default_prompt: Use $ac-plain-language before writing this text for other people.
+policy:
+  allow_implicit_invocation: true

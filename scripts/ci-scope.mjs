@@ -20,12 +20,17 @@ const toolingDirectories = [
   'evals/',
 ];
 
+// Root Markdown files that `agenticool-agents sync` writes and
+// `agenticool-agents check` verifies.
+const syncedFiles = ['AGENTS.md', 'ISSUE_TRIAGE.md'];
+
 // Returns 'documentation' for a path that only the format check and the
 // Markdown lint read, and 'full' for everything else, including a path this
 // file does not know.
 export function classify(path) {
   if (toolingDirectories.some((directory) => path.startsWith(directory)))
     return 'full';
+  if (syncedFiles.includes(path)) return 'full';
   if (path === 'LICENSE' || path.endsWith('.md')) return 'documentation';
   return 'full';
 }

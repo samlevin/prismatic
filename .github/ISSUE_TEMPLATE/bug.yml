@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Define one executable logical change with acceptance criteria. For a parent with sub-issues, use the container template; use the epic template only when explicitly requested. Follow [ISSUE_TRIAGE.md](https://github.com/samlevin/prismatic/blob/main/ISSUE_TRIAGE.md) for concise metadata and planning rules.
+        Define one executable logical change with acceptance criteria. For a parent with sub-issues, use the container template; use the epic template only when explicitly requested. Follow [ISSUE_TRIAGE.md](https://github.com/samlevin/prismatic/blob/HEAD/ISSUE_TRIAGE.md) for concise metadata and planning rules.
   - type: input
     id: parent
     attributes:

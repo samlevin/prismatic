@@ -1,9 +1,4 @@
-.claude/scheduled_tasks.lock
-.claude/settings.local.json
-.claude/worktrees/
-CLAUDE.local.md
 node_modules/
-.codex/worktrees/
 coverage/
 dist/
 .playwright-mcp/
@@ -26,3 +21,11 @@ npm-debug.log*
 .idea/
 *.swp
 .DS_Store
+
+# agenticool-agents sync: begin agent-local
+.claude/worktrees/
+.codex/worktrees/
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+# agenticool-agents sync: end agent-local

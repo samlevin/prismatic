@@ -3,13 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Prismatic, a pull request review agent, in one package: product modules under src/, maintainer tooling, the issue workflow scripts, and the generated agent workflows.",
+  "description": "Prismatic, a pull request review agent, in one package: product modules under src/, maintainer tooling, the CI scripts, and the generated agent workflows.",
   "engines": {
     "node": ">=24.2"
   },
   "scripts": {
-    "agents:generate": "node scripts/agent-policy.mjs generate",
-    "agents:check": "node scripts/agent-policy.mjs check",
+    "agents:generate": "agenticool-agents generate",
+    "agents:check": "agenticool-agents check",
     "build": "tsc -p tsconfig.build.json",
     "format": "prettier . --write --ignore-unknown",
     "format:check": "prettier . --check --ignore-unknown",
@@ -24,6 +24,10 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run agents:check && npm test"
   },
   "devDependencies": {
+    "@agenticool/agents": "0.1.0",
+    "@agenticool/board": "0.1.0",
+    "@agenticool/dispatch": "0.1.0",
+    "@agenticool/spec": "0.1.0",
     "@eslint/js": "^10.0.1",
     "@eslint/markdown": "^8.0.3",
     "@types/estree": "1.0.9",

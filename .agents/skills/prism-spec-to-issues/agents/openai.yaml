@@ -1,7 +1,0 @@
-# Generated from .agents/workflows/spec-to-issues.md by scripts/agent-policy.mjs. Edit the source and run `npm run agents:generate`.
-interface:
-  display_name: 'Prismatic: Specification to issues'
-  short_description: File a specification's delivery plan as a root container, epics, and leaves
-  default_prompt: Use $prism-spec-to-issues to file this specification's delivery plan as Prismatic issues.
-policy:
-  allow_implicit_invocation: true

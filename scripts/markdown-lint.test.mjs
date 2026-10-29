@@ -33,7 +33,7 @@ test('a table row with too many cells fails Markdown lint', async () => {
 test('Markdown lint accepts compact tables, front matter, and line breaks as written', async () => {
   const text = [
     '---',
-    'name: prism-example',
+    'name: example',
     'description: Example front matter.',
     '---',
     '',

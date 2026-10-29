@@ -1,0 +1,7 @@
+# Generated from @agenticool/agents/sources/workflows/ac-review-security.md by agenticool-agents. Edit the source and run `npx agenticool-agents generate`.
+interface:
+  display_name: 'Prismatic: Review security'
+  short_description: Explicit read-only security review by ac-security-reviewer
+  default_prompt: Use $ac-review-security to security-review this Prismatic branch.
+policy:
+  allow_implicit_invocation: false

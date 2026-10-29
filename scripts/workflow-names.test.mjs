@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { workflow } from './workflow-test-helpers.mjs';
 
 // The naming convention lives in CONTRIBUTING.md.
-const AREAS = { ci: 'CI', tracker: 'Tracker' };
+const AREAS = { ci: 'CI', board: 'Board' };
 
 const files = readdirSync(
   new URL('../.github/workflows/', import.meta.url),
@@ -21,14 +21,13 @@ test('workflow files and names match the convention table', () => {
       [...definitions].map(([file, definition]) => [file, definition.name]),
     ),
     {
+      'board-issue-states.yml': 'Board: reconcile issue states',
+      'board-pr-issue-status.yml': 'Board: move closing issues to In review',
+      'board-pr-metadata.yml': 'Board: copy issue metadata to PR',
+      'board-project-membership.yml': 'Board: add issues to the project',
       'ci-checks.yml': 'CI: checks',
       'ci-pr-title.yml': 'CI: PR title',
       'ci-secret-scan.yml': 'CI: secret scan',
-      'tracker-issue-states.yml': 'Tracker: reconcile issue states',
-      'tracker-pr-issue-status.yml':
-        'Tracker: move closing issues to In review',
-      'tracker-pr-metadata.yml': 'Tracker: copy issue metadata to PR',
-      'tracker-project-membership.yml': 'Tracker: add issues to the project',
     },
   );
   for (const [file, definition] of definitions) {
