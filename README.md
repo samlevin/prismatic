@@ -1,6 +1,6 @@
 # Prismatic
 
-Prismatic is a pull request review agent, built as one npm package. Its modules under `src/` are empty so far. This repository also holds the tooling that delivers it: GitHub issue forms and labels, tracker workflows that keep the [Prismatic delivery](https://github.com/users/samlevin/projects/2) board in sync, CI checks, and delivery agents for Claude Code and Codex. The tracker and the agents come from the `@agenticool/*` packages.
+Prismatic is a pull request review agent, built as one npm package. Its modules under `src/` are empty so far. This repository also holds the tooling that delivers it: GitHub issue forms and labels, tracker workflows that keep the [Prismatic delivery](https://github.com/users/samlevin/projects/2) board in sync, CI checks, and delivery agents for Claude Code and Codex. The board and the agents come from the `@agenticool/*` packages.
 
 ## Layout
 
